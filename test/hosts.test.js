@@ -74,7 +74,7 @@ test.describe('hosts and diagnostics', () => {
     const first = fs.readFileSync(file, 'utf8');
     assert.ok(first.startsWith(before + hosts.START)); assert.ok(first.endsWith(hosts.END + after));
     assert.match(first, /claude -p/); assert.match(first, /--output-format json/);
-    assert.match(first, /usage claude 1 calls/); assert.match(first, /Before delegating run node .*quota-boss.js.* route/);
+    assert.match(first, /usage claude 1 calls/); assert.match(first, /before delegating run node .*quota-boss.js.* route/);
     cli.run(['on', 'quality', '--host', 'codex']);
     assert.equal(fs.readFileSync(file, 'utf8'), first);
     assert.equal(first.split(hosts.START).length, 2);
@@ -251,6 +251,26 @@ test.describe('hosts and diagnostics', () => {
     lib.appendUsage('claude', 1, 'calls', providers);
     lib.updateState(() => ({ claude: { updated_at: Date.now() - 1800000 } }));
     assert.equal(lib.loadProviders(project).providers.claude.quota.source, 'counter');
+  });
+  test('Codex on installs once, inherited on repairs hooks, off keeps hook, doctor reports missing as info', () => {
+    fs.mkdirSync(process.env.CODEX_HOME);
+    const first = cli.run(['on', '--host', 'codex']);
+    assert.match(first, /type \/hooks/);
+    assert.doesNotMatch(cli.run(['on']), /\/hooks/);
+    const file = path.join(process.env.CODEX_HOME, 'hooks.json');
+    const bytes = fs.readFileSync(file, 'utf8');
+    cli.run(['off']);
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+    cli.run(['on']);
+    const options = { spawnSync: () => ({ status: 0, stdout: '' }) };
+    assert.doesNotMatch(fakeDoctor(false, options), /Info: Quota Boss SessionStart hook/);
+    fs.unlinkSync(file);
+    assert.match(fakeDoctor(false, options), /Info: Quota Boss SessionStart hook.*quota-boss on --host codex/);
+    assert.match(cli.run(['on']), /type \/hooks/);
+    fs.writeFileSync(file, '{bad');
+    assert.match(cli.run(['on']), /Note: Could not install Codex SessionStart hook/);
+    assert.equal(lib.findProjectConfig().enabled, true);
+    assert.equal(fs.readFileSync(file, 'utf8'), '{bad');
   });
 });
 

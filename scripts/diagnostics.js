@@ -119,6 +119,7 @@ function doctor(probe = false, options = {}) {
     const agents = ['opus-worker', 'sonnet-worker', 'haiku-worker', 'codex-worker', 'gpt-advisor', 'researcher', 'reviewer', 'claude-worker', 'cli-worker', 'consensus', 'scout', 'self-worker'];
     if (agents.some(name => !fs.existsSync(path.join(paths.claudeDir, 'agents', name + '.md')))) problem('Quota Boss agents are missing from ' + path.join(paths.claudeDir, 'agents'), installFix);
   } else if (host === 'codex') {
+    if (!require('./codex-hooks').present()) lines.push('Info: Quota Boss SessionStart hook is missing from hooks.json; run quota-boss on --host codex.');
     const hosts = require('./hosts');
     try {
       const agent = hosts.agentsText(project.directory, '');

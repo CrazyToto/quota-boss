@@ -473,9 +473,15 @@ function run(args = process.argv.slice(2)) {
     claudeNotice = '\nClaude CLI not found, so Claude is off as a worker. Turn it on later with: quota-boss use claude on';
   }
   const after = settings.snapshot();
+  let hookNotice = '';
+  if (command === 'on' && project.host === 'codex') {
+    const result = require('./codex-hooks').update(true);
+    if (result.message) hookNotice = '\nNote: Could not install Codex SessionStart hook: ' + result.message;
+    else if (result.changed) hookNotice = '\nCodex skips new hooks until you trust them: type /hooks in Codex once; until then the boss runs route itself.';
+  }
   return 'Quota Boss ' + (project.enabled ? 'on' : 'off') + ' | profile ' + project.profile + ' | '
     + lib.WORKERS.map(key => WORKER_NAMES[key] + '=' + (project.workers[key] ? 'on' : 'off')).join(' ')
-    + '\n' + settings.effect(command, rest, before, after) + claudeNotice
+    + '\n' + settings.effect(command, rest, before, after) + claudeNotice + hookNotice
     + (command === 'on' && project.host === 'codex' && lib.loadConfig().providers.providers.claude?.enabled !== false ? '\nWarning: ' + providerHelp.SCRIPTED_CLAUDE_WARNING : '');
 }
 

@@ -216,7 +216,12 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
     }
   }
   if (args.includes('--uninstall')) {
-    if (!previous) { cleanupProjects(); say('No Quota Boss installation manifest found; nothing to uninstall.'); return; }
+    const removeCodexHook = () => {
+      const result = require('./scripts/codex-hooks').update(false, { quotaBossHome: dirs.home, codexDir: dirs.codex }, dry);
+      if (result.message) say('Could not remove Codex SessionStart hook: ' + result.message);
+      else if (result.changed) say('Remove Quota Boss Codex SessionStart hook (keep hooks.json).');
+    };
+    if (!previous) { removeCodexHook(); cleanupProjects(); say('No Quota Boss installation manifest found; nothing to uninstall.'); return; }
     // Validate every manifest path before making changes. Never follow directory symlinks.
     for (const entry of manifest.files) {
       const base = entry.kind === 'agent' ? path.join(dirs.claude, 'agents')
@@ -229,6 +234,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
       }
       if (exists(base) && fs.lstatSync(base).isSymbolicLink()) throw new Error(`Symlink in install path: ${base}`);
     }
+    removeCodexHook();
     saveSettings(settings => {
     if (object(settings.hooks)) {
       for (const hook of manifest.hooks) {

@@ -6,7 +6,7 @@ A **host** is the agent the user talks to (the boss). Adapters connect a host to
 | Host | Status | Rules delivered via | Limits of the host itself | Workers |
 |---|---|---|---|---|
 | `claude-code` | full | SessionStart / UserPromptSubmit hooks | exact (status line) | codex-worker, haiku-worker, sonnet-worker, opus-worker, self-worker, gpt-advisor, scout, reviewer, researcher, cli-worker |
-| `codex` | beta | managed block in `AGENTS.md` (project) | exact (Codex session logs) | codex-subagent (native), claude-worker (`claude -p`), cli-worker |
+| `codex` | beta | managed block in `AGENTS.md` (project) + SessionStart routing table | exact (Codex session logs) | codex-subagent (native), claude-worker (`claude -p`), cli-worker |
 | `generic` | basic | `quota-boss rules --host generic` prints a block to paste into any agent's instructions | counter | cli-worker |
 
 ## Choosing the boss
@@ -20,7 +20,8 @@ The project's choice is stored in user-owned `QUOTA_BOSS_HOME/projects.json`, ke
 (Claude `save`/`emergency`, Codex `tight`/`exhausted`). Self work retains the critical fallback.
 
 Doctor checks the current project's host: Claude hooks, status line and agents for `claude-code` (also when boss
-mode is off), and a present, well-formed managed `AGENTS.md` block for an enabled `codex` host. Generic hosts need
+mode is off), and a present, well-formed managed `AGENTS.md` block for an enabled `codex` host. A missing Codex
+SessionStart entry produces an info line with `quota-boss on --host codex`; doctor cannot inspect hook trust. Generic hosts need
 neither host CLI; an enabled provider can still require its CLI. Each issue gets one `Problem: ... Fix: ...` line,
 and the last line gives the count or `No problems found.` Invalid configuration names its file.
 Without `--probe`, doctor writes nothing and spends no quota.
@@ -38,9 +39,16 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   never touch text outside the markers; `off` or switching hosts removes the block; malformed markers fail safely).
   AGENTS.md must be a regular file with no symlinked parents. The registry tracks managed blocks before they
   are written; installer uninstall removes each tracked marker range safely and reports each project. The block = RULES (host-neutral wording) +
-  "Before delegating run `node <HOME>/scripts/quota-boss.js route` and follow the table" + worker instructions.
+  routing-table fallback instructions + worker instructions.
+- `on` also merges a SessionStart command into `<CODEX_HOME or ~/.codex>/hooks.json` when the Codex home exists,
+  preserving other hooks. It attaches only the routing table and limits line, using the boss model from hook stdin
+  before the existing detection fallbacks. Output above 8,000 bytes becomes a command to run `route`.
+  New or changed hooks are skipped until you review and trust them with `/hooks` in Codex; until then, run `route`
+  before delegating. On Windows the entry also has a `commandWindows` form that starts with `&`, because Codex runs
+  hooks in PowerShell there, where a command that begins with a quoted path fails. `off` keeps the user hook for other projects (disabled projects print nothing); uninstall removes
+  only our entry and leaves an empty file in place. `config.toml` is never changed.
 - `codex-subagent`: the boss spawns a native Codex subagent and names the exact model and reasoning effort from the table.
-  It uses the same plan and sandbox as the boss, with no CLI relay. The boss's own model is read from the newest interactive
+  It uses the same plan and sandbox as the boss, with no CLI relay. Outside hook input, the boss's own model is read from the newest interactive
   session log of the project, falling back to the top-level `model` in `config.toml`; `codex exec` runs and subagents are ignored.
   For headless Codex runs, set `QUOTA_BOSS_BOSS_MODEL` to a valid model ID to override detection.
 - `claude-worker`: run `claude -p "<spec>" --model <sonnet|haiku|opus> --effort <level> --output-format json` in the project root

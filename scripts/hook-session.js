@@ -12,14 +12,20 @@ function main() {
   try {
     const input = lib.readInput();
     const project = lib.findProjectConfig(input?.cwd);
-    if (!project.enabled || project.host !== 'claude-code') return;
+    const codexHost = process.argv.slice(2).join(' ') === '--host codex';
+    if (!project.enabled || project.host !== (codexHost ? 'codex' : 'claude-code')) return;
     const config = lib.loadConfig(project);
     const now = Date.now();
     const codex = config.providers.providers.codex?.enabled === false ? null : lib.readCodexLimits(now, config.thresholds);
     const state = lib.readState();
     const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
-    const bossModel = lib.cleanModelId(input?.model?.id ?? input?.model) ?? lib.currentBossModel(project, state);
+    const bossModel = lib.cleanModelId(codexHost ? input?.model : input?.model?.id ?? input?.model) ?? lib.currentBossModel(project, state);
     let table = formatTable(route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now }));
+    if (codexHost) {
+      const output = table + '\n' + lib.formatLimits(limits, project.profile, config.thresholds, now, config.providers) + '\n';
+      process.stdout.write(Buffer.byteLength(output) > 8000 ? '[quota-boss] Run node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" route before delegating.\n' : output);
+      return;
+    }
     const fixed = [hosts.rules('claude-code', project), graph.sessionText(project.directory), lib.formatLimits(limits, project.profile, config.thresholds, now, config.providers)];
     // Above the host's limit only a short preview reaches the boss, so the table and the notes wait for the first prompt
     // when they do not fit beside the rules.

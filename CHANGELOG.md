@@ -2,6 +2,16 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## Unreleased
+
+### Added
+
+- Codex SessionStart hook attaches routing and limits for enabled Codex projects, with safe user-hook merging and a `/hooks` trust reminder. On Windows the entry also carries `commandWindows`, because Codex runs hooks in PowerShell there.
+
+### Fixed
+
+- Windows: taking a lock no longer fails with `EPERM` while another process is still letting go of the deleted lock file; the attempt is repeated for a few milliseconds.
+
 ## [0.1.1-rc.0] - 2026-11-12
 
 ### Changed

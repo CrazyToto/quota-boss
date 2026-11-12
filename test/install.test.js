@@ -554,3 +554,23 @@ test('default install does not register the Codex MCP bridge (workers use codex 
   f.run([], { env: { ...f.env, QUOTA_BOSS_SKIP_MCP: '0', QUOTA_BOSS_MCP: '0' } });
   assert.ok(f.logs.some(line => line.includes('Codex MCP bridge not requested')));
 });
+
+
+test('uninstall removes only our Codex hook and dry-run preserves it', t => {
+  const f = fixture(t);
+  f.run();
+  fs.mkdirSync(f.codex);
+  const hooks = require('../scripts/codex-hooks');
+  const paths = { quotaBossHome: f.home, codexDir: f.codex };
+  assert.equal(hooks.update(true, paths).changed, true);
+  const file = path.join(f.codex, 'hooks.json');
+  const value = readJSON(file);
+  value.foreign = 'keep';
+  value.hooks.Stop = [{ hooks: [{ type: 'command', command: 'foreign' }] }];
+  fs.writeFileSync(file, JSON.stringify(value));
+  const bytes = fs.readFileSync(file, 'utf8');
+  f.run(['--uninstall', '--dry-run']);
+  assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+  f.run(['--uninstall']);
+  assert.deepEqual(readJSON(file), { hooks: { Stop: value.hooks.Stop }, foreign: 'keep' });
+});

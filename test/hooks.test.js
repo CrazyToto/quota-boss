@@ -312,4 +312,53 @@ test('cold cache blocks only once with only decision JSON, and a new assistant t
   }
 });
 
+test('Codex session prints only the exact table and limits, with stdin model first', () => {
+  enable({ host: 'codex' });
+  codexLog();
+  lib.writeState({ claude: limits().claude });
+  const now = Date.now(), original = Date.now;
+  Date.now = () => now;
+  const oldModel = process.env.QUOTA_BOSS_BOSS_MODEL;
+  process.env.QUOTA_BOSS_BOSS_MODEL = 'fallback-model';
+  try {
+    const data = JSON.stringify({ cwd: project, model: 'hook-model' });
+    const result = invoke(session.main, data, ['--host', 'codex']);
+    const p = lib.findProjectConfig(), config = lib.loadConfig(p), state = lib.readState();
+    const quota = lib.readProviderLimits(config.providers, { claude: state.claude, codex: lib.readCodexLimits(now, config.thresholds) }, now);
+    const expected = require('../scripts/route').formatTable(require('../scripts/route').route({ ...config, ...p, bossModel: 'hook-model',
+      bossEffort: lib.currentBossEffort(p, state, 'hook-model'), size: config.thresholds.gate?.defaultSize ?? 'medium', limits: quota,
+      history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }));
+    assert.equal(result.stdout, expected + '\n' + lib.formatLimits(quota, p.profile, config.thresholds, now, config.providers) + '\n');
+    assert.match(result.stdout, /boss model hook-model/);
+    assert.equal(result.stderr, '');
+    assert.equal(result.status, 0);
+    assert.equal(invoke(session.main, data).stdout, '');
+    for (const model of [undefined, 12, { id: 'hook-model' }, 'bad id']) {
+      assert.match(invoke(session.main, JSON.stringify({ cwd: project, model }), ['--host', 'codex']).stdout, /boss model fallback-model/);
+    }
+    assert.equal(invoke(session.main, '{bad', ['--host', 'codex']).stdout, '');
+    for (const config of [{ host: 'claude-code' }, { host: 'codex', enabled: false }]) {
+      enable(config); assert.equal(invoke(session.main, data, ['--host', 'codex']).stdout, '');
+    }
+    assert.equal(invoke(session.main, JSON.stringify({ cwd: temporary }), ['--host', 'codex']).stdout, '');
+    assert.equal(invoke(session.main, '{bad', ['--host', 'codex']).stdout, '');
+  } finally {
+    Date.now = original;
+    if (oldModel === undefined) delete process.env.QUOTA_BOSS_BOSS_MODEL; else process.env.QUOTA_BOSS_BOSS_MODEL = oldModel;
+  }
+});
+
+test('Codex oversize table becomes one route command, while Claude output stays identical', () => {
+  enable();
+  const before = start(input()).stdout;
+  assert.equal(start(input()).stdout, before);
+  const original = lib.formatLimits;
+  lib.formatLimits = () => 'x'.repeat(8000);
+  try {
+    enable({ host: 'codex' });
+    assert.equal(invoke(session.main, input(), ['--host', 'codex']).stdout,
+      '[quota-boss] Run node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" route before delegating.\n');
+  } finally { lib.formatLimits = original; }
+});
+
 });

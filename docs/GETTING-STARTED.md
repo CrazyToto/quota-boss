@@ -23,6 +23,10 @@ Without Claude Code, run `node "<home>/scripts/quota-boss.js" setup` in your pro
 the assistant; the installer prints the exact path. Claude then is an optional worker through the `claude` CLI, off
 when that CLI is missing.
 
+For a Codex boss, run `quota-boss on --host codex` with the Codex home directory present, then review and trust
+the new SessionStart hook with `/hooks` in Codex. It attaches the routing table and limits; until trusted,
+the boss runs `route` before delegating.
+
 Nothing changes until the summary at the end, which lists every choice and the exact install commands with their
 sources. You answer once, then it:
 
