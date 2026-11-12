@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes to npm when a version tag is pushed. It uses npm trusted publishing (OIDC), so no npm token is stored:
-# the package settings on npmjs.com name this repository and this workflow file as the trusted publisher.
+# the package settings on npmjs.com name this repository, this workflow file and the "npm" environment as the trusted
+# publisher. The environment only accepts v* tags, so a changed copy of this file on a branch cannot publish.
 on:
   push:
     tags: ['v*']
@@ -17,17 +18,20 @@ jobs:
   publish:
     if: github.repository == 'CrazyToto/quota-boss'
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - name: Check tag, version and branch
         shell: bash
         run: |
