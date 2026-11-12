@@ -1,0 +1,7 @@
+# Plan: <goal>
+
+## Steps
+- [ ] ...
+
+## Decisions
+- ...

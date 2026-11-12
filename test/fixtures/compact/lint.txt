@@ -1,0 +1,5 @@
+src/index.ts(3,2): error TS2322: Type string is not assignable
+Found 1 error.
+src/index.js
+  2:1  error  Missing semicolon  semi
+✖ 1 problems (1 errors, 0 warnings)

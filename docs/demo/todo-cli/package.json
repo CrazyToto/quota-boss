@@ -1,0 +1,9 @@
+{
+  "name": "todo-cli",
+  "version": "1.0.0",
+  "description": "A tiny todo list for the terminal.",
+  "license": "MIT",
+  "private": true,
+  "bin": { "todo": "todo.js" },
+  "scripts": { "test": "node --test todo.spec.js" }
+}

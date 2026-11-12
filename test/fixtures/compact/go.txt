@@ -1,0 +1,3 @@
+--- FAIL: TestParser (0.00s)
+    parser_test.go:12: expected 2 got 1
+FAIL example/parser 0.003s

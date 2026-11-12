@@ -1,0 +1,202 @@
+{
+  "providers": {
+    "claude": {
+      "label": "Claude",
+      "kind": "subscription",
+      "enabled": true,
+      "quota": {
+        "source": "claude-statusline"
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "codex": {
+      "label": "ChatGPT/Codex",
+      "kind": "subscription",
+      "enabled": true,
+      "quota": {
+        "source": "codex-logs"
+      },
+      "worker": "codex-worker",
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "perplexity": {
+      "label": "Perplexity",
+      "kind": "manual",
+      "enabled": true,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "researcher",
+      "tos": "avoid",
+      "trainsOnData": false
+    },
+    "grok": {
+      "evidence": "docs",
+      "label": "Grok",
+      "kind": "subscription",
+      "enabled": false,
+      "quota": {
+        "source": "counter",
+        "windows": {
+          "weekly": {
+            "budget": 200,
+            "unit": "calls"
+          }
+        }
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "command": "grok",
+        "args": [
+          "-p",
+          "{prompt}",
+          "--allow",
+          "Edit",
+          "-m",
+          "{model}",
+          "--effort",
+          "{effort}"
+        ],
+        "defaultModel": "grok-4.7"
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "copilot": {
+      "label": "GitHub Copilot",
+      "kind": "subscription",
+      "enabled": false,
+      "quota": {
+        "source": "counter",
+        "windows": {
+          "monthly": {
+            "budget": 100,
+            "unit": "calls"
+          }
+        }
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "command": "copilot",
+        "args": [
+          "-p",
+          "{prompt}",
+          "-s",
+          "--no-ask-user",
+          "--allow-tool=write",
+          "--model",
+          "{model}",
+          "--reasoning-effort",
+          "{effort}"
+        ],
+        "defaultModel": "auto"
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "antigravity": {
+      "evidence": "docs",
+      "label": "Google Antigravity (Gemini)",
+      "kind": "subscription",
+      "enabled": false,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "$comment": "Auto mode lets edits run without a settings file; without it they are soft-denied and the run still exits 0.",
+        "command": "agy",
+        "args": [
+          "-p",
+          "{prompt}",
+          "--mode",
+          "auto",
+          "--model",
+          "{model}-{effort}"
+        ],
+        "defaultModel": "gemini-3.8-flash",
+        "defaultEffort": "medium"
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "openrouter": {
+      "label": "OpenRouter",
+      "kind": "api",
+      "enabled": false,
+      "quota": {
+        "source": "counter",
+        "windows": {
+          "monthly": {
+            "budget": 10,
+            "unit": "usd"
+          }
+        }
+      },
+      "worker": "cli-worker",
+      "tos": "api",
+      "trainsOnData": false
+    },
+    "opencode-free": {
+      "label": "OpenCode free (example)",
+      "kind": "free",
+      "enabled": false,
+      "trainsOnData": true,
+      "tos": "official-cli",
+      "worker": "cli-worker",
+      "quota": {
+        "source": "none"
+      },
+      "cli": {
+        "command": "opencode",
+        "args": [
+          "run",
+          "{prompt}"
+        ]
+      }
+    },
+    "kilo-free": {
+      "label": "Kilo Free",
+      "kind": "free",
+      "enabled": false,
+      "trainsOnData": true,
+      "tos": "official-cli",
+      "worker": "cli-worker",
+      "quota": {
+        "source": "none"
+      },
+      "cli": {
+        "command": "kilo",
+        "args": [
+          "run",
+          "-m",
+          "kilo/kilo-auto/free",
+          "{prompt}"
+        ]
+      }
+    },
+    "ollama": {
+      "label": "Ollama local (example)",
+      "kind": "local",
+      "enabled": false,
+      "trainsOnData": false,
+      "tos": "official-cli",
+      "worker": "cli-worker",
+      "quota": {
+        "source": "none"
+      },
+      "cli": {
+        "$comment": "Replace <model> with an installed local model before enabling.",
+        "command": "ollama",
+        "args": [
+          "run",
+          "<model>",
+          "{prompt}"
+        ]
+      }
+    }
+  },
+  "caps": {}
+}

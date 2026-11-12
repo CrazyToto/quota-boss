@@ -1,0 +1,6 @@
+running 2 tests
+test parser::rejects ... FAILED
+error[E0308]: mismatched types
+ --> src/lib.rs:3:1
+thread main panicked at src/lib.rs:4
+test result: FAILED. 1 passed; 1 failed;

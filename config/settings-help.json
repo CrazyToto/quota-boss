@@ -1,0 +1,106 @@
+{
+  "enabled": {
+    "title": "Boss mode",
+    "what": "Turn task routing on or off for this project.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Turn it on when you want the boss to share work across your available tools.",
+    "advanced": false
+  },
+  "profile": {
+    "title": "Quality versus quota",
+    "what": "Quality favors stronger answers, balanced shares the trade-off, and frugal favors lower quota use.",
+    "quality": "up",
+    "quota": "costs",
+    "when": "Choose quality for difficult work, balanced for everyday work, or frugal when quota is scarce.",
+    "advanced": false
+  },
+  "host": {
+    "title": "Your main coding assistant",
+    "what": "Choose the assistant you talk to: Claude Code, Codex, or another tool using generic instructions.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Choose the tool where you are working; this changes how routing instructions and workers are delivered.",
+    "advanced": false
+  },
+  "codex-tasks": {
+    "title": "Codex task worker",
+    "what": "Allow Codex to carry out delegated coding tasks using your ChatGPT quota.",
+    "quality": "same",
+    "quota": "costs",
+    "when": "Enable it to share coding work with Codex; turn it off to reserve ChatGPT quota.",
+    "advanced": false
+  },
+  "gpt-reviews": {
+    "title": "GPT second opinions",
+    "what": "Allow read-only GPT reviews, research and critical consensus through Codex using your ChatGPT quota.",
+    "quality": "up",
+    "quota": "costs",
+    "when": "Enable it when an independent review or research answer is useful.",
+    "advanced": false
+  },
+  "perplexity": {
+    "title": "Perplexity research bridge",
+    "what": "Offer a research prompt for you to paste into Perplexity and bring back manually.",
+    "quality": "up",
+    "quota": "costs",
+    "when": "Enable it for source-heavy research when you are willing to copy and paste.",
+    "advanced": false
+  },
+  "training": {
+    "title": "Allow providers that train on data",
+    "what": "Permit enabled providers marked as training on your data to receive project tasks.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Leave it off unless you accept those providers using the project prompts and code for training.",
+    "advanced": false
+  },
+  "short-answers": {
+    "title": "Shorter answers",
+    "what": "Ask the boss for a brief verdict, changed files, verification, and open issues.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Enable it when you want shorter replies and fewer output tokens.",
+    "advanced": false
+  },
+  "providers.enabled": {
+    "title": "Available providers",
+    "what": "Enable or disable a provider globally so its models can enter project routing.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Enable only providers you have configured and accept; training providers also need project permission.",
+    "advanced": true
+  },
+  "caps": {
+    "title": "Provider usage caps",
+    "what": "Limit the percentage of each provider window available for delegation and raise its routing price as usage approaches that cap.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Set a lower cap to reserve quota for other work; project off preserves any global cap.",
+    "advanced": true
+  },
+  "consensus": {
+    "title": "Independent critical decisions",
+    "what": "Offer an independent read-only Codex answer before critical architecture or security decisions with real trade-offs.",
+    "quality": "up",
+    "quota": "costs",
+    "when": "Keep it on for important trade-offs; it uses an extra GPT answer and never edits files.",
+    "advanced": true
+  },
+  "statusline": {
+    "title": "Status line visibility",
+    "what": "Show quota numbers everywhere or only with boss mode.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Show quota numbers everywhere or only with boss mode.",
+    "advanced": true
+  },
+  "context": {
+    "title": "Context handoff threshold",
+    "what": "Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off.",
+    "advanced": true
+  }
+}

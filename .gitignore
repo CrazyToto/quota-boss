@@ -1,0 +1,15 @@
+node_modules/
+.claude/settings.local.json
+.claude/quota-boss.json
+.claude/harness.json
+sandbox-test/
+*.tmp-*
+.env
+.env.*
+*.log
+/NOTES.md
+/PLAN.md
+/RELEASE-PLAN.md
+
+# Raw recordings of the demo session.
+/docs/demo/raw/

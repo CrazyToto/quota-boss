@@ -1,0 +1,7 @@
+FAIL test/parser.test.js
+  ● parser rejects input
+    Error: expected failure
+      at parser (parser.js:12:4)
+Test Suites: 1 failed, 2 passed
+Tests: 1 failed, 4 passed
+Time: 0.3 s

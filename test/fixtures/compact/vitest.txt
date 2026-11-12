@@ -1,0 +1,7 @@
+ ❯ test/parser.test.ts (2 tests | 1 failed)
+ FAIL test/parser.test.ts > rejects input
+AssertionError: expected false to be true
+ at test/parser.test.ts:10:2
+ Test Files 1 failed (1)
+ Tests 1 failed | 1 passed (2)
+ Duration 350ms

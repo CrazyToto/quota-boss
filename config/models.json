@@ -1,0 +1,431 @@
+{
+  "$comment": "Quality scores 1-10 per task category, at the effort the router picks. cost = list price of one agent turn with Opus 5.5 as 10, on the token mix of real Codex sessions (about 93% cached input, 6% fresh input, 1% output). Subscription weights are not published, but Codex's per-model message limits follow the same ratios. efforts = the levels the router may pick; max and ultra are left out on purpose. Evidence and dates are in docs/MODELS.md. Defaults are opinionated starting points - tune them to your experience and send a PR. Models not listed here but found in your Codex model cache are reported as 'unrated' by `quota-boss models`.",
+  "categories": [
+    "architecture",
+    "debugging",
+    "implementation",
+    "review",
+    "research",
+    "mechanical"
+  ],
+  "models": {
+    "claude-fable-5-2": {
+      "pool": "claude",
+      "label": "Fable 5.2",
+      "agentModel": "fable",
+      "cost": 17,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 10,
+        "debugging": 10,
+        "implementation": 9,
+        "review": 10,
+        "research": 9,
+        "mechanical": 9
+      }
+    },
+    "claude-opus-5-5": {
+      "pool": "claude",
+      "label": "Opus 5.5",
+      "agentModel": "opus",
+      "cost": 10,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 10,
+        "debugging": 10,
+        "implementation": 9,
+        "review": 10,
+        "research": 8,
+        "mechanical": 9
+      }
+    },
+    "claude-sonnet-5-5": {
+      "pool": "claude",
+      "label": "Sonnet 5.5",
+      "agentModel": "sonnet",
+      "cost": 5,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 8,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 7,
+        "mechanical": 9
+      }
+    },
+    "claude-haiku-5-5": {
+      "pool": "claude",
+      "label": "Haiku 5.5",
+      "agentModel": "haiku",
+      "cost": 0.32,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 5,
+        "debugging": 5,
+        "implementation": 6,
+        "review": 5,
+        "research": 6,
+        "mechanical": 8
+      }
+    },
+    "gpt-6-astra": {
+      "pool": "codex",
+      "label": "GPT-6-Astra",
+      "cost": 32,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 9,
+        "research": 8,
+        "mechanical": 8
+      }
+    },
+    "gpt-6.1-sol": {
+      "pool": "codex",
+      "label": "GPT-6.1-Sol",
+      "cost": 5,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 8,
+        "mechanical": 8
+      }
+    },
+    "gpt-6.1-terra": {
+      "pool": "codex",
+      "label": "GPT-6.1-Terra",
+      "cost": 2.5,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 6,
+        "debugging": 6,
+        "implementation": 7,
+        "review": 6,
+        "research": 6,
+        "mechanical": 8
+      }
+    },
+    "gpt-6-sol": {
+      "pool": "codex",
+      "label": "GPT-6-Sol",
+      "cost": 6.5,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 7,
+        "debugging": 7,
+        "implementation": 8,
+        "review": 7,
+        "research": 7,
+        "mechanical": 8
+      }
+    },
+    "gpt-6-luna": {
+      "pool": "codex",
+      "label": "GPT-6-Luna",
+      "cost": 0.32,
+      "minEffort": "high",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 4,
+        "debugging": 4,
+        "implementation": 5,
+        "review": 4,
+        "research": 5,
+        "mechanical": 8
+      }
+    },
+    "gpt-5.6-sol": {
+      "pool": "codex",
+      "label": "GPT-5.6-Sol",
+      "cost": 13,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 6,
+        "debugging": 6,
+        "implementation": 6,
+        "review": 6,
+        "research": 6,
+        "mechanical": 7
+      }
+    },
+    "gpt-5.6-terra": {
+      "pool": "codex",
+      "label": "GPT-5.6-Terra",
+      "cost": 6.8,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 5,
+        "debugging": 5,
+        "implementation": 5,
+        "review": 5,
+        "research": 5,
+        "mechanical": 7
+      }
+    },
+    "gpt-5.6-luna": {
+      "pool": "codex",
+      "label": "GPT-5.6-Luna",
+      "cost": 0.68,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 3,
+        "debugging": 3,
+        "implementation": 4,
+        "review": 3,
+        "research": 4,
+        "mechanical": 7
+      }
+    },
+    "perplexity-manual": {
+      "pool": "perplexity",
+      "label": "Perplexity (manual bridge)",
+      "cost": 0,
+      "manual": true,
+      "scores": {
+        "architecture": 0,
+        "debugging": 0,
+        "implementation": 0,
+        "review": 0,
+        "research": 9,
+        "mechanical": 0
+      }
+    },
+    "grok-4.7": {
+      "pool": "grok",
+      "label": "Grok 4.7",
+      "cost": 10,
+      "cliModel": "grok-4.7",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 6,
+        "debugging": 6,
+        "implementation": 6,
+        "review": 6,
+        "research": 6,
+        "mechanical": 7
+      }
+    },
+    "grok-build": {
+      "pool": "grok",
+      "label": "Grok Build",
+      "cost": 4.2,
+      "cliModel": "grok-build-0.1",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "scores": {
+        "architecture": 5,
+        "debugging": 5,
+        "implementation": 6,
+        "review": 5,
+        "research": 5,
+        "mechanical": 7
+      }
+    },
+    "copilot-default": {
+      "pool": "copilot",
+      "label": "GitHub Copilot",
+      "cost": 0.68,
+      "scores": {
+        "architecture": 3,
+        "debugging": 3,
+        "implementation": 4,
+        "review": 3,
+        "research": 4,
+        "mechanical": 7
+      }
+    },
+    "copilot-gpt-6.1-sol": {
+      "pool": "copilot",
+      "label": "Copilot GPT-6.1-Sol",
+      "enabled": false,
+      "cost": 5,
+      "cliModel": "gpt-6.1-sol",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 8,
+        "mechanical": 8
+      }
+    },
+    "copilot-gpt-6-luna": {
+      "pool": "copilot",
+      "label": "Copilot GPT-6-Luna",
+      "enabled": false,
+      "cost": 0.32,
+      "cliModel": "gpt-6-luna",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "minEffort": "high",
+      "scores": {
+        "architecture": 4,
+        "debugging": 4,
+        "implementation": 5,
+        "review": 4,
+        "research": 5,
+        "mechanical": 8
+      }
+    },
+    "gemini-4-argon": {
+      "pool": "antigravity",
+      "label": "Gemini 4 Argon",
+      "cost": 10,
+      "cliModel": "gemini-4-argon",
+      "efforts": [
+        "medium",
+        "high"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 8,
+        "mechanical": 8
+      }
+    },
+    "gemini-3.8-flash": {
+      "pool": "antigravity",
+      "label": "Gemini 3.8 Flash",
+      "cost": 4.9,
+      "cliModel": "gemini-3.8-flash",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "scores": {
+        "architecture": 5,
+        "debugging": 5,
+        "implementation": 6,
+        "review": 5,
+        "research": 6,
+        "mechanical": 7
+      }
+    },
+    "opencode-free-example": {
+      "pool": "opencode-free",
+      "label": "OpenCode free (example)",
+      "cost": 0,
+      "scores": {
+        "architecture": 3,
+        "debugging": 4,
+        "implementation": 5,
+        "review": 3,
+        "research": 3,
+        "mechanical": 6
+      }
+    },
+    "kilo-free": {
+      "pool": "kilo-free",
+      "label": "Kilo Auto Free",
+      "cost": 0,
+      "scores": {
+        "architecture": 3,
+        "debugging": 4,
+        "implementation": 5,
+        "review": 3,
+        "research": 3,
+        "mechanical": 6
+      }
+    },
+    "ollama-example": {
+      "pool": "ollama",
+      "label": "Ollama local (example)",
+      "cost": 0,
+      "scores": {
+        "architecture": 3,
+        "debugging": 4,
+        "implementation": 4,
+        "review": 3,
+        "research": 3,
+        "mechanical": 6
+      }
+    }
+  }
+}

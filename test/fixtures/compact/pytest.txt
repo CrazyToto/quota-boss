@@ -1,0 +1,5 @@
+collecting ...
+FAILED test_parser.py::test_bad - AssertionError
+E   AssertionError: expected 2
+  test_parser.py:14: in test_bad
+================= 1 failed, 2 passed in 0.12s =================

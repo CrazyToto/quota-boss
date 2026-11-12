@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quota Boss social preview</title>
+<!-- Source of docs/assets/social-preview.png. Render: pwsh docs/social/render.ps1 -->
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171b23; --line: #262c38; --text: #e8ebf1; --muted: #9aa3b2;
+    --accent: #f2b640; --crit: #ff7a6b; --norm: #6fb6ff; --triv: #7bd88f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: radial-gradient(900px 500px at 85% 10%, #1d2433 0%, var(--bg) 60%);
+    color: var(--text); font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wrap { width: 1080px; display: grid; grid-template-columns: 1fr 480px; gap: 56px; align-items: center; }
+  .eyebrow { font: 600 20px/1 "Cascadia Mono", Consolas, monospace; color: var(--accent); letter-spacing: .04em; margin-bottom: 22px; }
+  h1 { font-size: 88px; font-weight: 800; letter-spacing: -0.03em; line-height: .95; margin-bottom: 26px; }
+  p.pitch { font-size: 29px; line-height: 1.3; color: var(--text); max-width: 500px; }
+  p.pitch b { color: var(--accent); font-weight: 700; }
+  p.sub { margin-top: 22px; font-size: 20px; color: var(--muted); }
+  .table { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  .bar { display: flex; gap: 8px; margin-bottom: 18px; }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #3a4150; display: block; }
+  .head { font: 600 16px/1 "Cascadia Mono", Consolas, monospace; color: var(--muted); margin-bottom: 14px; }
+  .row { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 14px; padding: 13px 0; border-top: 1px solid var(--line);
+         font: 19px/1.2 "Cascadia Mono", Consolas, monospace; }
+  .tag { font-size: 14px; font-weight: 700; letter-spacing: .06em; padding: 6px 0; border-radius: 6px; text-align: center; }
+  .c { color: var(--crit); background: rgba(255,122,107,.12); }
+  .n { color: var(--norm); background: rgba(111,182,255,.12); }
+  .t { color: var(--triv); background: rgba(123,216,143,.12); }
+  .job { color: var(--muted); }
+  .arrow { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">claude code · codex · free tiers</div>
+      <h1>Quota Boss</h1>
+      <p class="pitch">Your coding agent becomes a boss that hands each job to the <b>right model</b> across the subscriptions you already pay for.</p>
+      <p class="sub">Weighs task importance, model strength and quota left.</p>
+    </div>
+    <div class="table">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="head">$ quota-boss route</div>
+      <div class="row"><span class="tag c">CRITICAL</span><span><span class="job">architecture</span> <span class="arrow">→</span> Opus (self)</span></div>
+      <div class="row"><span class="tag n">NORMAL</span><span><span class="job">implement</span> <span class="arrow">→</span> GPT · Codex</span></div>
+      <div class="row"><span class="tag n">NORMAL</span><span><span class="job">research</span> <span class="arrow">→</span> GPT advisor</span></div>
+      <div class="row"><span class="tag t">TRIVIAL</span><span><span class="job">docs</span> <span class="arrow">→</span> Haiku</span></div>
+      <div class="row"><span class="tag t">TRIVIAL</span><span><span class="job">chores</span> <span class="arrow">→</span> free offer</span></div>
+    </div>
+  </div>
+</body>
+</html>

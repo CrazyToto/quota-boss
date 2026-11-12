@@ -1,0 +1,62 @@
+{
+  "name": "quota-boss",
+  "version": "0.1.0",
+  "description": "Turn Claude Code into a boss that routes tasks across your Claude, ChatGPT/Codex and Perplexity subscriptions and optional free AI offers by task importance, model quality and remaining quota.",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "codex-cli",
+    "claude",
+    "anthropic",
+    "openai",
+    "ai-agents",
+    "coding-agent",
+    "ai-coding",
+    "subagents",
+    "multi-agent",
+    "orchestration",
+    "llm-router",
+    "model-routing",
+    "rate-limits",
+    "usage-limits",
+    "gemini-cli",
+    "openrouter"
+  ],
+  "bin": {
+    "quota-boss": "bin/quota-boss.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CrazyToto/quota-boss.git"
+  },
+  "homepage": "https://github.com/CrazyToto/quota-boss#readme",
+  "bugs": {
+    "url": "https://github.com/CrazyToto/quota-boss/issues"
+  },
+  "files": [
+    ".gitattributes",
+    ".github/",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "agents/",
+    "bin/",
+    "commands/",
+    "config/",
+    "docs/*.md",
+    "install.js",
+    "scripts/",
+    "templates/",
+    "test/"
+  ]
+}
