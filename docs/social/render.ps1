@@ -15,5 +15,10 @@ try {
   & $browser --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 `
     "--user-data-dir=$profileDir" "--screenshot=$out" $url | Out-Null
   if (-not (Test-Path $out)) { throw 'Screenshot was not written.' }
+  # WhatsApp falls back to a small thumbnail for larger files; the 211 KB light version showed small, 74 KB shows large.
+  # Reduce to a 256-colour palette with Pillow when it is available.
+  $py = 'from PIL import Image; import sys; p=sys.argv[1]; Image.open(p).convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(p, optimize=True)'
+  if (Get-Command python -ErrorAction SilentlyContinue) { python -c $py $out 2>$null }
+  if ((Get-Item $out).Length -gt 150KB) { Write-Warning 'Image is over 150 KB; WhatsApp may show only a small preview. Install Pillow (pip install pillow) and render again.' }
   Write-Output ("Wrote $out ({0:N0} KB)" -f ((Get-Item $out).Length / 1KB))
 } finally { Remove-Item -Recurse -Force $profileDir -ErrorAction SilentlyContinue }
