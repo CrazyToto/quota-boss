@@ -4,9 +4,15 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## Unreleased
 
+## [0.1.1] - 2026-11-12
+
 ### Added
 
 - Codex SessionStart hook attaches routing and limits for enabled Codex projects, with safe user-hook merging and a `/hooks` trust reminder. On Windows the entry also carries `commandWindows`, because Codex runs hooks in PowerShell there.
+
+### Changed
+
+- The status line names the pool a mode belongs to: `mode claude-save` and `mode claude-emergency` instead of `mode save` and `mode emergency`, so a Codex boss no longer reads a Claude limit as its own.
 
 ### Fixed
 

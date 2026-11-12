@@ -1094,7 +1094,8 @@ function formatProvidersCompact(config, limits) {
 }
 
 function formatMode(mode) {
-  const parts = mode.split('+');
+  // The stored mode names the Claude pool without a prefix; the shown one says which pool is meant.
+  const parts = mode.split('+').map(part => part === 'save' || part === 'emergency' ? 'claude-' + part : part);
   return parts.slice(0, 4).join('+') + (parts.length > 4 ? '+(' + (parts.length - 4) + ' more)' : '');
 }
 

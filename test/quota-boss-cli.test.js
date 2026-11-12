@@ -126,7 +126,7 @@ test('status and route report quota and respect disabled workers without writing
   assert.equal(status.status, 0);
   assert.match(status.stdout, /Quota Boss on/);
   assert.match(status.stdout, /codex-tasks=off gpt-reviews=off perplexity=off/);
-  assert.match(status.stdout, /mode save\+codex-tight/);
+  assert.match(status.stdout, /mode claude-save\+codex-tight/);
   const table = command(['route']);
   assert.match(table.stdout, /critical: architecture=/);
   assert.doesNotMatch(table.stdout, /GPT|Perplexity/);

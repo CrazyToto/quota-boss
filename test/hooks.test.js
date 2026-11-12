@@ -183,7 +183,7 @@ test('prompt prints one line initially and routing only on a subsequent mode cha
   const other = invoke(prompt.main, input('other-session'));
   assert.doesNotMatch(other.stdout, /mode changed/);
   const changed = invoke(prompt.main, input());
-  assert.match(changed.stdout, /\[quota-boss\] mode changed -> save\. New routing:\ncritical:/);
+  assert.match(changed.stdout, /\[quota-boss\] mode changed -> claude-save\. New routing:\ncritical:/);
   assert.equal(lib.readState().sessions['session-1'].mode, 'save');
   const stable = invoke(prompt.main, input());
   assert.equal(stable.stdout.trim().split('\n').length, 1);
