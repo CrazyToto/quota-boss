@@ -2,6 +2,12 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.1.1-rc.0] - 2026-11-12
+
+### Changed
+
+- Releases are published by a GitHub workflow through npm trusted publishing, without a stored npm token. This pre-release is the first one made that way; the package content is the same as 0.1.0.
+
 ## [0.1.0] - 2026-11-12
 
 ### Changed
