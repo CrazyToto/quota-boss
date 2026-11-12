@@ -4,54 +4,62 @@
 <meta charset="utf-8">
 <title>Quota Boss social preview</title>
 <!-- Source of docs/assets/social-preview.png. Render: pwsh docs/social/render.ps1 -->
+<!-- Colours and type follow the landing page. The fonts load from an installed copy or from the site folder next to
+     the repository; without them the system fonts are used. -->
 <style>
+  @font-face { font-family: "Figtree"; src: local("Figtree"), url(../../../quota-boss-site/fonts/figtree-var.woff2) format("woff2"); font-weight: 300 900; }
+  @font-face { font-family: "JetBrains Mono"; src: local("JetBrains Mono"), url(../../../quota-boss-site/fonts/jetbrains-mono-var.woff2) format("woff2"); font-weight: 400 700; }
   :root {
-    --bg: #0f1218; --panel: #171b23; --line: #262c38; --text: #e8ebf1; --muted: #9aa3b2;
-    --accent: #f2b640; --crit: #ff7a6b; --norm: #6fb6ff; --triv: #7bd88f;
+    --bg: #f7f6f3; --surface: #fff; --line: #e6e3dc; --ink: #22262a; --ink-2: #555b62; --ink-3: #666c73;
+    --green: #3f7d62; --green-soft: #e4f0e8; --green-ink: #2c5c48;
+    --claude-soft: #f8e2d4; --codex-soft: #d9ecdf; --copilot-soft: #dbe7f6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 1280px; height: 640px; overflow: hidden; }
   body {
-    background: radial-gradient(900px 500px at 85% 10%, #1d2433 0%, var(--bg) 60%);
-    color: var(--text); font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    background:
+      radial-gradient(520px 380px at 88% 12%, rgba(111,176,141,.22), transparent 70%),
+      radial-gradient(480px 360px at 60% 96%, rgba(227,154,111,.16), transparent 70%),
+      radial-gradient(460px 340px at 4% 6%, rgba(127,168,220,.16), transparent 70%),
+      var(--bg);
+    color: var(--ink); font-family: "Figtree", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased;
     display: flex; align-items: center; justify-content: center;
   }
-  .wrap { width: 1080px; display: grid; grid-template-columns: 1fr 480px; gap: 56px; align-items: center; }
-  .eyebrow { font: 600 20px/1 "Cascadia Mono", Consolas, monospace; color: var(--accent); letter-spacing: .04em; margin-bottom: 22px; }
-  h1 { font-size: 88px; font-weight: 800; letter-spacing: -0.03em; line-height: .95; margin-bottom: 26px; }
-  p.pitch { font-size: 29px; line-height: 1.3; color: var(--text); max-width: 500px; }
-  p.pitch b { color: var(--accent); font-weight: 700; }
-  p.sub { margin-top: 22px; font-size: 20px; color: var(--muted); }
-  .table { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
-  .bar { display: flex; gap: 8px; margin-bottom: 18px; }
-  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #3a4150; display: block; }
-  .head { font: 600 16px/1 "Cascadia Mono", Consolas, monospace; color: var(--muted); margin-bottom: 14px; }
-  .row { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 14px; padding: 13px 0; border-top: 1px solid var(--line);
-         font: 19px/1.2 "Cascadia Mono", Consolas, monospace; }
-  .tag { font-size: 14px; font-weight: 700; letter-spacing: .06em; padding: 6px 0; border-radius: 6px; text-align: center; }
-  .c { color: var(--crit); background: rgba(255,122,107,.12); }
-  .n { color: var(--norm); background: rgba(111,182,255,.12); }
-  .t { color: var(--triv); background: rgba(123,216,143,.12); }
-  .job { color: var(--muted); }
-  .arrow { color: var(--accent); }
+  .wrap { width: 1080px; display: grid; grid-template-columns: 1fr 470px; gap: 56px; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 700; margin-bottom: 30px; }
+  .brand svg { width: 46px; height: 46px; }
+  h1 { font-size: 58px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.05; margin-bottom: 24px; }
+  h1 span { color: var(--green); }
+  p.pitch { font-size: 23px; line-height: 1.4; color: var(--ink-2); max-width: 520px; }
+  .card { background: var(--surface); border-radius: 28px; padding: 26px 28px 14px;
+          box-shadow: 0 2px 4px rgba(34,38,42,.04), 0 36px 70px -36px rgba(34,38,42,.28); }
+  .head { font: 500 16px/1 "JetBrains Mono", "Cascadia Mono", Consolas, monospace; color: var(--ink-3); margin-bottom: 14px; }
+  .head b { color: var(--green); font-weight: 600; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 0; border-top: 1px solid var(--line); font-size: 21px; font-weight: 500; }
+  .row small { display: block; font-size: 15px; font-weight: 400; color: var(--ink-3); margin-top: 2px; }
+  .to { font-size: 17px; font-weight: 600; padding: 7px 15px; border-radius: 999px; background: var(--claude-soft); white-space: nowrap; }
+  .to.codex { background: var(--codex-soft); }
+  .to.copilot { background: var(--copilot-soft); }
+  .to.keep { background: var(--green); color: #fff; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div>
-      <div class="eyebrow">claude code · codex · free tiers</div>
-      <h1>Quota Boss</h1>
-      <p class="pitch">Your coding agent becomes a boss that hands each job to the <b>right model</b> across the subscriptions you already pay for.</p>
-      <p class="sub">Weighs task importance, model strength and quota left.</p>
+      <div class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="10" fill="#3f7d62"/><rect x="8" y="8.5" width="16" height="3.6" rx="1.8" fill="#fff"/><rect x="8" y="14.2" width="10.5" height="3.6" rx="1.8" fill="#cfe6d8"/><rect x="8" y="19.9" width="5.5" height="3.6" rx="1.8" fill="#cfe6d8"/></svg>
+        Quota Boss
+      </div>
+      <h1>Your best model<br>decides. <span><br>Cheaper models<br>do the work.</span></h1>
+      <p class="pitch">A harness for Claude Code and Codex that hands each sub-task to the cheapest model that can do it, across the plans you already pay for.</p>
     </div>
-    <div class="table">
-      <div class="bar"><i></i><i></i><i></i></div>
-      <div class="head">$ quota-boss route</div>
-      <div class="row"><span class="tag c">CRITICAL</span><span><span class="job">architecture</span> <span class="arrow">→</span> Opus (self)</span></div>
-      <div class="row"><span class="tag n">NORMAL</span><span><span class="job">implement</span> <span class="arrow">→</span> GPT · Codex</span></div>
-      <div class="row"><span class="tag n">NORMAL</span><span><span class="job">research</span> <span class="arrow">→</span> GPT advisor</span></div>
-      <div class="row"><span class="tag t">TRIVIAL</span><span><span class="job">docs</span> <span class="arrow">→</span> Haiku</span></div>
-      <div class="row"><span class="tag t">TRIVIAL</span><span><span class="job">chores</span> <span class="arrow">→</span> free offer</span></div>
+    <div class="card">
+      <div class="head"><b>$</b> quota-boss route</div>
+      <div class="row"><span>Final review<small>review · critical</small></span><span class="to keep">boss keeps it</span></div>
+      <div class="row"><span>CSV writer<small>implementation · normal</small></span><span class="to codex">GPT · Codex</span></div>
+      <div class="row"><span>Write the tests<small>implementation · trivial</small></span><span class="to">Haiku</span></div>
+      <div class="row"><span>README section<small>mechanical · trivial</small></span><span class="to copilot">Copilot</span></div>
+      <div class="row"><span>Rename a flag<small>mechanical · trivial</small></span><span class="to codex">free offer</span></div>
     </div>
   </div>
 </body>
