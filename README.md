@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo.svg" alt="" width="88" height="88">
+
 # Quota Boss
 
 **A multi-model orchestrator for your coding agent: a boss that hands each sub-task to the cheapest model that can
