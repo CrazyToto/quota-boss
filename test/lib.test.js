@@ -180,6 +180,30 @@ test('Codex limits survive a sandbox that forbids writing state, other write err
   }
 });
 
+test('a lock name that Windows briefly refuses is retried, a lasting refusal is thrown and the action runs once', { skip: process.platform !== 'win32' }, () => {
+  const file = path.join(process.env.CODEX_HOME, 'pending-delete.json');
+  const realOpen = fs.openSync;
+  const refuse = limit => { let seen = 0; fs.openSync = (name, ...args) => {
+    if (String(name).endsWith('.lock') && seen++ < limit) throw Object.assign(new Error('EPERM: refused'), { code: 'EPERM' });
+    return realOpen(name, ...args);
+  }; };
+  try {
+    let runs = 0;
+    refuse(3);
+    assert.equal(lib.withLock(file, () => { runs++; return 'done'; }), 'done');
+    assert.equal(runs, 1);
+    assert.equal(fs.existsSync(file + '.lock'), false);
+    refuse(Infinity);
+    assert.throws(() => lib.withLock(file, () => { runs++; }), { code: 'EPERM' });
+    assert.equal(runs, 1);
+    fs.openSync = realOpen;
+    // A refusal thrown by the action itself is not a lock problem and must not run the action again.
+    assert.throws(() => lib.withLock(file, () => { runs++; throw Object.assign(new Error('EPERM: action'), { code: 'EPERM' }); }), /action/);
+    assert.equal(runs, 2);
+    assert.equal(fs.existsSync(file + '.lock'), false);
+  } finally { fs.openSync = realOpen; }
+});
+
 test('Codex limits come from the newest entry across parallel sessions', () => {
   const day = path.join(process.env.CODEX_HOME, 'sessions', '2026', '01', '02');
   fs.mkdirSync(day, { recursive: true });

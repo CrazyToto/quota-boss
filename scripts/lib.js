@@ -145,16 +145,24 @@ function withLock(file, action, timeout = 200, lock = file + '.lock') {
   const encoded = JSON.stringify(token);
   const deadline = performance.now() + timeout;
   const owned = () => { try { return readBounded(lock, 4096) === encoded; } catch { return false; } };
+  let pendingDelete = 0;
   while (true) {
-    let fd;
+    let fd, opening = true;
     try {
       fd = openRegular(lock, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, true);
+      opening = false;
       fs.writeFileSync(fd, encoded); fs.closeSync(fd); fd = undefined;
       if (!owned()) throw new Error('Lock ownership changed during acquisition.');
       try { return action(() => { if (!owned()) throw new Error('Lock ownership lost.'); }); }
       finally { if (owned()) fs.unlinkSync(lock); }
     } catch (error) {
       if (fd !== undefined) fs.closeSync(fd);
+      // Windows refuses to create a name whose old file is deleted but still open in another process. That passes in
+      // milliseconds, while a real refusal (sandbox, read-only home) stays and is thrown after a few tries.
+      if (opening && error.code === 'EPERM' && process.platform === 'win32' && pendingDelete++ < 8) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+        continue;
+      }
       if (error.code === 'FILE_CHANGED' || error.code === 'ENOENT') { if (performance.now() >= deadline) return null; continue; }
       if (error.code !== 'EEXIST') throw error;
       try {
