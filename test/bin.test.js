@@ -20,9 +20,10 @@ function isolated(t) {
 }
 const run = (args, env, cwd = root) => spawnSync(process.execPath, [binFile, ...args], { env, cwd, encoding: 'utf8', input: '' });
 
-test('package.json declares the bin entry, stays private, and the file exists with a node shebang and LF endings', () => {
+test('package.json declares the bin entry, can be published without dependencies, and the file exists with a node shebang and LF endings', () => {
   assert.deepEqual(pkg.bin, { 'quota-boss': 'bin/quota-boss.js' });
-  assert.equal(pkg.private, true);
+  assert.equal(pkg.private, undefined);
+  assert.equal(pkg.dependencies, undefined);
   const text = fs.readFileSync(binFile, 'utf8');
   assert.ok(text.startsWith('#!/usr/bin/env node\n'));
   assert.ok(!text.includes('\r'));

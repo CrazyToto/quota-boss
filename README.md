@@ -5,10 +5,12 @@
 **A multi-model orchestrator for your coding agent: a boss that hands each sub-task to the cheapest model that can
 do it,<br>across the subscriptions you already pay for and the free AI offers you choose.**
 
-[![CI](https://github.com/CrazyToto/quota-boss/actions/workflows/ci.yml/badge.svg)](https://github.com/CrazyToto/quota-boss/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/quota-boss.svg)](https://www.npmjs.com/package/quota-boss)
+[![Tests](https://img.shields.io/github/actions/workflow/status/CrazyToto/quota-boss/ci.yml?branch=main&label=tests)](https://github.com/CrazyToto/quota-boss/actions/workflows/ci.yml)
+[![Platform: Windows, macOS, Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](#install)
 [![Node.js 18+](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
 [![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Documentation](#documentation)
 
