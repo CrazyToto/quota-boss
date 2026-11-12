@@ -2,8 +2,8 @@
 
 # Quota Boss
 
-**Turn your coding agent into a boss that hands each sub-task to the cheapest model that can do it,<br>
-across the subscriptions you already pay for and the free AI offers you choose.**
+**A multi-model orchestrator for your coding agent: a boss that hands each sub-task to the cheapest model that can
+do it,<br>across the subscriptions you already pay for and the free AI offers you choose.**
 
 [![CI](https://github.com/CrazyToto/quota-boss/actions/workflows/ci.yml/badge.svg)](https://github.com/CrazyToto/quota-boss/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -16,9 +16,11 @@ across the subscriptions you already pay for and the free AI offers you choose.*
 
 </div>
 
-Quota Boss runs inside **Claude Code** or **Codex**. Your best model plans, decides and checks the results. Everything
-else goes to a cheaper model on your **Claude**, **ChatGPT / Codex** or **Perplexity** subscription, or to a free offer
-you have switched on.
+Quota Boss is a harness around **Claude Code** or **Codex**: it adds the rules, the workers and the live quota numbers
+that turn your agent into an orchestrator. Your best model plans, decides and checks the results. Everything else goes
+to a cheaper model on one of your subscriptions (**Claude**, **ChatGPT / Codex**, **GitHub Copilot**, **Grok**,
+**Google Antigravity / Gemini**), to **Perplexity** for research, or to a free offer or local model you have switched
+on.
 
 - **It picks the model for each job.** Every pick weighs how important the task is, how good each model is at that
   kind of work, and how much quota you have left.
@@ -34,12 +36,21 @@ The [Codex CLI](https://github.com/openai/codex) with a ChatGPT plan is recommen
 there. Everything else is optional and offered during setup.
 
 ```bash
-git clone https://github.com/CrazyToto/quota-boss && cd quota-boss
-node install.js
+npx quota-boss@latest
 ```
 
-To see first what would change, run `node install.js --dry-run`. The installer backs up your Claude Code settings,
-keeps your existing status line, and `node install.js --uninstall` removes everything again.
+This works the same on Windows, macOS and Linux. To see first what would change, add `--dry-run`. The installer backs
+up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
+everything again. Run the first command again to update.
+
+<details>
+<summary>Other ways to install</summary>
+
+- **Keep the short `quota-boss` command:** `npm install -g quota-boss`, then `quota-boss`.
+- **From source:** `git clone https://github.com/CrazyToto/quota-boss && cd quota-boss && node install.js`. The same
+  flags work: `node install.js --dry-run` and `node install.js --uninstall`.
+
+</details>
 
 ## Quick start
 
@@ -79,8 +90,9 @@ In your terminal:
 | `quota-boss use <provider\|model> on\|off` | Choose which subscriptions and models may get work |
 | `quota-boss settings` | Show all settings; `quota-boss explain <setting>` explains one |
 
-After installing, the terminal command is `node ~/.claude/quota-boss/scripts/quota-boss.js <command>`. Run `npm link`
-in the checkout to get the short `quota-boss` form. All settings are explained in [docs/SETTINGS.md](docs/SETTINGS.md).
+The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `npx quota-boss <command>` or
+`node ~/.claude/quota-boss/scripts/quota-boss.js <command>`. All settings are explained in
+[docs/SETTINGS.md](docs/SETTINGS.md).
 
 ## How it works
 
@@ -93,6 +105,7 @@ You ─► Claude Code (Opus = boss: plan, classify, delegate, verify)
         ├─► haiku-worker  ─► Haiku, small edits, tests, docs
         ├─► scout         ─► Haiku, code search
         ├─► reviewer      ─► Sonnet, reviews diffs
+        ├─► cli-worker    ─► another official CLI: Copilot, Grok, Antigravity (Gemini), OpenCode
         ├─► self-worker   ─► the boss model in a separate context for large or parallel jobs
         └─► researcher    ─► web search, or a ready-made prompt for Perplexity
 ```
@@ -135,11 +148,15 @@ row, in short sessions. All numbers and the method are in [docs/BENCHMARKS.md](d
 
 | Kind | Examples | How it is used |
 |---|---|---|
-| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot | Through each provider's official CLI, signed in as you |
+| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini) | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
 | Free API offers | Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai, Kilo | Off until you choose them; each shows its limit and data warning first |
 | Local models | Ollama | `/boss-local` |
 | Anything else | Any API with a key | `/boss-add-api` |
+
+Claude and ChatGPT / Codex are tested end to end. Copilot, Grok and Antigravity are built from their official
+documentation and stay off until you turn them on; Grok has not been run by the maintainer yet, and Antigravity
+carries an account warning because of Google's terms.
 
 Free offers can take simple work instead of your paid quota. Some of them train on what you send, so those stay off
 unless you allow them for a project. Details are in [docs/PROVIDERS.md](docs/PROVIDERS.md).
@@ -151,8 +168,8 @@ unless you allow them for a project. Details are in [docs/PROVIDERS.md](docs/PRO
 ## Safety and privacy
 
 - **No credentials.** Quota Boss never reads keys, tokens or cookies. API keys stay in OpenCode.
-- **No dependencies.** Plain Node.js, nothing to install from npm. Network access happens only through the official
-  CLIs.
+- **No dependencies.** Plain Node.js; the package pulls in no other npm packages. Network access happens only through
+  the official CLIs.
 - **Opt-in per project.** A cloned repository cannot turn boss mode on or give consent to send data to a provider
   that trains on it.
 - **Reversible.** The installer backs up your settings and removes exactly what it added.

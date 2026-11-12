@@ -5,6 +5,8 @@ Ideas and reports are welcome as issues.
 
 ## Ideas for later versions
 
+- Install as a Claude Code plugin from a marketplace (`/plugin marketplace add`). Open: the installer also sets the
+  status line, hooks in the user settings and the Codex side, which a plugin may not be able to do.
 - A Codex `SessionStart` hook (stable in codex-cli 0.167, `~/.codex/hooks.json`) could attach the table at session
   start, with the boss model from the hook input, so the boss needs no process launch for `route`. Codex skips new
   hooks until the user trusts them with `/hooks`, so setup must say so.

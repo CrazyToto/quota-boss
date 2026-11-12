@@ -1,7 +1,7 @@
 {
   "name": "quota-boss",
   "version": "0.1.0",
-  "description": "Turn Claude Code into a boss that routes tasks across your Claude, ChatGPT/Codex and Perplexity subscriptions and optional free AI offers by task importance, model quality and remaining quota.",
+  "description": "Multi-model orchestrator and harness for Claude Code and Codex: the boss routes each sub-task across your Claude, ChatGPT/Codex, Copilot, Grok, Gemini and Perplexity subscriptions and optional free AI offers by task importance, model quality and remaining quota.",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -23,11 +23,18 @@
     "subagents",
     "multi-agent",
     "orchestration",
+    "orchestrator",
+    "agent-orchestration",
+    "agent-harness",
+    "harness",
     "llm-router",
     "model-routing",
     "rate-limits",
     "usage-limits",
     "gemini-cli",
+    "antigravity",
+    "grok",
+    "github-copilot",
     "openrouter"
   ],
   "bin": {

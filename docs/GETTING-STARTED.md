@@ -5,8 +5,10 @@ You need Node 18 or newer and Claude Code or Codex. Everything else is offered d
 ## 1. Install
 
 ```
-node install.js
+npx quota-boss@latest
 ```
+
+From a clone of the repository, `node install.js` does the same.
 
 If a provider CLI is missing or outdated, the installer shows one list and asks once.
 

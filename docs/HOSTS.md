@@ -99,5 +99,5 @@ Run `quota-boss set short-answers on` for shorter answers.
 
 Set `QUOTA_BOSS_HOME` to override `~/.claude/quota-boss`. Deprecated `HARNESS_HOME` remains a user environment fallback. Project files in the checkout are ignored.
 The Claude Code slash command is `/boss on`. After installing, invoke the CLI directly with
-`node ~/.claude/quota-boss/scripts/quota-boss.js <command>` or link the checkout with `npm link`
+`node ~/.claude/quota-boss/scripts/quota-boss.js <command>` or run `npm install -g quota-boss`
 to put `quota-boss` on PATH.
