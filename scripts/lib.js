@@ -224,7 +224,17 @@ function withLock(file, action, timeout = 200, lock = file + '.lock') {
           if (!reclaimed && performance.now() >= deadline) return null;
           continue;
         }
-      } catch (e) { if (['ENOENT', 'FILE_CHANGED'].includes(e.code)) { if (performance.now() >= deadline) return null; continue; } throw e; }
+      } catch (e) {
+        // On Windows a lock file that its owner just deleted, while another process still has it open, refuses lstat and
+        // open with EPERM until the last handle closes. Creating it failed with EEXIST, so the file is there: wait like ENOENT.
+        const pending = e.code === 'EPERM' && process.platform === 'win32';
+        if (['ENOENT', 'FILE_CHANGED'].includes(e.code) || pending) {
+          if (performance.now() >= deadline) return null;
+          if (pending) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+          continue;
+        }
+        throw e;
+      }
       if (performance.now() >= deadline) return null;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }

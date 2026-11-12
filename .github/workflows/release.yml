@@ -68,3 +68,32 @@ jobs:
             *-*) npm publish --access public --tag next ;;
             *) npm publish --access public ;;
           esac
+
+  # A separate job, so the job that can publish to npm never holds a token that can write to the repository.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the GitHub release from the changelog
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          case "$version" in
+            *-*) gh release create "$GITHUB_REF_NAME" --title "Quota Boss $version" --notes-file notes.md --prerelease ;;
+            *) gh release create "$GITHUB_REF_NAME" --title "Quota Boss $version" --notes-file notes.md --latest ;;
+          esac

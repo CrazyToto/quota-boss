@@ -4,6 +4,14 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## Unreleased
 
+### Fixed
+
+- Windows: waiting for a busy lock no longer fails with `EPERM` when the lock file is deleted but still open in another process.
+
+### Changed
+
+- The release workflow also creates the GitHub release, with the notes from this changelog.
+
 ## [0.1.1] - 2026-11-12
 
 ### Added
