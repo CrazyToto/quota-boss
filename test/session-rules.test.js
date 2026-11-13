@@ -73,7 +73,8 @@ test('failure and review instructions preserve one family-aware counter-review',
   assert.deepEqual([...reviewer.matchAll(/^(\d+)\. /gm)].map(m => Number(m[1])), [1, 2, 3]);
 });
 
-test('handover envelopes survive worker adapters and host rule embedding', () => {
+test('handover envelopes survive worker adapters and host rule embedding', t => {
+  t.mock.method(lib, 'loadProviders', () => ({ providers: { claude: { enabled: true }, grok: { enabled: true, worker: 'cli-worker' } } }));
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
   const rules = read('templates/RULES.md');
   for (const key of ['GOAL:', 'SCOPE:', 'BASE:', 'CONSTRAINTS:', 'CHECK:', 'REPORT:']) assert.ok(rules.includes(key), key);

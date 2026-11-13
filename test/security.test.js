@@ -98,6 +98,20 @@ test.describe('security review regressions', () => {
     assert.equal(Object.keys(lib.readProjects()).length,0);
   });
 
+  test('provider switches skip linked AGENTS.md without opening or replacing it', () => {
+    const file = path.join(project, 'AGENTS.md');
+    fs.writeFileSync(file, 'private content');
+    lib.saveProject(project, { enabled: true, host: 'codex', managedAgents: true });
+    let opened = false;
+    const original = fs.openSync;
+    fs.openSync = (name, ...args) => { if (name === file) opened = true; return original(name, ...args); };
+    try {
+      linkedFile(file, () => assert.match(cli.run(['use', 'grok', 'on']), /Note: Skipped AGENTS.md refresh/));
+    } finally { fs.openSync = original; }
+    assert.equal(opened, false);
+    assert.equal(fs.readFileSync(file, 'utf8'), 'private content');
+  });
+
   test('finding 4: clone settings cannot grant enablement, training consent or any project switch', () => {
     const malicious={enabled:true,host:'codex',profile:'frugal',allowTrainingProviders:true,terse:true,consensus:false,workers:{codex:false},caps:{codex:{weekly:null}}};
     for(const name of ['quota-boss.json','harness.json'])lib.writeJson(path.join(project,'.claude',name),malicious);

@@ -13,7 +13,7 @@ const { route, formatTable } = require('../scripts/route');
 function fakeDoctor(probe, options = {}) { return diagnostics.doctor(probe, { findExecutable: name => options.platform === 'win32' ? 'C:\\trusted\\' + name + '.cmd' : '/trusted/' + name, ...options }); }
 
 test.describe('hosts and diagnostics', () => {
-  let temporary, project, cwd, env;
+  let temporary, project, cwd, env, findExecutable;
   const projectFile = () => lib.getPaths().projectsFile;
   const projectValue = () => lib.readProjects()[lib.projectKey(project)];
   test.beforeEach(() => {
@@ -25,6 +25,7 @@ test.describe('hosts and diagnostics', () => {
     process.env.CLAUDE_CONFIG_DIR = path.join(temporary, 'claude');
     process.env.CODEX_HOME = path.join(temporary, 'codex');
     process.chdir(project);
+    findExecutable = lib.findExecutable; lib.findExecutable = () => '/trusted/cli';
   });
   test('doctor reports evidence state only for enabled docs providers', () => {
     lib.writeJson(path.join(lib.getPaths().quotaBossHome, 'config', 'providers.json'), { providers: { grok: { enabled: true } } });
@@ -46,6 +47,7 @@ test.describe('hosts and diagnostics', () => {
     assert.deepEqual(diagnostics.openCodeOffers({ unresolved: providers.unresolved }, () => assert.fail('must not call')), []);
   });
   test.afterEach(() => {
+    lib.findExecutable = findExecutable;
     process.chdir(cwd);
     for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     fs.rmSync(temporary, { recursive: true, force: true });
@@ -92,6 +94,74 @@ test.describe('hosts and diagnostics', () => {
     assert.throws(() => cli.run(['on', '--host', 'codex']), /Malformed/);
     assert.equal(fs.readFileSync(file, 'utf8'), 'User\n' + hosts.START);
     assert.equal(fs.readFileSync(projectFile(), 'utf8'), config);
+  });
+  test('Codex includes only effective workers, while generic always includes cli-worker', () => {
+    const rules = () => cli.run(['rules', '--host', 'codex']);
+    const check = (claude, cliWorker) => {
+      const text = rules();
+      assert.equal(/^name: claude-worker$/m.test(text), claude);
+      assert.equal(/^name: cli-worker$/m.test(text), cliWorker);
+      assert.equal(text.includes('Use claude-worker for Claude tasks'), claude);
+      assert.equal(text.includes('cli-worker for other official CLIs'), cliWorker);
+      assert.equal(text.includes('If a table row names'), !claude || !cliWorker);
+      if (!claude || !cliWorker) assert.match(text, /rules --host codex and follow that worker's section/);
+    };
+    cli.run(['only', 'codex']); check(false, false);
+    cli.run(['only', 'off']);
+    cli.run(['use', 'claude', 'on']);
+    cli.run(['only', 'claude', 'codex']); check(true, false);
+    cli.run(['use', 'grok', 'on']);
+    cli.run(['only', 'off']); check(true, true);
+    cli.run(['use', 'claude', 'off', '--project']); check(false, true);
+    cli.run(['only', 'codex', '--project']); check(false, false);
+    cli.run(['only', 'off', '--project']);
+    cli.run(['use', 'claude', 'on', '--project']); check(true, true);
+    cli.run(['use', 'grok', 'off', '--project']);
+    cli.run(['only', 'claude', 'codex', '--project']); check(true, false);
+    const generic = hosts.rules('generic');
+    cli.run(['use', 'claude', 'off']);
+    assert.equal(hosts.rules('generic'), generic);
+    assert.match(generic, /^name: cli-worker$/m);
+    assert.doesNotMatch(generic, /If a table row names/);
+  });
+  test('missing Claude CLI leaves the final Codex block without Claude instructions', () => {
+    lib.findExecutable = () => null;
+    assert.match(cli.run(['on', '--host', 'codex']), /Claude CLI not found/);
+    const text = fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8');
+    assert.doesNotMatch(text, /^name: claude-worker$/m);
+    assert.equal(text, hosts.managedBlock(lib.findProjectConfig()));
+  });
+  test('switches refresh every enabled Codex project and skip malformed or missing projects', () => {
+    cli.run(['on', '--host', 'codex']);
+    const other = path.join(temporary, 'other'), broken = path.join(temporary, 'broken'), gone = path.join(temporary, 'gone');
+    for (const directory of [other, broken, gone]) {
+      fs.mkdirSync(directory);
+      lib.saveProject(directory, { enabled: true, host: 'codex', managedAgents: true });
+    }
+    fs.writeFileSync(path.join(other, 'AGENTS.md'), 'Prefix\n' + hosts.managedBlock({}) + '\nSuffix');
+    fs.writeFileSync(path.join(broken, 'AGENTS.md'), hosts.START);
+    fs.rmdirSync(gone);
+    cli.run(['use', 'claude', 'off']);
+    const output = cli.run(['use', 'claude', 'on']);
+    assert.match(output, /Note: Skipped AGENTS.md refresh.*Malformed/);
+    assert.match(output, /Note: Skipped AGENTS.md refresh.*gone/);
+    for (const directory of [project, other]) assert.match(fs.readFileSync(path.join(directory, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
+    assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').startsWith('Prefix\n'));
+    assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').endsWith('\nSuffix'));
+    cli.run(['only', 'codex']);
+    assert.doesNotMatch(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: (claude|cli)-worker$/m);
+    cli.run(['only', 'off']);
+    cli.run(['local', 'on', 'tiny']);
+    assert.match(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: cli-worker$/m);
+    cli.run(['local', 'off']);
+    assert.doesNotMatch(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: cli-worker$/m);
+    fs.writeFileSync(path.join(other, 'AGENTS.md'), hosts.START + '\nstale\n' + hosts.END);
+    cli.run(['use', 'gpt-6.1-sol', 'on']);
+    assert.equal(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), hosts.managedBlock(lib.findProjectConfig(other)));
+    cli.run(['use', 'claude', 'off', '--project']);
+    assert.doesNotMatch(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
+    assert.match(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
+    assert.equal(fs.readFileSync(path.join(broken, 'AGENTS.md'), 'utf8'), hosts.START);
   });
   test('host CLI forms reject extra, missing, duplicate, and injected arguments before writes', () => {
     for (const args of [['on', '--host'], ['on', '--host', 'bad'], ['on', '--host', 'codex', '--host', 'codex'],

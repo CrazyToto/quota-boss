@@ -95,6 +95,25 @@ function rawProviders(project = {}) {
   return lib.mergeProviders(lib.BUILTIN_PROVIDERS,
     lib.readProviderConfig(path.join(lib.getPaths().quotaBossHome, 'config', 'providers.json')), project);
 }
+function refreshCodexAgents() {
+  const notes = [];
+  const result = lib.withLock(lib.getPaths().projectsFile, verify => {
+    for (const [directory, raw] of Object.entries(lib.readProjects())) {
+      if (!raw?.enabled || raw.host !== 'codex') continue;
+      try {
+        lib.checkParents(path.join(directory, 'AGENTS.md'));
+        if (!require('node:fs').lstatSync(directory).isDirectory()) throw new Error('Project directory is unavailable.');
+        const project = lib.findProjectConfig(directory);
+        hosts.writeAgents(hosts.agentsText(directory, hosts.managedBlock(project)), verify);
+      } catch (error) {
+        notes.push('Note: Skipped AGENTS.md refresh for ' + lib.sanitizeLabel(path.basename(directory)) + ': ' + lib.sanitizeLabel(error.message));
+      }
+    }
+    return true;
+  });
+  if (result === null) notes.push('Note: Skipped AGENTS.md refresh: project registry is busy; retry the switch.');
+  return notes.length ? '\n' + notes.join('\n') : '';
+}
 function useReport(active, config) {
   const global = lib.readUse(), local = active.use;
   const filters = [global.only ? 'global only: ' + global.only.join(', ') : '', local.only ? 'project only: ' + local.only.join(', ') : ''].filter(Boolean);
@@ -201,7 +220,7 @@ function useCommand(command, rest) {
   const changedOff = command === 'only' ? hostPool && id !== 'off' && !rest.includes(hostPool)
     : action === 'off' && (provider ? id === hostPool : id === boss);
   if (changedOff) output += '\nThe boss itself keeps running on its model; this only stops delegation to it.';
-  return output;
+  return output + (command === 'use' && provider && !project ? '' : refreshCodexAgents());
 }
 function providerCommand(command, rest) {
   const active = lib.findProjectConfig();
@@ -257,7 +276,7 @@ function providerCommand(command, rest) {
       verify(); lib.atomicWrite(userFile, JSON.stringify(next, null, 2) + '\n', verify); return true;
     });
     if (saved === null) throw new Error('Provider config is busy; retry.');
-    return 'Provider ' + id + ' ' + (action === 'enable' ? 'enabled' : 'disabled') + '\n' + settings.effect('providers', rest, before, settings.snapshot(active));
+    return 'Provider ' + id + ' ' + (action === 'enable' ? 'enabled' : 'disabled') + '\n' + settings.effect('providers', rest, before, settings.snapshot(active)) + refreshCodexAgents();
   }
   if (command === 'cap') {
     const projectFlags = rest.filter(a => a === '--project').length;
@@ -371,7 +390,10 @@ function run(args = process.argv.slice(2)) {
   if (command === 'tools') return tools.command(rest, lib.loadConfig());
   if (command === 'add-api') return addApi.add(rest);
   if (command === 'remove-api') return addApi.remove(rest);
-  if (command === 'local') return local.command(rest, lib.loadConfig());
+  if (command === 'local') {
+    const output = local.command(rest, lib.loadConfig());
+    return output + (rest.length ? refreshCodexAgents() : '');
+  }
   if (command === 'stats') {
     if (rest.length && (rest.length !== 2 || rest[0] !== '--days' || !/^[1-9]\d{0,2}$/.test(rest[1]) || Number(rest[1]) > 365)) throw new Error(usage(command));
     return diagnostics.stats(rest.length ? Number(rest[1]) : 30);
@@ -469,6 +491,7 @@ function run(args = process.argv.slice(2)) {
   });
   let claudeNotice = '';
   if (command === 'on' && project.host !== 'claude-code' && lib.loadConfig().providers.providers.claude?.enabled !== false && !lib.findExecutable('claude')) {
+    // The provider switch refreshes registered Codex blocks again with the final state.
     useCommand('use', ['claude', 'off']);
     claudeNotice = '\nClaude CLI not found, so Claude is off as a worker. Turn it on later with: quota-boss use claude on';
   }

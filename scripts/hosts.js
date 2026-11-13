@@ -23,11 +23,21 @@ function rules(host, project = {}) {
   if (host !== 'claude-code') {
     const home = lib.trustedHomeText();
     if (/[\x00-\x1f\x7f"$]/.test(home) || home.includes(String.fromCharCode(96))) throw new Error('Unsafe installation path for rules.');
+    const providers = host === 'codex' ? lib.loadProviders(project).providers : {};
+    const claude = host === 'codex' && providers.claude && providers.claude.enabled !== false;
+    const cli = host !== 'codex' || Object.entries(providers).some(([id, p]) => !['claude', 'codex'].includes(id) && p.enabled !== false && p.worker === 'cli-worker');
+    const workers = [...(claude ? ['claude-worker'] : []), ...(cli ? ['cli-worker'] : [])];
     text += host === 'codex' ? '\nA routing table is attached at session start once the hook is trusted. When no table was attached, before delegating run node "' + home + '/scripts/quota-boss.js" route and follow the table.\n'
       : '\nBefore delegating run node "' + home + '/scripts/quota-boss.js" route and follow the table.\n';
     text += host === 'codex' ? 'Codex is the boss. Only rows marked self are for your own model. If a command launch is refused (for example CreateProcessAsUserW failed: 5 for pwsh from WindowsApps), run the same command once more with another shell, on Windows C:\\Windows\\System32\\cmd.exe, and keep using that shell. If route still cannot run (for example a sandbox blocks process launches), do the work yourself and spawn no subagents: guessing a worker costs more than it saves. Never spawn a subagent on your own model at the same or a higher effort. For a codex-subagent row, spawn a Codex subagent and name the exact model and reasoning effort from the table: it uses your plan and sandbox directly, with no CLI relay. Use claude-worker for Claude tasks and cli-worker for other official CLIs.\n'
       : 'Generic host: use cli-worker and its official CLI argument template.\n';
-    for (const worker of (host === 'codex' ? ['claude-worker', 'cli-worker'] : ['cli-worker'])) text += '\n' + lib.readBounded(path.join(__dirname, '..', 'agents', worker + '.md'), 65536).split('{{QUOTA_BOSS_HOME}}').join(home);
+    if (host === 'codex') {
+      text = text.replace(' Use claude-worker for Claude tasks and cli-worker for other official CLIs.',
+        claude && cli ? ' Use claude-worker for Claude tasks and cli-worker for other official CLIs.'
+          : claude ? ' Use claude-worker for Claude tasks.' : cli ? ' Use cli-worker for other official CLIs.' : '');
+      if (!claude || !cli) text += 'If a table row names claude-worker or cli-worker and its steps are not in these rules, run node "' + home + '/scripts/quota-boss.js" rules --host codex and follow that worker\'s section.\n';
+    }
+    for (const worker of workers) text += '\n' + lib.readBounded(path.join(__dirname, '..', 'agents', worker + '.md'), 65536).split('{{QUOTA_BOSS_HOME}}').join(home);
     if (/^[A-Za-z0-9_:\/.\-]+$/.test(home)) text = text.replace(/"([^"\r\n]+)"/g, (quoted, file) => file.startsWith(home + '/scripts/') && !file.slice(home.length + 9).includes('/') ? file : quoted);
   }
   return text;
