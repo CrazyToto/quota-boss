@@ -235,7 +235,7 @@ test.describe('providers', () => {
     assert.doesNotMatch(require('../scripts/statusline').formatStatus(limits, { enabled: true }, {}, now, p), /freebie/);
   });
 
-  test('hooks include enabled counters, skip disabled live readers and stay silent on invalid provider config', () => {
+  test('hooks include enabled counters, skip disabled live readers and warn on invalid provider config', () => {
     const prompt = require('../scripts/hook-prompt');
     const session = require('../scripts/hook-session');
     lib.saveProject(project, { enabled: true });
@@ -255,9 +255,13 @@ test.describe('providers', () => {
       assert.equal(line.trim().split('\n').length, 1);
       assert.match(invoke(session.main), /grok:0%/);
       assert.match(cli.run(['providers']), /grok \| subscription \| yes/);
+      // An invalid config falls back to the built-in providers (codex on again) and warns instead of going silent.
       lib.writeJson(userFile(), { providers: { grok: { enabled: 'invalid' } } });
-      assert.equal(invoke(prompt.main), '');
-      assert.equal(invoke(session.main), '');
+      lib.readCodexLimits = original.codex;
+      assert.match(invoke(prompt.main), /WARNING: the provider config is invalid/);
+      const started = invoke(session.main);
+      assert.match(started, /WARNING: the provider config is invalid/);
+      assert.doesNotMatch(started, /grok:/);
     } finally {
       lib.readInput = original.input;
       lib.readCodexLimits = original.codex;

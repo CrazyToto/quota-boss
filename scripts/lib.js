@@ -268,8 +268,9 @@ function cliArgsForModel(cli, cliModel, effort) {
   return args;
 }
 
-/** Load shipped defaults and shallow user overrides; merge model entries by key. */
-function loadConfig(project = findProjectConfig()) {
+/** Load shipped defaults and shallow user overrides; merge model entries by key.
+ *  tolerant: a broken user providers.json falls back to the built-in providers and sets warning, so the table never disappears. */
+function loadConfig(project = findProjectConfig(), options = {}) {
   const paths = getPaths();
   const load = name => {
     // Installed copies keep shipped values in defaults/, so new models reach users who edited their config.
@@ -288,7 +289,15 @@ function loadConfig(project = findProjectConfig()) {
   for (const id of off) if (id !== boss && Object.hasOwn(models.models, id) && models.models[id]) {
     models.models[id] = { ...models.models[id], enabled: false };
   }
-  return { models, thresholds: load('thresholds'), providers: loadProviders(project) };
+  let providers, warning;
+  try { providers = loadProviders(project); }
+  catch (error) {
+    if (!options.tolerant) throw error;
+    warning = '[quota-boss] WARNING: the provider config is invalid (' + String(error?.message ?? error).replace(/[^\x20-\x7e]/g, '').slice(0, 160)
+      + '). The table uses only the built-in providers until it is fixed. Run: quota-boss doctor';
+    providers = loadProviders({ ...project, caps: undefined, providers: undefined }, { userConfig: false });
+  }
+  return { models, thresholds: load('thresholds'), providers, ...(warning ? { warning } : {}) };
 }
 
 const USE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -924,10 +933,10 @@ function readProviderConfig(file) {
   try { return requireObject(JSON.parse(readBounded(file, 1024 * 1024)), 'Provider config'); }
   catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
 }
-function loadProviders(project = {}) {
+function loadProviders(project = {}, options = {}) {
   const paths = getPaths();
   const config = mergeProviders(BUILTIN_PROVIDERS,
-    readProviderConfig(path.join(paths.quotaBossHome, 'config', 'providers.json')), project);
+    options.userConfig === false ? {} : readProviderConfig(path.join(paths.quotaBossHome, 'config', 'providers.json')), project);
   const globalUse = readUse(), projectUse = normalizeUse(project.use);
   for (const [id, provider] of Object.entries(config.providers)) {
     if (globalUse.only && !globalUse.only.includes(id) || projectUse.providersOff.includes(id)

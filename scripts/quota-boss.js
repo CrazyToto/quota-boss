@@ -460,7 +460,7 @@ function run(args = process.argv.slice(2)) {
     if (command === 'route' && (filters.length > 2 || filters.length > 0 && !lib.CATEGORIES.includes(filters[0])
       || filters.length > 1 && !lib.TIERS.includes(filters[1]))) throw new Error(usage(command));
     const active = lib.findProjectConfig();
-    const config = lib.loadConfig(active);
+    const config = lib.loadConfig(active, { tolerant: command === 'route' });
     if (command === 'models') return modelReport(config.models, config.thresholds);
     const now = Date.now();
     const codex = config.providers.providers.codex?.enabled === false ? null : lib.readCodexLimits(now, config.thresholds, command === 'route');
@@ -471,7 +471,7 @@ function run(args = process.argv.slice(2)) {
       const result = route({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
       const match = row => (!filters[0] || row.category === filters[0]) && (!filters[1] || row.tier === filters[1]);
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
-      return explain ? formatExplain(result) : formatTable(result);
+      return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));
     }
     return 'Quota Boss ' + (active.enabled ? 'on' : 'off') + ' | '
     + lib.WORKERS.map(key => WORKER_NAMES[key] + '=' + (active.workers[key] ? 'on' : 'off')).join(' ')

@@ -113,6 +113,29 @@ test('session prints rules when present, compact routing, and numeric quota cont
   assert.match(result.stdout, /\[quota-boss\] Claude 5h 4% wk 49% \| Codex 5h 0% wk 2% \| profile balanced \| mode normal/);
 });
 
+test('a broken providers.json keeps the table on built-in providers and warns in hooks and route', () => {
+  enable();
+  codexLog();
+  lib.writeState({ claude: limits().claude });
+  const file = path.join(process.env.QUOTA_BOSS_HOME, 'config', 'providers.json');
+  for (const broken of ['[', '{"providers":{"bad id!":{}}}', '[]']) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, broken);
+    const started = start(input());
+    assert.match(started.stdout, /critical: architecture=/, broken);
+    assert.match(started.stdout, /WARNING: the provider config is invalid/, broken);
+    const prompted = invoke(prompt.main, JSON.stringify({ cwd: project, prompt: 'hi' }));
+    assert.match(prompted.stdout, /WARNING: the provider config is invalid/, broken);
+    const routed = require('../scripts/quota-boss').run(['route']);
+    assert.match(routed, /WARNING: the provider config is invalid[\s\S]*critical: architecture=/, broken);
+    // Commands that change provider settings stay strict, so nothing overwrites the user's broken file.
+    assert.throws(() => require('../scripts/quota-boss').run(['providers']), broken);
+    assert.equal(fs.readFileSync(file, 'utf8'), broken);
+  }
+  fs.writeFileSync(file, '{}');
+  assert.doesNotMatch(start(input()).stdout, /WARNING: the provider config/);
+});
+
 test('session honors consensus and terse together through shared host rules', () => {
   const hosts = require('../scripts/hosts');
   for (const consensus of [undefined, true, false]) {
@@ -135,7 +158,7 @@ test('consensus off explains both route and session behavior', () => {
   assert.ok(output.includes('The consensus option is off: it is hidden from the route table and removed from the session rules. Critical changes still get the counter-review from templates/RULES.md.'));
 });
 
-test('session read errors stay silent and do not crash', () => {
+test('session read errors do not crash and tell an active boss the table is missing', () => {
   enable();
   const original = lib.readBounded;
   lib.readBounded = (file, max) => {
@@ -144,7 +167,8 @@ test('session read errors stay silent and do not crash', () => {
   };
   try {
     const result = invoke(session.main, input());
-    assert.equal(result.stdout, '');
+    assert.match(result.stdout, /^\[quota-boss\] WARNING: Boss mode is ON, but the rules and the routing table could not be loaded\./);
+    assert.equal(result.stdout.split('\n').length, 2);
     assert.equal(result.stderr, '');
     assert.equal(result.status, 0);
   } finally { lib.readBounded = original; }

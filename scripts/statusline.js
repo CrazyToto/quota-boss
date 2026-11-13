@@ -42,7 +42,7 @@ function main() {
     const raw = lib.readStdin();
     const input = JSON.parse(raw || '{}');
     const project = lib.findProjectConfig(input?.cwd);
-    const config = lib.loadConfig(project);
+    const config = lib.loadConfig(project, { tolerant: true });
     const now = Date.now();
     const codex = config.providers.providers.codex?.enabled === false ? null : lib.readCodexLimits(now, config.thresholds);
     const state = lib.updateState(current => {
