@@ -7,7 +7,7 @@ subscriptions you already pay for (Claude, ChatGPT/Codex, Perplexity) based on
 ## Hard constraints
 
 - **Zero runtime dependencies.** Node >= 18 built-ins only (`fs`, `path`, `os`, `child_process`, `node:test`).
-- **No network access** from any script, except official package managers started by `quota-boss tools`. No telemetry.
+- **No network access** from any script, except official package managers started by `quota-boss tools`. No telemetry. The weekly free-models workflow downloads the public lists in GitHub Actions with curl, not a project script.
 - **Never read credential files** (`~/.codex/auth.json`, `~/.claude/.credentials.json`, env secrets).
 - **No `eval`, no `new Function`, no `shell: true`** - with one documented exception (wrapped status line, see below).
 - **Cross-platform**: Windows, macOS, Linux. Use `path.join`, never hard-code `/` or `\`. In commands written to

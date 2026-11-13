@@ -16,7 +16,6 @@ Ideas and reports are welcome as issues.
   resolves conflicts, so it only pays when the jobs touch different parts of a file. Open: who runs the check after
   the merge, and cleanup of worktrees left by a failed worker.
 - Changesets for releases.
-- Detect free models from models.dev and the OpenRouter model list.
 - Grok is untested, because no plan was available. If you have one, run `quota-boss providers test grok` and report
   the result.
 - Unverified candidates: Tencent CodeBuddy, Cursor CLI, JetBrains Junie, and Cerebras (it needs a verified payment

@@ -137,6 +137,8 @@ the key in its own credential store. `quota-boss add-api` alone lists the preset
 on APIs added this way. Added models start with cautious scores and improve from recorded outcomes.
 Use an API key in OpenCode, never a subscription login: Anthropic and Google do not allow those in other tools.
 
+`quota-boss free-models <models-dev.json> [<openrouter.json>]` checks free presets and lists new free candidates from local files. Download the public lists yourself; the command opens no network connections. The weekly GitHub workflow downloads both lists and reports changes.
+
 Antigravity stays off by default and shows an account warning, because Google's terms treat third-party access to the
 service as a breach and it is unclear whether starting Google's own program from another tool counts.
 

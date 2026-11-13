@@ -2,6 +2,12 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- `quota-boss free-models` checks local public model lists for changed free presets and new candidates, with a weekly GitHub check.
+
 ## [0.1.2] - 2026-11-13
 
 ### Fixed

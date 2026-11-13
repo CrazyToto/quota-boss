@@ -2,7 +2,7 @@
 
 ## Design principles
 
-- **No network access.** No script in this repository opens a network connection or sends telemetry. Opt-in `doctor --probe`
+- **No network access.** No script in this repository opens a network connection or sends telemetry. The weekly free-models workflow downloads the public lists in GitHub Actions with curl, not a project script. Opt-in `doctor --probe`
   invokes official Codex CLI probes (90-second timeout, read-only sandbox); that CLI contacts its provider.
   Without `--probe`, doctor performs local checks only. Diagnostic output never includes raw CLI errors or credentials.
   `quota-boss tools` asks npm for the newest version of installed npm-based provider CLIs.
