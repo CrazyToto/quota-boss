@@ -47,11 +47,28 @@ and every provider can be **capped** by the user (e.g. "Grok may use at most 20 
     usage, including zero. Scans use bounded chunks/lines with a 64 MiB journal ceiling; an oversized journal
     raises an error, never invented 100% usage. Active usage is never truncated to meet a byte target.
   - `none` - unknown quota (treated as price 1.3, never "exhausted").
-- `worker`: the agent that executes jobs for this provider. `cli-worker` is a generic agent that runs an
-  official CLI non-interactively using the `cli` template (argument array, `{prompt}` placeholder, no shell).
+- `worker`: the agent that executes jobs for this provider. `cli-worker` invokes `scripts/cli-run.js` once, then
+  verifies and reports. The Node runner uses the `cli` template (argument array, `{prompt}` placeholder, no shell),
+  closes child stdin, enforces a 10-minute process-tree limit, and records timing, counter usage and classified
+  failure feedback. It refuses disabled, manual, avoided and unapproved training providers. Windows npm shims
+  must resolve to a literal JS entry; unsupported shims are refused before the prompt is passed.
   Optional `{model}` and `{effort}` placeholders take the routed model and reasoning level; `defaultModel` and `defaultEffort` fill them when the route names none. Without any level, an `{effort}` flag is dropped.
 - Models reference providers via `"pool": "<provider id>"` in `models.json`.
 - Provider ids: `^[a-z][a-z0-9-]{1,31}$`. Unknown/disabled providers are ignored with a warning in `quota-boss status`.
+
+From the project root, pipe the spec to `node <QUOTA_BOSS_HOME>/scripts/cli-run.js --provider <id> --model <registry-id>
+--effort <level> --category <category> --tier <tier> --expect-changes`. Optional flags can be omitted; without
+`--model` the provider must have a single registry model. PowerShell can pipe a single-quoted here-string;
+Bash can use a quoted heredoc. The runner adds the absolute project-root prefix to the prompt. Its first line
+reports the outcome and whether feedback was recorded. Never retry a failed run or duplicate its journals.
+`--expect-changes` compares Git status and content fingerprints, including tracked diffs and up to 2000 untracked
+files of at most 5 MiB each. An unchanged fingerprint is `no-work`; if Git or a fingerprint is unavailable, the
+report line says the check was skipped. Verify changes independently in that case.
+Successful exits ignore provider error words; permission-rejection markers are always `no-work`. Nonzero exits
+classify stderr first, then the stdout tail, with invalid requests taking priority over provider limits.
+The runner refuses sandbox/permission bypass flags and final prompts over 24 KiB on Windows or 100 KiB elsewhere
+(including the directory prefix); stdin remains capped at 200 KiB. These refusals launch nothing and record nothing.
+Counter usage is one configured unit per started call, even on failure; token/cost extraction is not supported.
 
 ## User caps
 

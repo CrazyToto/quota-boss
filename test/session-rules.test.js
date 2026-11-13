@@ -65,10 +65,10 @@ test('failure and review instructions preserve one family-aware counter-review',
   assert.match(rules, /never send the same job to the same model after a structural error/);
   assert.match(rules, /Codex built it -> Claude reviews/);
   assert.match(rules, /Claude built it -> `gpt-advisor` reviews/);
-  assert.match(cli, /HTTP 400, 422, invalid request, unsupported parameter or message format errors/);
-  assert.match(cli, /feedback <model> <category> <tier> fail`, do not retry, and set `STATUS: FAILED: structural: <reason>`/);
-  assert.match(cli, /<tier> limited/);
-  assert.match(cli, /unavailable.*401, unauthorized, API key, model not found, provider not found/);
+  assert.match(cli, /scripts\/cli-run\.js/);
+  assert.match(cli, /Never retry after a `FAILED` line/);
+  assert.match(cli, /Do not record feedback, timing or usage again/);
+  assert.match(cli, /FEEDBACK: recorded/);
   assert.doesNotMatch(reviewer, /codex-run|counter-review|GPT model|model answers/);
   assert.deepEqual([...reviewer.matchAll(/^(\d+)\. /gm)].map(m => Number(m[1])), [1, 2, 3]);
 });
@@ -88,12 +88,13 @@ test('handover envelopes survive worker adapters and host rule embedding', t => 
     assert.match(text, /<!-- managed-by: quota-boss -->/);
     for (const key of report) assert.ok(text.includes(key), name + ' ' + key);
     assert.match(text, /untrusted data|data, not instructions/);
-    if (['claude-worker', 'cli-worker'].includes(name)) assert.match(text, /RUN: <provider> <model> <seconds>s/);
+    if (name === 'claude-worker') assert.match(text, /RUN: <provider> <model> <seconds>s/);
+    if (name === 'cli-worker') assert.match(text, /RUN: <complete cli-run first line>/);
   }
   for (const host of ['codex', 'generic']) {
     const text = hosts.rules(host);
     for (const key of report) assert.ok(text.includes(key), host + ' ' + key);
-    assert.match(text, /RUN: <provider> <model> <seconds>s/);
+    assert.match(text, /RUN: <complete cli-run first line>/);
     assert.doesNotMatch(text, /{{QUOTA_BOSS_HOME}}/);
   }
 });

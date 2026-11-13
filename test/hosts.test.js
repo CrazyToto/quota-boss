@@ -179,7 +179,7 @@ test.describe('hosts and diagnostics', () => {
       const text = cli.run(['rules', '--host', host]);
       assert.equal(text.split('Keep answers terse:').length, 2);
       assert.match(text, /^\[quota-boss\]/);
-      if (host === 'generic') assert.match(text, /usage <provider> 1 calls/);
+      if (host === 'generic') assert.match(text, /cli-run\.js"? --provider/);
     }
     cli.run(['on', '--host', 'codex']);
     assert.match(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), /Keep answers terse:/);

@@ -545,7 +545,7 @@ test('installed Codex and generic rules can find their worker instructions witho
   const previous=process.env.QUOTA_BOSS_HOME;process.env.QUOTA_BOSS_HOME=f.home;
   try {
     const hosts=require(path.join(f.home,'scripts','hosts.js'));
-    assert.match(hosts.rules('codex'),/claude -p/);assert.match(hosts.rules('generic'),/usage <provider> 1 calls/);
+    assert.match(hosts.rules('codex'),/claude -p/);assert.match(hosts.rules('generic'),/cli-run\.js"? --provider/);
     assert.doesNotMatch(hosts.rules('codex'), /^name: cli-worker$/m);
     write(path.join(f.home, 'config/providers.json'), JSON.stringify({ providers: { claude: { enabled: false }, grok: { enabled: true } } }));
     const switched = hosts.rules('codex');

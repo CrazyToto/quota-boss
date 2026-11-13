@@ -74,7 +74,7 @@ test.describe('headless host fixes', () => {
       else {
         assert.ok(!text.includes(quoted));
         assert.ok(text.includes(home + '/scripts/quota-boss.js route'));
-        if (host === 'generic') assert.ok(text.includes(home + '/scripts/quota-boss.js providers show'));
+        if (host === 'generic') assert.ok(text.includes(home + '/scripts/cli-run.js'));
         else assert.ok(text.includes(home + '/scripts/quota-boss.js rules --host codex'));
         if (host === 'codex') assert.ok(text.includes(home + '/scripts/compact.js'));
       }

@@ -121,14 +121,14 @@ test('a rate limit ends after 15 minutes', () => {
   assert.equal(lib.unavailableModels(outcomes, start + 60000).size, 0);
 });
 
-test('the CLI worker limits each call and pauses a provider that hits the limit', () => {
+test('the CLI worker delegates limits and accounting to one deterministic call', () => {
   const agent = fs.readFileSync(path.join(__dirname, '..', 'agents', 'cli-worker.md'), 'utf8');
   assert.match(agent, /timeout: 600000/);
-  assert.match(agent, /Your working directory is <absolute project root> and every file is inside it\. Use relative file paths\./);
-  assert.match(agent, /< \/dev\/null/);
-  assert.match(agent, /high demand/);
-  assert.match(agent, /auto-rejecting/);
-  assert.match(agent, /request too large, overloaded, high demand, 503\) or when the call hit the 10-minute limit/);
+  assert.match(agent, /scripts\/cli-run\.js/);
+  assert.match(agent, /<<'QUOTA_BOSS_PROMPT'/);
+  assert.match(agent, /closes child stdin, kills the process tree at 10 minutes/);
+  assert.match(agent, /Never retry after a `FAILED` line/);
+  assert.doesNotMatch(agent, /SECONDS|< \/dev\/null/);
 });
 
 test('doctor names offers with a missing key or a retired model, using one local call', () => {

@@ -7,8 +7,8 @@ Ideas and reports are welcome as issues.
 
 - Install as a Claude Code plugin from a marketplace (`/plugin marketplace add`). Open: the installer also sets the
   status line, hooks in the user settings and the Codex side, which a plugin may not be able to do.
-- A deterministic runner instead of LLM relays. It saves little usage (about 1%), but it makes time limits, failure
-  classification and usage logging reliable.
+- Extend deterministic runners to more worker adapters. `cli-worker` already uses `scripts/cli-run.js` for
+  time limits, failure classification, feedback, usage and timing; `claude-worker` still runs its CLI directly.
 - A larger benchmark: many tasks, several repetitions, three arms, blinded review and confidence intervals.
 - Parallel workers on the same files, each in its own git worktree and branch. Today two workers must never write the
   same files, so such jobs run one after the other. Claude Code's Agent tool already offers `isolation: "worktree"`;
@@ -25,9 +25,6 @@ Ideas and reports are welcome as issues.
 
 ## Known limits and open questions
 
-- `cli-worker` times a call with Bash (`SECONDS`, `< /dev/null`). Claude Code runs Bash on Windows too (Git Bash), but
-  a Codex or generic boss on Windows with only PowerShell cannot follow those steps as written. A Node runner for
-  timing and stdin would fix it (see the deterministic runner above).
 - The parent check and the write are two steps, so a parent directory can be swapped for a link in between. A real fix
   needs directory descriptors, which Node does not offer portably.
 - Offers with only a few real runs may be unreliable: Gemini Lite has two, several others one. Cohere failed once with
@@ -37,8 +34,8 @@ Ideas and reports are welcome as issues.
 - `codex-worker` runs Codex in the foreground, but Claude Code moved a 215 s run to the background after about 180 s,
   so the worker reported `ADVICE NEEDED` and the boss had to wait for the task. It worked, but the worker could wait
   for the task itself.
-- The 10-minute worker limit is only enforced by the host's Bash tool. Whether it kills child processes on Windows is
-  unverified.
+- `cli-run.js` enforces a 10-minute limit and kills Windows process trees with `taskkill /T /F`. Other worker
+  adapters still depend on their own runner or the host's tool limit.
 - `kilo-free` does not appear in the route table: Haiku has the higher utility for trivial work (see
   `route --explain mechanical trivial`), so this is the intended result and not a tie-break problem.
 - With many providers enabled, the session start comes close to the 10,000-character hook limit. The table and the
