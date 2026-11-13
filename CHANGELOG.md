@@ -2,11 +2,13 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
-## Unreleased
+## [0.1.2] - 2026-11-13
 
 ### Fixed
 
 - Windows: waiting for a busy lock no longer fails with `EPERM` when the lock file is deleted but still open in another process.
+- A code graph built by hand (`graphify update .` or `/graphify .`) now keeps its `graphify-out/` folder out of Git by itself, like the one setup builds.
+- The setup wizard tests no longer depend on a `graphify-out/` folder in the working folder.
 
 ### Changed
 
