@@ -5,6 +5,7 @@ tools: Bash, Read, Grep, Glob
 model: haiku
 ---
 <!-- managed-by: quota-boss -->
+If the spec has `WORKDIR:`, pass `--cwd "<WORKDIR>"` to the runner; use `git -C "<WORKDIR>" ...` for verification and run verify with WORKDIR as its working directory.
 1. In the project root, run once in the foreground with a 10-minute host limit (`timeout: 600000`):
    ```bash
    node "{{QUOTA_BOSS_HOME}}/scripts/cli-run.js" --provider <id> --model <registry-model-id> --effort <level> --category <category> --tier <tier> --expect-changes <<'QUOTA_BOSS_PROMPT'

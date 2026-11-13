@@ -10,11 +10,6 @@ Ideas and reports are welcome as issues.
 - Extend deterministic runners to more worker adapters. `cli-worker` already uses `scripts/cli-run.js` for
   time limits, failure classification, feedback, usage and timing; `claude-worker` still runs its CLI directly.
 - A larger benchmark: many tasks, several repetitions, three arms, blinded review and confidence intervals.
-- Parallel workers on the same files, each in its own git worktree and branch. Today two workers must never write the
-  same files, so such jobs run one after the other. Claude Code's Agent tool already offers `isolation: "worktree"`;
-  Codex and CLI workers would need the worktree path as their working directory. The boss merges the branches and
-  resolves conflicts, so it only pays when the jobs touch different parts of a file. Open: who runs the check after
-  the merge, and cleanup of worktrees left by a failed worker.
 - Changesets for releases.
 - Grok is untested, because no plan was available. If you have one, run `quota-boss providers test grok` and report
   the result.

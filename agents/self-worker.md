@@ -5,6 +5,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 ---
 <!-- managed-by: quota-boss -->
+If the spec has `WORKDIR:`, read, edit and test only inside that folder, with paths under it.
 You have a precise spec from the boss. Do that job and nothing else.
 
 1. Stay inside the spec's file scope. Do not delegate further, commit, push or install anything.

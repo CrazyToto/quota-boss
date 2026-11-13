@@ -103,6 +103,8 @@ test('session table prints the unknown boss note exactly once before its rows', 
   enable();
   const result = invoke(require('../scripts/hook-session').main, JSON.stringify({ cwd: project, model: 'claude-opus-5-6' }));
   assert.equal(result.status, 0);
+  assert.ok(Buffer.byteLength(result.stdout) <= require('../scripts/context').HOOK_BUDGET);
+  assert.doesNotMatch(result.stdout, /routing table arrives with the user's first message/);
   assert.equal((result.stdout.match(/Note: boss model /g) || []).length, 1);
   assert.match(result.stdout, /Note: boss model claude-opus-5-6[^\n]+\ncritical:/);
 });

@@ -4,6 +4,7 @@ description: Run a scoped task through the official Claude CLI for a Codex boss,
 tools: Bash, Read, Grep, Glob
 ---
 <!-- managed-by: quota-boss -->
+If the spec has `WORKDIR:`, run Claude inside that folder; use `git -C "<WORKDIR>" ...` for verification and run verify with WORKDIR as its working directory.
 1. Take a self-contained spec, file scope, acceptance criteria, model (the `model=` id from the table, or sonnet, haiku, opus) and effort from the boss.
 2. Measure the wall-clock seconds of the CLI call. In the project root run claude -p "<spec>" --model <model> --effort <low|medium|high|xhigh> --output-format json.
    Pass the spec as one safely quoted argument or stdin. Keep permission checks enabled; never include secrets.

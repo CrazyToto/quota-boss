@@ -13,6 +13,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const lib = require('./lib');
 const latency = require('./latency');
+const { resolveWorkdir } = require('./worktree');
 
 const SANDBOXES = new Set(['read-only', 'workspace-write']); // never danger-full-access
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
@@ -24,8 +25,8 @@ function parseArgs(argv) {
   const options = { effort: 'medium', sandbox: 'read-only' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i], value = argv[i + 1];
-    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier'].includes(key) || value === undefined) {
-      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] < prompt');
+    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier', '--cwd'].includes(key) || value === undefined || key === '--cwd' && (!value || value.startsWith('--'))) {
+      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] [--cwd <dir>] < prompt');
     }
     options[key.slice(2)] = value;
   }
@@ -96,6 +97,7 @@ function shellBlocked(stdout) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  const cwd = options.cwd === undefined ? process.cwd() : resolveWorkdir(options.cwd);
   const prompt = fs.readFileSync(0, 'utf8');
   if (!prompt.trim() || Buffer.byteLength(prompt) > MAX_PROMPT) throw new Error('Prompt on stdin must be 1 byte to 200 KiB.');
   const invocation = codexInvocation();
@@ -105,7 +107,7 @@ function main() {
   const started = Date.now();
   let result;
   try {
-    const plan = spawnPlan(invocation, buildArgs(options, lastFile));
+    const plan = spawnPlan(invocation, buildArgs(options, lastFile), process.env, process.platform, cwd);
     result = spawnSync(plan.file, plan.args, { ...plan.options, input: prompt, encoding: 'utf8', timeout: TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 });
   } catch (error) { result = { status: null, error }; }
   const seconds = Math.round((Date.now() - started) / 1000);

@@ -7,12 +7,13 @@ const crypto = require('node:crypto');
 const childProcess = require('node:child_process');
 const lib = require('./lib');
 const latency = require('./latency');
+const { resolveWorkdir } = require('./worktree');
 
 const MAX_PROMPT = 200 * 1024;
 const TIMEOUT_MS = 10 * 60 * 1000;
 const TAIL_CHARS = 256 * 1024;
 const NO_WORK = /auto-rejecting|rejected permission/i;
-const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--expect-changes] < prompt';
+const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
 const FAILURES = [
   ['structural', /\b(?:HTTP|status|error)[^\n]{0,20}\b(?:400|422)\b|invalid request|unsupported parameter|message format/i, 'invalid request'],
   ['limited', /rate limit|\b(?:HTTP|status|error)[^\n]{0,20}\b(?:429|503)\b|too many requests|quota exceeded|request too large|overloaded|high demand/i, 'provider limit'],
@@ -25,7 +26,7 @@ function parseArgs(argv) {
     const key = argv[i].replace(/^--/, '');
     if (!argv[i].startsWith('--') || Object.hasOwn(options, key)) throw new Error(USAGE);
     if (key === 'expect-changes') { options[key] = true; continue; }
-    if (!['provider', 'model', 'effort', 'category', 'tier'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
+    if (!['provider', 'model', 'effort', 'category', 'tier', 'cwd'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
     options[key] = argv[++i];
   }
   if (!lib.validProviderId(options.provider)) throw new Error('Invalid --provider.');
@@ -229,7 +230,7 @@ async function run(argv, deps = {}) {
   const config = (deps.loadConfig || lib.loadConfig)(project);
   const selected = selection(options, config, project);
   const env = deps.env || process.env, platform = deps.platform || process.platform;
-  const cwd = path.resolve(project.directory);
+  const cwd = options.cwd === undefined ? path.resolve(project.directory) : resolveWorkdir(options.cwd, process.cwd(), deps);
   const prompt = deps.prompt ?? lib.readStdin(MAX_PROMPT);
   if (Buffer.byteLength(prompt) < 1 || Buffer.byteLength(prompt) > MAX_PROMPT || prompt.includes('\0')) throw new Error('Prompt on stdin must be 1 byte to 200 KiB, without NUL.');
   const fullPrompt = 'Your working directory is ' + cwd + ' and every file is inside it. Use relative file paths.\n\n' + prompt;

@@ -130,6 +130,8 @@ Return `{ mode, rows: [{tier, category, model, label, pool, via, effort, belowTh
 `critical: architecture=Opus 5.5(self) debugging=Opus 5.5(self) implementation=GPT-6.1-Sol(codex-worker,high) ...`
 Max ~6 lines total.
 
+Workers that need the same files can use separate `qb/<name>` branches in the sibling `<repo>.qb-worktrees/<name>` folder. `worktree add` prints the optional handover `WORKDIR:`; runners accept it as `--cwd` while keeping project config in the main folder. `worktree merge` squashes changes into the main folder for review, one check and a commit; conflicts keep the copy. `worktree list|remove|clean` manage copies, keeping work unless `--force` is given.
+
 ## Scripts
 
 | File | Behaviour |
