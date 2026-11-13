@@ -4,6 +4,11 @@ const assert = require('node:assert/strict');
 const { setup } = require('../scripts/setup-wizard');
 const { TEXT } = require('../scripts/setup-text');
 const { PROVIDER_HELP } = require('../scripts/provider-help');
+const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+
+// Without a folder the wizard looks at the real working folder, where a local graphify-out/ hides the graph screen.
+const EMPTY_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-wizard-'));
+test.after(() => fs.rmSync(EMPTY_DIR, { recursive: true, force: true }));
 
 const provider = (enabled, extra) => ({ enabled, ...extra });
 const baseProviders = () => ({ copilot: provider(false), grok: provider(false), antigravity: provider(false),
@@ -14,7 +19,7 @@ const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code
  * Plays one setup. Enter takes each default, so `answers` is the list of typed lines in order.
  * `programs` maps tool ids to their state before install; `afterInstall` to their state after it.
  */
-function play(answers, { directory, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError } = {}) {
+function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError } = {}) {
   const queue = [...answers], said = [], commands = [], installs = [], logged = [], keyed = [], opened = [], graphs = [];
   let installed = false;
   const stateOf = id => (installed && afterInstall[id]) || programs[id] || 'ok';
@@ -284,7 +289,6 @@ test('the code graph is explained, asked once, and installed only with the one c
 });
 
 test('the code graph question is skipped when this folder already has a graph', t => {
-  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-graph-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.mkdirSync(path.join(directory, 'graphify-out'));
