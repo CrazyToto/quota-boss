@@ -174,9 +174,23 @@ function refreshIfStale(directory, options = {}) {
   } catch { if (token) releaseLock(directory, token); }
 }
 
+/** A graph built by hand never ran setup's exclude, so the output folder ignores itself. Never follows a link. */
+function ignoreOwnOutput(directory) {
+  try {
+    const output = path.join(directory, 'graphify-out');
+    if (!fs.lstatSync(output).isDirectory()) return;
+    const file = path.join(output, '.gitignore');
+    // Windows follows a dangling link even with O_EXCL, so any existing entry, link or not, is left alone.
+    if (lib.regularStat(file, true) !== null) return;
+    const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o644);
+    try { fs.writeSync(fd, '*\n'); } finally { fs.closeSync(fd); }
+  } catch { /* Present, linked, missing or read-only: leave it as it is. */ }
+}
+
 function sessionText(directory, options = {}) {
   try {
     if (!lib.detectCodeIntel(directory).graphify) return '';
+    ignoreOwnOutput(directory);
     if (executable('graphify', directory, options)) {
       refreshIfStale(directory, options);
       return lib.substituteHome('Code graph available: use `node "{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" graph explain|affected|path` through Bash when you need structure. Results are hints, with Grep as the fallback. Never read graphify-out/graph.json whole.');
@@ -185,4 +199,4 @@ function sessionText(directory, options = {}) {
   } catch { return ''; }
 }
 
-module.exports = { STALE_MS, REFRESH_LIMIT_MS, LOCK_NAME, setupGraph, excludeOutput, refreshIfStale, sessionText, releaseLock, executable, run, graphOutputSafe, queryGraph, validQuery, QUERY_USAGE };
+module.exports = { ignoreOwnOutput, STALE_MS, REFRESH_LIMIT_MS, LOCK_NAME, setupGraph, excludeOutput, refreshIfStale, sessionText, releaseLock, executable, run, graphOutputSafe, queryGraph, validQuery, QUERY_USAGE };

@@ -157,7 +157,7 @@ test('refresh errors are silent and failed spawns release their lock', t => {
   assert.doesNotThrow(() => graph.refreshIfStale(f.directory, { ...f.options, find: () => { throw new Error('lookup'); } }));
   assert.equal(graph.sessionText(f.directory, { ...f.options, find: () => { throw new Error('lookup'); } }), '');
   fs.unlinkSync(f.file);
-  fs.rmdirSync(path.dirname(f.file));
+  fs.rmSync(path.dirname(f.file), { recursive: true });
   assert.equal(graph.sessionText(f.directory, f.options), '');
 });
 
@@ -443,4 +443,20 @@ test('excludeOutput refuses a linked exclude file without changing its target', 
   assert.equal(fs.readFileSync(target, 'utf8'), '# private configuration\n');
   assert.equal(fs.lstatSync(exclude).isSymbolicLink(), true);
   assert.equal(fs.readlinkSync(exclude), target);
+});
+
+test('a detected graph ignores its own output once and never follows a link', t => {
+  const f = fixture(t);
+  const ignore = path.join(f.directory, 'graphify-out', '.gitignore');
+  graph.sessionText(f.directory, { ...f.options, find: undefined, env: { PATH: '' } });
+  assert.equal(fs.readFileSync(ignore, 'utf8'), '*\n');
+  fs.writeFileSync(ignore, '# mine\n');
+  graph.sessionText(f.directory, { ...f.options, find: undefined, env: { PATH: '' } });
+  assert.equal(fs.readFileSync(ignore, 'utf8'), '# mine\n');
+  const target = path.join(f.root, 'target');
+  fs.unlinkSync(ignore);
+  try { fs.symlinkSync(target, ignore, 'file'); } catch { return; }
+  graph.ignoreOwnOutput(f.directory);
+  assert.equal(fs.existsSync(target), false);
+  assert.equal(graph.ignoreOwnOutput(path.join(f.root, 'missing')), undefined);
 });

@@ -13,3 +13,6 @@ sandbox-test/
 
 # Raw recordings of the demo session.
 /docs/demo/raw/
+
+# Local code graph (Graphify): machine-specific paths, regenerated on demand.
+/graphify-out/
