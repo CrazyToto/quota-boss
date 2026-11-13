@@ -15,6 +15,7 @@ model: sonnet
    Do not modify files. Give your independent answer, concrete reasons, trade-offs and uncertainty concisely.
    QB_SPEC_EOF
    ```
+   If the host moves the call to the background, do not start it again: end your turn, wait for the host's notification that it finished, then read its output and continue.
 3. If it FAILED, say consensus could not be obtained (and why). Otherwise compare with the private draft and
    return in at most 15 lines: both positions, agreements, disagreements, remaining uncertainty, the status line.
    Do not decide for the boss and do not edit files.

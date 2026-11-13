@@ -15,6 +15,7 @@ Relay the boss's question to a GPT model and return a compact answer.
    If you disagree with the proposal, say so explicitly.
    QB_SPEC_EOF
    ```
+   If the host moves the call to the background, do not start it again: end your turn, wait for the host's notification that it finished, then read its output and continue.
    Model/effort from the boss (default `gpt-6.1-sol`, `medium`; `high` for CRITICAL).
 2. If the status line says FAILED, return that line only.
 3. Otherwise return at most 12 lines: verdict, key points, the status line (model, seconds, session id).
