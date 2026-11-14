@@ -75,8 +75,8 @@ test.describe('hosts and diagnostics', () => {
     cli.run(['on', '--host', 'codex', 'quality']);
     const first = fs.readFileSync(file, 'utf8');
     assert.ok(first.startsWith(before + hosts.START)); assert.ok(first.endsWith(hosts.END + after));
-    assert.match(first, /claude -p/); assert.match(first, /--output-format json/);
-    assert.match(first, /usage claude 1 calls/); assert.match(first, /before delegating run node .*quota-boss.js.* route/);
+    assert.match(first, /cli-run.js"? --provider claude/);
+    assert.match(first, /before delegating run node .*quota-boss.js.* route/);
     cli.run(['on', 'quality', '--host', 'codex']);
     assert.equal(fs.readFileSync(file, 'utf8'), first);
     assert.equal(first.split(hosts.START).length, 2);

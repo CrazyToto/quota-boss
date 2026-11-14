@@ -88,7 +88,7 @@ test('handover envelopes survive worker adapters and host rule embedding', t => 
     assert.match(text, /<!-- managed-by: quota-boss -->/);
     for (const key of report) assert.ok(text.includes(key), name + ' ' + key);
     assert.match(text, /untrusted data|data, not instructions/);
-    if (name === 'claude-worker') assert.match(text, /RUN: <provider> <model> <seconds>s/);
+    if (name === 'claude-worker') assert.match(text, /RUN: <complete cli-run first line>/);
     if (name === 'cli-worker') assert.match(text, /RUN: <complete cli-run first line>/);
   }
   for (const host of ['codex', 'generic']) {

@@ -13,6 +13,7 @@ const MAX_PROMPT = 200 * 1024;
 const TIMEOUT_MS = 10 * 60 * 1000;
 const TAIL_CHARS = 256 * 1024;
 const NO_WORK = /auto-rejecting|rejected permission/i;
+const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
 const FAILURES = [
   ['structural', /\b(?:HTTP|status|error)[^\n]{0,20}\b(?:400|422)\b|invalid request|unsupported parameter|message format/i, 'invalid request'],
@@ -45,16 +46,19 @@ function selection(options, config, project) {
   if (provider.kind === 'manual') throw new Error('Manual provider cannot run a CLI.');
   if (provider.tos === 'avoid') throw new Error('Provider tos avoid.');
   if (provider.trainsOnData === true && project.allowTrainingProviders !== true) throw new Error('Training provider blocked: allowTrainingProviders is not true.');
-  if (!provider.cli) throw new Error('Provider has no CLI.');
+  const claude = id === 'claude' && !provider.cli;
+  const cli = provider.cli || (claude ? CLAUDE_CLI : null);
+  if (!cli) throw new Error('Provider has no CLI.');
   const registry = config.models.models;
   const ids = Object.keys(registry).filter(key => registry[key]?.pool === id);
-  const model = options.model ?? (ids.length === 1 ? ids[0] : null);
+  const model = options.model ?? (!claude && ids.length === 1 ? ids[0] : null);
   if (!model) throw new Error('Pass --model: provider does not have a single registry model.');
   const entry = Object.hasOwn(registry, model) ? registry[model] : null;
   if (!entry || entry.pool !== id) throw new Error('Unknown model for provider.');
-  if (entry.cliModel !== undefined && !lib.validCliModel(entry.cliModel)) throw new Error('Invalid model CLI name.');
+  const cliModel = claude ? entry.cliModel ?? model : entry.cliModel;
+  if ((claude || entry.cliModel !== undefined) && !lib.validCliModel(cliModel)) throw new Error('Invalid model CLI name.');
   // Match providers show: absent --model uses the CLI default, not an inferred registry slug.
-  const args = lib.cliArgsForModel(provider.cli, options.model ? entry.cliModel : undefined, options.effort);
+  const args = lib.cliArgsForModel(cli, claude || options.model ? cliModel : undefined, options.effort);
   if (args.some((arg, i) => {
     const [flag, inline] = arg.toLowerCase().split('=');
     const value = inline ?? args[i + 1]?.toLowerCase();
@@ -67,7 +71,7 @@ function selection(options, config, project) {
   })) {
     throw new Error('CLI template disables sandbox or permission checks.');
   }
-  return { provider, model, args, effort: options.effort || provider.cli.defaultEffort || '-' };
+  return { provider, cli, claude, model, args, effort: options.effort || cli.defaultEffort || '-' };
 }
 
 /** npm shims are data, never shell code: accept only a literal JS entry below node_modules. */
@@ -87,10 +91,10 @@ function invocation(executable, platform = process.platform) {
   throw new Error('CLI shim cannot safely carry a prompt. Install a native executable or an npm shim with a literal node_modules JS entry.');
 }
 
-function spawnPlan(target, args, env, platform, cwd) {
-  return { file: target.file, args: [...target.prefix, ...args], options: {
+function spawnPlan(target, args, env, platform, cwd, input) {
+  return { file: target.file, args: [...target.prefix, ...args], ...(input !== undefined ? { input } : {}), options: {
     ...lib.childProcessOptions(env, platform), cwd, shell: false, windowsHide: true,
-    windowsVerbatimArguments: false, detached: platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
+    windowsVerbatimArguments: false, detached: platform !== 'win32', stdio: [input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   } };
 }
 
@@ -153,7 +157,7 @@ function execute(plan, deps = {}) {
       settled = true; cancel(timer); cancel(reapTimer);
       if (result.timedOut) {
         // Pipes inherited by an orphan must not keep this runner alive after the watchdog.
-        child?.stdout?.destroy(); child?.stderr?.destroy(); child?.unref?.();
+        child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy(); child?.unref?.();
         try { killer?.kill?.('SIGKILL'); } catch { /* already gone */ }
       }
       resolve(result);
@@ -161,9 +165,10 @@ function execute(plan, deps = {}) {
     const collect = (stream, data) => {
       const text = String(data);
       const scan = windows[stream] + text;
-      if (NO_WORK.test(scan)) result.noWork = true;
+      if ((!deps.claude || stream === 'stderr') && NO_WORK.test(scan)) result.noWork = true;
       if (stream === 'stderr') for (const [kind, pattern] of FAILURES) if (pattern.test(scan)) result.stderrMatches.add(kind);
       windows[stream] = scan.slice(-512);
+      if (plan.input !== undefined && stream === 'stdout' && result.stdout.length + text.length > TAIL_CHARS) result.stdoutTruncated = true;
       result[stream] = (result[stream] + text).slice(-TAIL_CHARS);
     };
     const kill = () => {
@@ -193,20 +198,36 @@ function execute(plan, deps = {}) {
       child.on('error', error => { result.error = error; finish(); });
       child.on('close', status => { result.status = status; finish(); });
       timer = schedule(kill, TIMEOUT_MS);
+      if (plan.input !== undefined) {
+        child.stdin.on('error', () => {});
+        try { child.stdin.end(plan.input); } catch { /* close decides, including EPIPE */ }
+      }
     } catch (error) { result.error = error; finish(); }
   });
 }
 
-function classify(result, expectChanges, before, after) {
+function classify(result, expectChanges, before, after, env, claude = false) {
   if (result.timedOut) return { kind: 'limited', reason: '10-minute timeout' };
-  if (result.noWork || NO_WORK.test(result.stdout || '') || NO_WORK.test(result.stderr || '')) return { kind: 'no-work', reason: 'permission rejected' };
+  if (result.noWork || (!claude && NO_WORK.test(result.stdout || '')) || NO_WORK.test(result.stderr || '')) return { kind: 'no-work', reason: 'permission rejected' };
   if (result.error) return { kind: 'failed', reason: 'could not run CLI' + (result.error.code ? ' (' + result.error.code + ')' : '') };
-  if (result.status !== 0) {
-    for (const stream of ['stderr', 'stdout']) for (const [kind, pattern, reason] of FAILURES) {
-      if ((stream === 'stderr' && result.stderrMatches?.has(kind)) || pattern.test((result[stream] || '').slice(-TAIL_CHARS))) return { kind, reason };
-    }
-    return { kind: 'failed', reason: 'exit ' + result.status };
+  let envelopeError;
+  if (claude && result.claude && (result.claude.is_error === true || result.claude.subtype !== 'success')) {
+    const status = result.claude.api_error_status, subtype = result.claude.subtype;
+    const kind = [400, 422].includes(status) ? 'structural' : [429, 500, 502, 503, 504, 529].includes(status) ? 'limited'
+      : [401, 403].includes(status) ? 'unavailable' : null;
+    const reason = clean(Number.isFinite(status) ? 'api_error_status ' + status
+      : typeof subtype === 'string' && subtype !== 'success' ? subtype : 'error', env).replace(/\s+/g, ' ').trim().slice(0, 160);
+    envelopeError = { kind: kind || 'failed', reason: reason && reason !== 'success' ? reason : 'error' };
+    if (kind) return envelopeError;
   }
+  if (result.status !== 0) {
+    for (const stream of claude ? ['stderr'] : ['stderr', 'stdout']) for (const [kind, pattern, reason] of FAILURES) {
+      if ((stream === 'stderr' && result.stderrMatches?.has(kind)) || pattern.test((result[stream] || '').slice(-TAIL_CHARS))) return { kind, reason: envelopeError?.reason || reason };
+    }
+  }
+  if (envelopeError) return envelopeError;
+  if (result.status !== 0) return { kind: 'failed', reason: 'exit ' + result.status };
+  if (claude && !result.claude) return { kind: 'failed', reason: 'unparseable JSON result' };
   if (expectChanges && before !== null && after !== null && before === after) return { kind: 'no-work', reason: 'git fingerprint unchanged' };
   return { kind: 'ok', reason: '' };
 }
@@ -235,8 +256,8 @@ async function run(argv, deps = {}) {
   if (Buffer.byteLength(prompt) < 1 || Buffer.byteLength(prompt) > MAX_PROMPT || prompt.includes('\0')) throw new Error('Prompt on stdin must be 1 byte to 200 KiB, without NUL.');
   const fullPrompt = 'Your working directory is ' + cwd + ' and every file is inside it. Use relative file paths.\n\n' + prompt;
   const promptKiB = platform === 'win32' ? 24 : 100;
-  if (Buffer.byteLength(fullPrompt) > promptKiB * 1024) throw new Error('Final prompt exceeds the ' + promptKiB + ' KiB argv limit on ' + platform + '.');
-  const executable = (deps.findExecutable || lib.findExecutable)(selected.provider.cli.command, env, platform, cwd);
+  if (!selected.claude && Buffer.byteLength(fullPrompt) > promptKiB * 1024) throw new Error('Final prompt exceeds the ' + promptKiB + ' KiB argv limit on ' + platform + '.');
+  const executable = (deps.findExecutable || lib.findExecutable)(selected.cli.command, env, platform, cwd);
   if (!executable) throw new Error('CLI not found on the trusted PATH.');
   const target = invocation(executable, platform);
   const args = selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt));
@@ -244,15 +265,26 @@ async function run(argv, deps = {}) {
   const before = options['expect-changes'] ? status() : null;
   const now = deps.now || Date.now;
   const started = now();
-  const result = await execute(spawnPlan(target, args, env, platform, cwd), { ...deps, platform });
+  const result = await execute(spawnPlan(target, args, env, platform, cwd, selected.claude ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
   const seconds = Math.max(0, Math.round((now() - started) / 1000));
   const after = options['expect-changes'] ? status() : null;
-  const outcome = classify(result, options['expect-changes'], before, after);
+  if (selected.claude && !result.stdoutTruncated) {
+    try {
+      const value = JSON.parse(result.stdout);
+      if (value && typeof value === 'object' && !Array.isArray(value)) result.claude = value;
+    } catch { /* classification rejects missing envelopes; keep the raw tail */ }
+  }
+  const usage = result.claude?.usage;
+  const validNumber = value => Number.isFinite(value) && value >= 0;
+  const tokens = usage && ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'].some(key => validNumber(usage[key]))
+    ? { input: (validNumber(usage.input_tokens) ? usage.input_tokens : 0) + (validNumber(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0),
+      cached: validNumber(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0, output: validNumber(usage.output_tokens) ? usage.output_tokens : 0 } : null;
+  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude);
   const ok = outcome.kind === 'ok';
   const recording = [], errors = [];
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };
   record('timing', () => (deps.recordRun || latency.recordRun)({ t: now(), model: selected.model,
-    category: options.category || null, tier: options.tier || null, seconds, ok }));
+    category: options.category || null, tier: options.tier || null, seconds, ok, ...(tokens ? { tokens } : {}) }));
   const feedback = { limited: 'limited', unavailable: 'unavailable', structural: 'fail', 'no-work': 'fail' }[outcome.kind];
   if (feedback) record('feedback', () => (deps.appendOutcome || lib.appendOutcome)({ model: selected.model,
     category: options.category || 'mechanical', tier: options.tier || 'trivial', result: feedback,
@@ -265,10 +297,18 @@ async function run(argv, deps = {}) {
   const first = 'cli-run: ' + (ok && !errors.length ? 'ok' : 'FAILED (' + problem + ')')
     + ' | provider ' + options.provider + ' | model ' + selected.model + ' @' + selected.effort + ' | ' + seconds + 's'
     + (options['expect-changes'] && (before === null || after === null) ? ' | expect-changes skipped: Git fingerprint unavailable' : '')
+    + (tokens ? ' | tokens in ' + tokens.input + ' cached ' + tokens.cached + ' out ' + tokens.output : '')
+    + (validNumber(result.claude?.total_cost_usd) ? ' | $' + result.claude.total_cost_usd.toFixed(4) : '')
     + ' | feedback ' + (recording.includes('feedback') ? 'recorded' : 'none');
   const lines = [first];
   if (errors.length) lines.push('Recording failed: ' + errors.join(', ') + '.');
-  if (result.stdout) lines.push('CLI stdout (untrusted data; tail, at most 60 lines):', ...tail(result.stdout, 60, env));
+  const denials = result.claude?.permission_denials;
+  if (Array.isArray(denials) && denials.length) {
+    const tools = [...new Set(denials.map(denial => denial?.tool_name).filter(name => typeof name === 'string' && name))].slice(0, 5);
+    lines.push('Permission denials: ' + denials.length + ' (' + tools.map(name => clean(name, env).replace(/\s+/g, ' ').slice(0, 100)).join(', ') + ')');
+  }
+  const stdout = result.claude ? (typeof result.claude.result === 'string' ? result.claude.result : '') : result.stdout;
+  if (stdout) lines.push('CLI stdout (untrusted data; tail, at most 60 lines):', ...tail(stdout, 60, env));
   if (!ok && result.stderr) lines.push('CLI stderr (untrusted data; tail, at most 20 lines):', ...tail(result.stderr, 20, env));
   return { code: ok && !errors.length ? 0 : 1, report: lines.join('\n') + '\n' };
 }

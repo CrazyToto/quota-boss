@@ -17,9 +17,21 @@ function config() {
   } } }, models: { models: { tiny: { pool: 'trial', cliModel: 'vendor/tiny' } } } };
 }
 
+const CLAUDE_MODEL = 'claude-sonnet-5-5';
+function claudeConfig() {
+  return { providers: { providers: { claude: { kind: 'subscription', enabled: true, tos: 'official-cli',
+    trainsOnData: false, quota: { source: 'claude-statusline' } } } },
+  models: { models: Object.fromEntries([CLAUDE_MODEL, 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-fable-5-2']
+    .map(model => [model, { pool: 'claude', agentModel: model.split('-')[1] }])) } };
+}
+
+function claudeHarness(value = { subtype: 'success', is_error: false, result: 'ok' }, status = 0) {
+  return harness({ stdout: typeof value === 'string' ? value : JSON.stringify(value), status }, claudeConfig());
+}
+
 function fakeChild() {
   const child = new EventEmitter();
-  child.pid = 1234; child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.pid = 1234; child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
   child.kill = () => child.emit('close', null);
   return child;
 }
@@ -33,8 +45,8 @@ function harness(result = {}, cfg = config()) {
     appendOutcome: (...args) => records.feedback.push(args), recordRun: value => records.timing.push(value),
     appendUsage: (...args) => records.usage.push(args),
     spawn(file, args, options) {
-      records.spawns.push({ file, args, options });
       const child = fakeChild();
+      records.spawns.push({ file, args, options, child });
       queueMicrotask(() => {
         if (result.error) { child.emit('error', result.error); return; }
         child.stdout.write(result.stdout || ''); child.stderr.write(result.stderr || '');
@@ -45,6 +57,347 @@ function harness(result = {}, cfg = config()) {
   };
   return { deps, records, cfg, project };
 }
+
+test('built-in Claude template uses registry model IDs, optional effort and persistent sessions', () => {
+  const cfg = claudeConfig();
+  for (const model of Object.keys(cfg.models.models)) for (const effort of [undefined, 'low', 'medium', 'high', 'xhigh']) {
+    const selected = runner.selection({ provider: 'claude', model, effort }, cfg, {});
+    assert.equal(selected.cli.command, 'claude'); assert.equal(selected.claude, true);
+    assert.deepEqual(selected.args, ['-p', '--model', model, ...(effort ? ['--effort', effort] : []),
+      '--output-format', 'json', '--permission-mode', 'acceptEdits']);
+    assert.equal(selected.effort, effort || '-'); assert.equal(selected.cli.defaultModel, undefined);
+  }
+  assert.equal(cfg.providers.providers.claude.cli, undefined);
+});
+
+test('Claude requires --model and keeps provider and model policy checks before launch or journals', async t => {
+  const cases = [
+    ['missing model', () => {}, [], /Pass --model/],
+    ['single model still requires flag', h => { h.cfg.models.models = { [CLAUDE_MODEL]: { pool: 'claude' } }; }, [], /Pass --model/],
+    ['disabled', h => { h.cfg.providers.providers.claude.enabled = false; }, ['--model', CLAUDE_MODEL], /disabled/],
+    ['manual', h => { h.cfg.providers.providers.claude.kind = 'manual'; }, ['--model', CLAUDE_MODEL], /Manual/],
+    ['avoided', h => { h.cfg.providers.providers.claude.tos = 'avoid'; }, ['--model', CLAUDE_MODEL], /tos avoid/],
+    ['training', h => { h.cfg.providers.providers.claude.trainsOnData = true; }, ['--model', CLAUDE_MODEL], /allowTrainingProviders/],
+    ['foreign model', h => { h.cfg.models.models[CLAUDE_MODEL].pool = 'trial'; }, ['--model', CLAUDE_MODEL], /Unknown model/],
+    ['unknown model', () => {}, ['--model', 'unknown'], /Unknown model/],
+  ];
+  for (const [name, mutate, args, pattern] of cases) await t.test(name, async () => {
+    const h = claudeHarness(); mutate(h);
+    await assert.rejects(runner.run(['--provider', 'claude', ...args], h.deps), pattern);
+    assert.deepEqual(h.records, { feedback: [], timing: [], usage: [], spawns: [] });
+  });
+});
+
+test('Claude validates the CLI model before launch and uses cliModel when present', async () => {
+  const unsafe = claudeHarness(); unsafe.cfg.models.models['-dangerous'] = { pool: 'claude' };
+  assert.throws(() => runner.selection({ provider: 'claude', model: '-dangerous' }, unsafe.cfg, {}), /^Error: Invalid model CLI name\.$/);
+  await assert.rejects(runner.run(['--provider', 'claude', '--model', '-dangerous'], unsafe.deps), /Invalid --model/);
+  assert.deepEqual(unsafe.records, { feedback: [], timing: [], usage: [], spawns: [] });
+  for (const cliModel of ['-dangerous', 'bad model', '', 42, 'x'.repeat(129)]) {
+    const h = claudeHarness(); h.cfg.models.models[CLAUDE_MODEL].cliModel = cliModel;
+    await assert.rejects(runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps), /^Error: Invalid model CLI name\.$/);
+    assert.deepEqual(h.records, { feedback: [], timing: [], usage: [], spawns: [] });
+  }
+  for (const cliModel of ['vendor/sonnet:latest', null]) {
+    const h = claudeHarness(); h.cfg.models.models[CLAUDE_MODEL].cliModel = cliModel;
+    assert.equal((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).code, 0);
+    assert.equal(h.records.spawns[0].args[2], cliModel ?? CLAUDE_MODEL);
+    assert.equal(h.records.timing[0].model, CLAUDE_MODEL);
+  }
+});
+
+test('Claude sends the full literal prompt on stdin and ends it, without adding it to argv', async () => {
+  const h = claudeHarness(); h.deps.prompt = 'quotes " & % ! $value\nsecond line {model}';
+  h.deps.findExecutable = command => { assert.equal(command, 'claude'); return process.execPath; };
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, '--effort', 'high', '--cwd', process.cwd()], h.deps);
+  const call = h.records.spawns[0];
+  assert.deepEqual(call.options.stdio, ['pipe', 'pipe', 'pipe']); assert.equal(call.options.shell, false);
+  assert.equal(call.options.cwd, fs.realpathSync(process.cwd()));
+  assert.equal(call.child.stdin.read().toString(), 'Your working directory is ' + call.options.cwd
+    + ' and every file is inside it. Use relative file paths.\n\n' + h.deps.prompt);
+  assert.equal(call.child.stdin.writableEnded, true);
+  assert.deepEqual(call.args, ['-p', '--model', CLAUDE_MODEL, '--effort', 'high', '--output-format', 'json', '--permission-mode', 'acceptEdits']);
+  assert.equal(result.code, 0); assert.deepEqual(h.records.usage, []);
+});
+
+test('Claude stdin prompts bypass platform argv limits but retain the 200 KiB input limit', async () => {
+  for (const platform of ['win32', 'linux']) {
+    const h = claudeHarness(); h.deps.platform = platform; h.deps.prompt = 'x'.repeat(runner.MAX_PROMPT);
+    h.deps.findExecutable = () => platform === 'win32' ? 'C:\\trusted\\claude.exe' : '/trusted/claude';
+    assert.equal((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).code, 0);
+    assert.ok(h.records.spawns[0].child.stdin.read().length > runner.MAX_PROMPT);
+    const argv = harness(); argv.deps.platform = platform; argv.deps.prompt = 'x'.repeat(110 * 1024);
+    await assert.rejects(runner.run(['--provider', 'trial'], argv.deps), /argv limit/);
+    assert.equal(argv.records.spawns.length, 0);
+  }
+  for (const prompt of ['', 'x'.repeat(runner.MAX_PROMPT + 1), '\0']) {
+    const h = claudeHarness(); h.deps.prompt = prompt;
+    await assert.rejects(runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps), /Prompt/);
+    assert.equal(h.records.spawns.length, 0);
+  }
+});
+
+test('Claude JSON success reports tokens, cost and a bounded untrusted result tail, with metadata-only timing', async () => {
+  const value = { type: 'result', subtype: 'success', is_error: false, api_error_status: null,
+    result: Array.from({ length: 100 }, (_, i) => 'answer ' + i).join('\n') + '\nAPI_KEY=hide-this',
+    usage: { input_tokens: 2, cache_creation_input_tokens: 13698, cache_read_input_tokens: 14180, output_tokens: 4 },
+    total_cost_usd: 0.0028836, permission_denials: [], session_id: 'private-session' };
+  const h = claudeHarness(' \n' + JSON.stringify(value) + '\r\n ');
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, '--category', 'mechanical', '--tier', 'trivial'], h.deps);
+  const lines = result.report.trimEnd().split('\n');
+  assert.equal(result.code, 0);
+  assert.match(lines[0], /^cli-run: ok .*\| tokens in 13700 cached 14180 out 4 \| \$0\.0029 \| feedback none$/);
+  assert.match(lines[1], /untrusted data; tail, at most 60 lines/);
+  assert.equal(lines.length, 62); assert.equal(lines[2], 'answer 41'); assert.equal(lines.at(-1), 'API_KEY=<redacted>');
+  assert.doesNotMatch(result.report, /private-session|"subtype"|hide-this|answer 40\n/);
+  assert.deepEqual(h.records.timing[0].tokens, { input: 13700, cached: 14180, output: 4 });
+  assert.doesNotMatch(JSON.stringify(h.records.timing), /answer|private-session/);
+  assert.deepEqual(h.records.feedback, []); assert.deepEqual(h.records.usage, []);
+});
+
+test('Claude token and cost reports handle zeros, partial usage and absent or invalid numbers', async () => {
+  for (const [fields, expected] of [
+    [{ usage: { input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 }, total_cost_usd: 0 }, /tokens in 0 cached 0 out 0 \| \$0\.0000/],
+    [{ usage: { cache_creation_input_tokens: 7 } }, /tokens in 7 cached 0 out 0/],
+    [{ usage: { input_tokens: -1, output_tokens: '4' }, total_cost_usd: '0.2' }, null],
+    [{}, null],
+  ]) {
+    const h = claudeHarness({ subtype: 'success', ...fields });
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.equal(result.code, 0);
+    if (expected) assert.match(result.report, expected);
+    else { assert.doesNotMatch(result.report, /tokens in|\$/); assert.equal(h.records.timing[0].tokens, undefined); }
+  }
+});
+
+test('Claude token metadata round-trips through the existing latency journal format', async t => {
+  const home = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qb-claude-latency-'));
+  const previous = process.env.QUOTA_BOSS_HOME;
+  process.env.QUOTA_BOSS_HOME = home;
+  t.after(() => {
+    if (previous === undefined) delete process.env.QUOTA_BOSS_HOME; else process.env.QUOTA_BOSS_HOME = previous;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  const h = claudeHarness({ subtype: 'success', usage: { input_tokens: 2, cache_creation_input_tokens: 3,
+    cache_read_input_tokens: 4, output_tokens: 5 } });
+  delete h.deps.recordRun;
+  let reads = 0; h.deps.now = () => reads++ === 0 ? 40000 : 42000;
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, '--tier', 'trivial'], h.deps);
+  assert.equal(result.code, 0);
+  const latency = require('../scripts/latency');
+  const entries = latency.readRuns(42000);
+  assert.equal(entries.length, 1); assert.equal(entries[0].seconds, 2);
+  assert.deepEqual(entries[0].tokens, { input: 5, cached: 4, output: 5 });
+  assert.equal(fs.existsSync(path.join(home, 'usage.jsonl')), false);
+});
+
+test('Claude JSON errors classify API statuses even on exit zero and record the existing feedback classes', async t => {
+  for (const [api_error_status, kind] of [[400, 'structural'], [422, 'structural'], [429, 'limited'], [500, 'limited'],
+    [502, 'limited'], [503, 'limited'], [504, 'limited'], [529, 'limited'], [401, 'unavailable'], [403, 'unavailable'],
+    [418, 'failed'], [null, 'failed']]) {
+    for (const status of [0, 1]) await t.test(api_error_status + ' exit ' + status, async () => {
+      const h = claudeHarness({ subtype: 'error_during_execution', is_error: true, api_error_status, result: 'task failed' }, status);
+      const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, '--effort', 'high',
+        '--category', 'mechanical', '--tier', 'normal'], h.deps);
+      assert.equal(result.code, 1); assert.match(result.report, new RegExp('^cli-run: FAILED \\(' + kind + ':'));
+      const reason = api_error_status === null ? 'error_during_execution' : 'api_error_status ' + api_error_status;
+      assert.ok(result.report.split('\n')[0].includes('FAILED (' + kind + ': ' + reason + ')'));
+      if (kind === 'failed') assert.equal(h.records.feedback.length, 0);
+      else {
+        assert.deepEqual(h.records.feedback[0][0], { model: CLAUDE_MODEL, category: 'mechanical', tier: 'normal',
+          result: kind === 'structural' ? 'fail' : kind, effort: 'high' });
+        assert.match(result.report.split('\n')[0], /feedback recorded$/);
+      }
+      assert.equal(h.records.timing[0].ok, false); assert.equal(h.records.usage.length, 0);
+    });
+  }
+  for (const [fields, reason] of [[{ subtype: 'error_max_turns', is_error: false }, 'error_max_turns'],
+    [{ subtype: 'success', is_error: true }, 'error'], [{ subtype: ' success ', is_error: true }, 'error'],
+    [{ subtype: '\u001b[31msuccess', is_error: true }, 'error'], [{ is_error: true }, 'error']]) {
+    const h = claudeHarness(fields);
+    assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).report,
+      new RegExp('FAILED \\(failed: ' + reason + '\\)'));
+  }
+  const h = claudeHarness({ subtype: 'success', is_error: true, api_error_status: 401 });
+  assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).report,
+    /FAILED \(unavailable: api_error_status 401\)/);
+});
+
+test('Claude error reasons are cleaned and bounded', async () => {
+  const h = claudeHarness({ subtype: '\u001b[31mprivate-secret\n' + 'x'.repeat(200), is_error: true });
+  h.deps.env.ACCESS_TOKEN = 'private-secret';
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+  const reason = result.report.match(/FAILED \(failed: ([^)]*)\)/)[1];
+  assert.equal(reason.length, 160); assert.ok(reason.startsWith('<redacted> '));
+  assert.doesNotMatch(result.report, /private-secret|\u001b|"subtype"/);
+});
+
+test('Claude only treats stderr permission markers as no-work, including split and discarded markers', async () => {
+  for (const marker of ['rejected permission', 'auto-rejecting']) for (const status of [0, 7]) {
+    const h = claudeHarness({ subtype: 'success', result: marker }, status);
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.equal(result.code, status ? 1 : 0);
+    assert.match(result.report, status ? /FAILED \(failed: exit 7\)/ : /^cli-run: ok/);
+    assert.equal(h.records.feedback.length, 0);
+  }
+  for (const stream of ['stdout', 'stderr']) {
+    const h = claudeHarness();
+    h.deps.spawn = () => {
+      const child = fakeChild();
+      queueMicrotask(() => {
+        if (stream === 'stdout') {
+          child.stdout.write('{"subtype":"success","result":"rejected per');
+          child.stdout.write('mission"}');
+        } else {
+          child.stdout.write(JSON.stringify({ subtype: 'success' }));
+          child.stderr.write('rejected per'); child.stderr.write('mission\n');
+          child.stderr.write('x'.repeat(300000));
+        }
+        child.emit('close', 0);
+      });
+      return child;
+    };
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.equal(result.code, stream === 'stdout' ? 0 : 1);
+    assert.match(result.report, stream === 'stdout' ? /^cli-run: ok/ : /FAILED \(no-work: permission rejected\)/);
+  }
+});
+
+test('Claude failure classification uses known envelope statuses, then stderr, without scanning the answer', async () => {
+  for (const [fields, stderr, kind, reason] of [
+    [{ api_error_status: 429 }, '', 'limited', 'api_error_status 429'],
+    [{ api_error_status: 429 }, 'HTTP 400 invalid request', 'limited', 'api_error_status 429'],
+    [{ api_error_status: 401 }, 'rate limit', 'unavailable', 'api_error_status 401'],
+    [{ api_error_status: null }, 'rate limit', 'limited', 'error_during_execution'],
+    [{ api_error_status: 418 }, 'unauthorized', 'unavailable', 'api_error_status 418'],
+    [{ api_error_status: '429' }, 'rate limit', 'limited', 'error_during_execution'],
+    [{ subtype: 'success', api_error_status: null }, 'rate limit', 'limited', 'error'],
+    [{ api_error_status: null }, '', 'failed', 'error_during_execution'],
+    [{ api_error_status: 418 }, '', 'failed', 'api_error_status 418'],
+    [{ subtype: 'success', is_error: false }, '', 'failed', 'exit 7'],
+  ]) {
+    const stdout = JSON.stringify({ subtype: 'error_during_execution', is_error: true,
+      result: 'invalid request 400; unauthorized; rate limit', ...fields });
+    const h = harness({ status: 7, stderr, stdout }, claudeConfig());
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.equal(result.code, 1);
+    assert.ok(result.report.split('\n')[0].includes('FAILED (' + kind + ': ' + reason + ')'), result.report);
+    assert.equal(h.records.timing[0].ok, false);
+    assert.equal(h.records.feedback.length, kind === 'failed' ? 0 : 1);
+  }
+  const h = claudeHarness();
+  h.deps.spawn = () => {
+    const child = fakeChild();
+    queueMicrotask(() => {
+      child.stdout.write(JSON.stringify({ subtype: 'error_during_execution', is_error: true, api_error_status: null }));
+      child.stderr.write('rate li'); child.stderr.write('mit\n'); child.stderr.write('x'.repeat(300000));
+      child.emit('close', 7);
+    });
+    return child;
+  };
+  assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).report,
+    /FAILED \(limited: error_during_execution\)/);
+});
+
+test('Claude JSON keeps timeout, permission markers, regex failures and nonzero exits ahead of success', async () => {
+  for (const [status, stderr, kind, api_error_status] of [[1, 'HTTP 400 overloaded', 'structural'], [1, 'HTTP 429', 'limited'],
+    [1, 'unauthorized', 'unavailable'], [0, 'rejected permission', 'no-work'], [1, '', 'failed'], [0, 'HTTP 429', 'ok'],
+    [1, 'HTTP 429', 'structural', 400], [0, 'HTTP 400', 'limited', 429]]) {
+    const h = harness({ status, stderr, stdout: JSON.stringify({ subtype: api_error_status ? 'error_during_execution' : 'success',
+      is_error: !!api_error_status, api_error_status }) }, claudeConfig());
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.match(result.report, kind === 'ok' ? /^cli-run: ok/ : new RegExp('FAILED \\(' + kind + ':'));
+  }
+  const h = claudeHarness(); const timers = [];
+  h.deps.platform = 'linux'; h.deps.findExecutable = () => '/trusted/claude';
+  h.deps.setTimeout = (callback, ms) => { timers.push({ callback, ms }); return timers.length; };
+  h.deps.clearTimeout = () => {};
+  const child = fakeChild();
+  h.deps.spawn = () => { queueMicrotask(() => { child.stdout.write(JSON.stringify({ subtype: 'success' })); timers[0].callback(); }); return child; };
+  h.deps.kill = () => child.emit('close', null);
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+  assert.equal(timers[0].ms, 600000); assert.match(result.report, /FAILED \(limited: 10-minute timeout\)/);
+  assert.equal(h.records.feedback[0][0].result, 'limited'); assert.equal(h.records.usage.length, 0);
+});
+
+test('Claude missing, non-object, invalid and multiple JSON outputs fail and retain the raw tail', async () => {
+  for (const stdout of ['', 'plain answer', 'null', '[]', '42', '"answer"', '{broken', '{}\n{}', 'log\n{"subtype":"success"}']) {
+    for (const status of [0, 1]) {
+      const h = claudeHarness(stdout, status);
+      const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+      assert.equal(result.code, 1); assert.ok(result.report.includes(stdout));
+      assert.match(result.report, status ? /FAILED \(failed: exit 1\)/ : /FAILED \(failed: unparseable JSON result\)/);
+      assert.equal(h.records.timing[0].tokens, undefined);
+    }
+  }
+  const h = claudeHarness('HTTP 429', 1);
+  assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps)).report, /FAILED \(failed: exit 1\)/);
+  const stderr = harness({ status: 7, stdout: 'invalid request 400', stderr: 'rate limit' }, claudeConfig());
+  assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], stderr.deps)).report, /FAILED \(limited: provider limit\)/);
+});
+
+test('a truncated Claude stdout tail cannot turn preceding log output into a parsed JSON result', async () => {
+  const value = JSON.stringify({ subtype: 'error_during_execution', is_error: true, api_error_status: 429 });
+  const h = claudeHarness('log output\n' + ' '.repeat(300000) + value);
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+  assert.equal(result.code, 1); assert.ok(result.report.includes(value));
+  assert.match(result.report, /FAILED \(failed: unparseable JSON result\)/);
+  assert.equal(h.records.feedback.length, 0);
+});
+
+test('Claude permission denials report unique tool names (at most five) and only unchanged expected changes imply no-work', async () => {
+  const permission_denials = ['Read', 'Read', 'Edit', 'Bash', 'Write', 'Glob', 'Grep'].map(tool_name => ({ tool_name }));
+  for (const [expect, before, after, kind] of [[false, '', '', 'ok'], [true, 'same', 'same', 'no-work'],
+    [true, 'before', 'after', 'ok'], [true, null, null, 'ok']]) {
+    const h = claudeHarness({ subtype: 'success', is_error: false, result: 'partial work', permission_denials });
+    let reads = 0; h.deps.gitStatus = () => reads++ === 0 ? before : after;
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, ...(expect ? ['--expect-changes'] : [])], h.deps);
+    assert.match(result.report, kind === 'ok' ? /^cli-run: ok/ : /FAILED \(no-work: git fingerprint unchanged\)/);
+    assert.match(result.report, /Permission denials: 7 \(Read, Edit, Bash, Write, Glob\)/);
+    assert.doesNotMatch(result.report, /Grep/); assert.equal(reads, expect ? 2 : 0);
+    assert.equal(h.records.feedback.length, kind === 'no-work' ? 1 : 0);
+  }
+  const h = claudeHarness({ subtype: 'error_during_execution', is_error: true, api_error_status: 429, permission_denials });
+  assert.match((await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL, '--expect-changes'], h.deps)).report, /FAILED \(limited:/);
+});
+
+test('an explicit Claude CLI retains argv behaviour and the permission bypass denylist', async () => {
+  for (const args of [['--permission-mode', 'bypassPermissions'], ['--permission-mode=BYPASSPERMISSIONS'], ['--dangerously-skip-permissions']]) {
+    const h = claudeHarness(); h.cfg.providers.providers.claude.cli = { command: 'claude', args: ['-p', '{prompt}', ...args] };
+    await assert.rejects(runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps), /disables sandbox or permission checks/);
+    assert.deepEqual(h.records, { feedback: [], timing: [], usage: [], spawns: [] });
+  }
+  const h = claudeHarness({ subtype: 'error_during_execution', is_error: true, api_error_status: 429 });
+  h.cfg.providers.providers.claude.cli = { command: 'custom', args: ['-p', '{prompt}'] };
+  const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+  assert.equal(result.code, 0); assert.match(result.report, /"api_error_status":429/);
+  assert.deepEqual(h.records.spawns[0].options.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.match(h.records.spawns[0].args[1], /build it/);
+});
+
+test('Claude stdin errors, including EPIPE and synchronous writes, leave exit status in control', async () => {
+  for (const status of [0, 7]) for (const sync of [false, true]) {
+    const h = claudeHarness({ subtype: 'success', result: 'done' }, status); const spawn = h.deps.spawn;
+    h.deps.prompt = 'x'.repeat(runner.MAX_PROMPT);
+    let input;
+    h.deps.spawn = (...args) => {
+      const child = spawn(...args);
+      child.stdin.end = value => {
+        input = value;
+        const error = Object.assign(new Error('pipe closed'), { code: 'EPIPE' });
+        if (sync) throw error;
+        queueMicrotask(() => child.stdin.emit('error', error));
+      };
+      return child;
+    };
+    const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.ok(Buffer.byteLength(input) > runner.MAX_PROMPT);
+    assert.equal(h.records.spawns[0].child.stdin.readableLength, 0);
+    assert.equal(result.code, status ? 1 : 0);
+    assert.match(result.report, status ? /FAILED \(failed: exit 7\)/ : /^cli-run: ok/);
+    assert.doesNotMatch(result.report, /EPIPE|pipe closed/);
+  }
+});
 
 test('arguments validate values, boolean switches and duplicate/unknown flags', () => {
   assert.equal(runner.parseArgs(['--provider', 'trial', '--expect-changes', '--effort', 'high'])['expect-changes'], true);

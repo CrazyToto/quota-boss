@@ -53,14 +53,14 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   It uses the same plan and sandbox as the boss, with no CLI relay. Outside hook input, the boss's own model is read from the newest interactive
   session log of the project, falling back to the top-level `model` in `config.toml`; `codex exec` runs and subagents are ignored.
   For headless Codex runs, set `QUOTA_BOSS_BOSS_MODEL` to a valid model ID to override detection.
-- `claude-worker`: run `claude -p "<spec>" --model <sonnet|haiku|opus> --effort <level> --output-format json` in the project root
-  (official CLI, signed in as the user), record usage with `quota-boss usage claude 1 calls`.
+- `claude-worker`: run `node "<QUOTA_BOSS_HOME>/scripts/cli-run.js" --provider claude --model <registry-id> --effort <level>` with the spec on stdin.
+  The runner uses the official CLI with session persistence, a 10-minute process-tree timeout, JSON failure classification, token/cost reports and routing journals, just like `cli-worker`.
   This is scripted access, which Anthropic's consumer terms allow only with an API key or where it explicitly permits it.
   `on --host codex` warns about this. Set `ANTHROPIC_API_KEY` for the helper, or run `quota-boss use claude off`.
   Claude quota is then a `counter` source unless status line data is fresh (< 30 min). The fallback counts calls
   against an estimated 200-call UTC daily budget; configure an explicit Claude counter window/budget in
-  `config/providers.json` to tune it. This estimate is not a provider-reported limit; usage is recorded even
-  while fresh live limits are available.
+  `config/providers.json` to tune it. This estimate is not a provider-reported limit; the runner records usage
+  only for a `counter` source, with no duplicate recording by the worker.
 
 ## Extra commands (ideas adopted from other open-source routers)
 
