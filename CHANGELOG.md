@@ -10,6 +10,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - `quota-boss free-models` checks local public model lists for changed free presets and new candidates, with a weekly GitHub check.
 
+- The setup's free-offers question has a **no-key** answer that turns on only the offers without a key or account, and marks the offers that need a key.
+
 ### Fixed
 
 - An invalid `config/providers.json` no longer removes the routing table silently: hooks, the status line and `route` fall back to the built-in providers and show a warning. Commands that change provider settings stay strict, so the broken file is never overwritten.
