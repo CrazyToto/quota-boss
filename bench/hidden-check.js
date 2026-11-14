@@ -86,5 +86,27 @@ function trivial() {
 if (task === 'small') small();
 else if (task === 'medium') medium();
 else if (task === 'mixed') { medium(); trivial(); }
+else if (['bugfix','refactor','docs'].includes(task)) additions();
 else { console.error('Usage: node bench/hidden-check.js <small|medium|mixed> <run folder>'); process.exit(2); }
 console.log(passed + '/' + total);
+function additions() {
+ if (task === 'bugfix') {
+  const m = load('src/collection.js');
+  for (const [i, values] of [[], [0,false,'',null,0,false], [3,1,3,2]].entries()) check('unique '+i, () => eq(m.unique(values), [...new Set(values)]));
+  for (const values of [[], [2,4], [-3,0,6]]) check('average '+values, () => eq(m.average(values), values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0));
+  for (const values of [[], [10,2,-1,0], [3,3,1]]) check('sort '+values, () => { const copy = [...values]; eq(m.sortNumbers(values), [...values].sort((a,b)=>a-b)); eq(values, copy); });
+ } else if (task === 'refactor') {
+  const m = load('src/stats.js');
+  for (const name of ['selectFinite','totalOf','boundsOf']) check('helper '+name, () => eq(typeof m[name], 'function'));
+  check('helper behavior', () => { eq(m.selectFinite([1,NaN,'2',Infinity]),[1]); eq(m.totalOf([1,2]),3); eq(m.boundsOf([]),{min:null,max:null}); eq(m.boundsOf([2,-1]),{min:-1,max:2}); });
+  check('helpers used', () => { const source = fs.readFileSync(path.join(dir,'src/stats.js'),'utf8'); for (const name of ['selectFinite','totalOf','boundsOf']) if ((source.match(new RegExp(name+'\\s*\\(', 'g')) || []).length < 2) throw new Error(name+' unused'); });
+  for (const values of [[], [NaN,Infinity,'2'], [1], [-5,0,9], Array.from({length:100},(_,i)=>i-50)]) check('behavior '+values.length, () => { const v=values.filter(Number.isFinite), total=v.reduce((a,b)=>a+b,0); eq(m.summarize(values),{count:v.length,total,mean:v.length?total/v.length:0,min:v.length?Math.min(...v):null,max:v.length?Math.max(...v):null}); });
+ } else {
+  const source = fs.readFileSync(path.join(dir,'src/greetings.js'),'utf8');
+  let readme=''; try { readme=fs.readFileSync(path.join(dir,'README.md'),'utf8'); } catch {}
+  for (const heading of ['Overview','API','Examples']) check('heading '+heading, () => { if (!new RegExp('^## '+heading+'\\s*$','m').test(readme)) throw new Error('missing heading'); });
+  for (const [name, fn] of Object.entries(load('src/greetings.js'))) check('JSDoc '+name, () => { const match = new RegExp('/\\*\\*((?:(?!\\*/)[^])*)\\*/\\s*function '+name+'\\s*\\(([^)]*)\\)').exec(source); if (!match || !/@returns\b/.test(match[1])) throw new Error('missing JSDoc returns'); for (const param of match[2].split(',').map(x=>x.trim()).filter(Boolean)) if (!new RegExp('@param\\s+(?:\\{[^}]+\\}\\s+)?'+param+'\\b').test(match[1])) throw new Error('missing param '+param); });
+  check('examples run', () => { const blocks = [...readme.matchAll(/```(?:js|javascript)\s*\n([^]*?)```/g)].map(x=>x[1]); if (!blocks.length || !blocks.join('').includes('greet(') || !blocks.join('').includes('repeat(')) throw new Error('missing examples'); for (const input of blocks) { const r=spawnSync(process.execPath,['-e',input],{cwd:dir,encoding:'utf8',timeout:5000}); if(r.status!==0) throw new Error(r.stderr); } });
+  check('behavior', () => { const m=load('src/greetings.js'); eq(m.greet('Ada'),'Hello, Ada!'); eq(m.repeat('ab',2),'abab'); });
+ }
+}

@@ -1,27 +1,40 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --mode on|off --task small|medium|mixed [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --mode on|off --task small|medium|mixed [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const { prompts, setup } = require('./tasks');
+function parseArm(value) {
+ if (!/^(off|on|on:(quality|balanced|frugal))$/.test(value || '')) throw new Error('Invalid arm: ' + value);
+ return { arm: value, mode: value === 'off' ? 'off' : 'on', profile: value.split(':')[1] || 'balanced' };
+}
+function main(argv = process.argv.slice(2), execute = spawnSync) {
 const args = {};
-for (let i = 2; i < process.argv.length; i += 2) {
-  const key = process.argv[i];
-  if (!key.startsWith('--') || process.argv[i + 1] === undefined) { console.error(USAGE); process.exit(2); }
-  args[key.slice(2)] = process.argv[i + 1];
+for (let i = 0; i < argv.length; i += 2) {
+  const key = argv[i];
+  if (!key.startsWith('--') || argv[i + 1] === undefined) { console.error(USAGE); process.exit(2); }
+  args[key.slice(2)] = argv[i + 1];
 }
 const host = args.host;
-const mode = args.mode;
+const { arm, mode, profile } = parseArm(args.arm || args.mode);
+const reps = Number(args.reps || 1);
+if (!Number.isInteger(reps) || reps < 1) throw new Error('reps must be a positive integer');
+if (reps > 1) {
+ for (let i = 0; i < reps; i++) main([...argv.filter((_, j) => !['--reps', '--n'].includes(argv[j - j % 2])), '--n', String(Number(args.n || 1) + i)], execute);
+ return;
+}
 const task = args.task;
-if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !['small', 'medium', 'mixed'].includes(task)) { console.error(USAGE); process.exit(2); }
+if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
 const model = args.model || (host === 'claude' ? 'opus' : 'gpt-6.1-sol');
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
-const label = args.label || `${host}-${model}-${mode}`;
+const label = args.label || `${host}-${model}-${arm}`;
 const n = args.n || '1';
+if (!Number.isInteger(Number(n)) || Number(n) < 1) throw new Error('n must be a positive integer');
 const out = path.resolve(args.out || path.join(os.tmpdir(), 'quota-boss-bench'));
 const runName = `${label}-${task}-${n}`.replace(/[^A-Za-z0-9._-]/g, '_');
 const dir = path.join(out, 'runs', runName);
@@ -32,30 +45,25 @@ const PRICES = {
   'gpt-6.1-sol': [2, 0.1, 10], 'gpt-6.1-terra': [1, 0.05, 5], 'gpt-6-luna': [0.1, 0.01, 0.5], 'gpt-6-sol': [2, 0.2, 10],
 };
 
-// Fixture
-fs.rmSync(dir, { recursive: true, force: true });
-fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
-fs.mkdirSync(path.join(dir, 'test'), { recursive: true });
-const put = (name, text) => fs.writeFileSync(path.join(dir, name), text);
-put('package.json', '{ "name": "bench-fixture", "version": "1.0.0", "private": true, "scripts": { "test": "node --test" } }\n');
-put('src/math.js', "'use strict';\nfunction add(a, b) { return a + b; }\nfunction mean(values) { return values.length ? values.reduce(add, 0) / values.length : 0; }\nmodule.exports = { add, mean };\n");
-put('src/format.js', "'use strict';\nfunction padLeft(text, width) { return String(text).padStart(width, ' '); }\nfunction percent(value) { return Math.round(value * 100) + '%'; }\nmodule.exports = { padLeft, percent };\n");
-put('test/math.test.js', "'use strict';\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { add, mean } = require('../src/math.js');\ntest('add', () => assert.equal(add(2, 3), 5));\ntest('mean', () => assert.equal(mean([2, 4]), 3));\n");
-const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+// Fresh independent fixture
+if (fs.existsSync(dir)) throw new Error('Run already exists: ' + runName);
+setup(dir, task);
+const git = (...a) => { const r = execute('git', a, { cwd: dir, encoding: 'utf8' }); if (r.status !== 0) throw new Error('Fixture git setup failed: ' + (r.stderr || r.error)); return r; };
 git('init', '-q', '.');
 git('add', '-A');
 git('-c', 'user.name=bench', '-c', 'user.email=bench@example.invalid', 'commit', '-qm', 'base');
 
-// Tasks
-const SMALL = 'In src/math.js add and export clamp(value, min, max). It returns min when value is below min, max when value is above max, otherwise value, and throws a RangeError when min is greater than max. Add tests to test/math.test.js and run the tests.';
-const MEDIUM = 'Add a small task tracker to this project. src/store.js exports createStore(filePath) with add(title) returning {id, title, done: false}, list(filter) where filter.done true or false limits the result and an empty filter returns all, complete(id) which throws an Error for an unknown id, and remove(id) returning true or false. Tasks persist as JSON in filePath. Ids start at 1, increase by one and are never reused, not even after a remove and after reopening the file. src/report.js exports summary(tasks) returning {total, done, open, percentDone} where percentDone is a rounded integer and 0 for an empty list. src/cli.js runs as: node src/cli.js <file> add <title words...> | list [--done|--open] | complete <id> | remove <id> | report. list prints one line per task as "<id> [x] <title>" for done and "<id> [_] <title>" for open. report prints "total=N done=N open=N percent=N". An unknown command or unknown id prints a message on stderr and exits with code 1. Add tests under test/ for all three modules and run them.';
-const TRIVIAL = ' Also do these small chores: rename padLeft in src/format.js to alignRight with the same behavior; add a JSDoc comment above every function in src/math.js; in package.json add "description": "Small task tracker" and "bin": {"tasks": "src/cli.js"}; write README.md with a "## Usage" section that shows one example line per CLI command in the form "node src/cli.js tasks.json <command> ...".';
-const prompt = (task === 'small' ? SMALL : task === 'medium' ? MEDIUM : MEDIUM + TRIVIAL) + ' Reply in one short sentence.';
+const prompt = prompts[task] + ' Reply in one short sentence.';
 
-const quota = (...a) => spawnSync(process.execPath, [qb, ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: host === 'codex' ? model : '' } });
-if (mode === 'on') {
-  const on = quota('on', '--host', host === 'codex' ? 'codex' : 'claude-code', 'balanced');
-  if (on.status !== 0) { console.error('quota-boss on failed: ' + (on.stdout + on.stderr).slice(0, 300)); process.exit(1); }
+const quota = (...a) => execute(process.execPath, [qb, ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: host === 'codex' ? model : '' } });
+let previousProfile;
+try {
+{
+  const status = quota('settings');
+  previousProfile = /^profile\s*\|\s*(quality|balanced|frugal)\b/m.exec(status.stdout || '')?.[1];
+  if (!previousProfile) throw new Error('Could not determine previous profile');
+  const on = mode === 'off' ? quota('off') : quota('on', '--host', host === 'codex' ? 'codex' : 'claude-code', profile);
+  if (on.status !== 0) throw new Error('quota-boss setup failed: ' + (on.stdout + on.stderr).slice(0, 300));
 }
 
 // The boss may log feedback during the run. Keep it in the result, not in the owner's outcome log.
@@ -67,21 +75,20 @@ if (host === 'claude') {
   const cli = ['-p', '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits',
     '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
-  run = spawnSync('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '' } });
+  run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '' } });
 } else {
-  run = spawnSync('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
+  run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
     { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model } });
 }
 const seconds = Math.round((Date.now() - started) / 1000);
 if (run.error) {
   // No result line for a run that never started (for example `claude` installed only as a .cmd shim on Windows).
-  if (mode === 'on') quota('off');
-  console.error(`Could not start ${host}: ${run.error.message}`);
-  process.exit(1);
+
+  throw new Error(`Could not start ${host}: ${run.error.message}`);
 }
 fs.writeFileSync(path.join(out, `stdout-${runName}.txt`), String(run.stdout || ''));
 fs.writeFileSync(path.join(out, `stderr-${runName}.txt`), String(run.stderr || ''));
-if (mode === 'on') quota('off');
+
 let feedback = [];
 if (fs.existsSync(outcomes) && fs.statSync(outcomes).size > outcomesSize) {
   const all = fs.readFileSync(outcomes);
@@ -126,16 +133,21 @@ const sessions = [];
   }
 })(path.join(os.homedir(), '.codex', 'sessions'), 0);
 
-const check = spawnSync(process.execPath, [path.join(__dirname, 'hidden-check.js'), task, dir], { encoding: 'utf8', timeout: 120000 });
+const check = execute(process.execPath, [path.join(__dirname, 'hidden-check.js'), task, dir], { encoding: 'utf8', timeout: 120000 });
 const hidden = String(check.stdout || '').trim().split('\n').pop();
 const hiddenFails = String(check.stderr || '').trim().split('\n').filter(Boolean);
-const own = spawnSync(process.execPath, ['--test'], { cwd: dir, encoding: 'utf8', timeout: 120000 });
+const own = execute(process.execPath, ['--test'], { cwd: dir, encoding: 'utf8', timeout: 120000 });
 const count = name => { const m = String(own.stdout || '').match(new RegExp(`(?:#|ℹ) ${name} (\\d+)`)); return m ? +m[1] : null; };
 const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
-  date: new Date().toISOString(), label, host, model, effort: effort || null, mode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
+  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
   ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback,
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');
 console.log(`done ${runName} ${seconds}s hidden=${hidden} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);
+
+} finally { if (previousProfile) { const off = quota('off'); const restored = quota('set', 'profile', previousProfile); if (off.status !== 0 || restored.status !== 0) throw new Error('Could not restore quota-boss profile'); } }
+}
+module.exports = { main, parseArm };
+if (require.main === module) { try { main(); } catch (e) { console.error(e.message); process.exitCode = 1; } }
