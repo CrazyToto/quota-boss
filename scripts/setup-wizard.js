@@ -145,11 +145,12 @@ function choiceScreen(w, field, title, values, descriptions) {
   } };
 }
 
-const freeGroups = w => ({ all: FREE, 'no-training': FREE.filter(id => !mayTrain(id)), none: [] });
+const keyless = id => id === 'kilo-free' || PRESETS[id].keyless === true;
+const freeGroups = w => ({ all: FREE, 'no-training': FREE.filter(id => !mayTrain(id)), none: [], 'no-key': FREE.filter(keyless) });
 
 function freeGroup(w, title, ids) {
   w.io.say(title);
-  for (const id of ids) w.io.say('  ' + nameOf(id).padEnd(23) + (id === 'kilo-free' ? 'no key, no published limit' : PRESETS[id].gets));
+  for (const id of ids) w.io.say((keyless(id) ? '  ' : '* ') + nameOf(id).padEnd(23) + (id === 'kilo-free' ? 'no key, no published limit' : PRESETS[id].gets));
   w.io.say('');
 }
 
@@ -161,9 +162,11 @@ function freeScreen(w) {
     w.io.say('');
     freeGroup(w, w.text.freeNoTraining, FREE.filter(id => !mayTrain(id)));
     freeGroup(w, w.text.freeMayTrain, FREE.filter(mayTrain));
+    say(w, w.text.freeKeyNote, '');
+    w.io.say('');
     const groups = freeGroups(w), on = chosen(w, FREE);
     const current = Object.keys(groups).find(name => groups[name].length === on.length && groups[name].every(id => w.state.choices[id])) || 'keep';
-    const values = [...(current === 'keep' ? ['keep'] : []), 'no-training', 'all', 'none', 'one-by-one'];
+    const values = [...(current === 'keep' ? ['keep'] : []), 'no-training', 'all', 'none', 'one-by-one', 'no-key'];
     const answer = pick(w, values, w.text.freeOptions(on.map(id => nameOf(id)).join(', ')), current);
     if (answer === BACK) return BACK;
     w.state.freeChoice = answer;

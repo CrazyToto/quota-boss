@@ -121,6 +121,21 @@ test('the no-training group adds only offers that do not train and asks no train
   assert.match(said, /Free offers ready to use: OpenCode Zen GLM, OpenCode Zen DeepSeek\./);
 });
 
+test('the no-key group adds only offers that need no key or account and marks the others', () => {
+  const { said, commands } = play(flow(OTHER_NONE, ['5'], ['y', 'y', 'y']), { stored: ['1 credentials'] });
+  const added = commands.filter(c => c[0] === 'add-api').map(c => c[1]);
+  assert.deepEqual(added, ['zen-glm', 'zen-deepseek']);
+  assert.ok(commands.some(c => c.includes('kilo-free')), JSON.stringify(commands));
+  assert.ok(!commands.some(c => c[0] === 'add-api' && ['mistral-api', 'openrouter-free', 'gemini-api'].includes(c[1])));
+  assert.match(said, /Only the ones without a key or account/);
+  assert.match(said, /\n\* Mistral {16}about 1 billion tokens a month/);
+  assert.match(said, /\n {2}OpenCode Zen GLM {7}no key/);
+  assert.match(said, /\n {2}Kilo Free {14}no key/);
+  assert.match(said, /\* needs a free key from that site/);
+  assert.match(said, /Free offers ready to use: OpenCode Zen GLM, OpenCode Zen DeepSeek, Kilo/);
+  assert.doesNotMatch(said, /Left out because no key was entered/);
+});
+
 test('a free offer whose registration fails is not reported as ready', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['1'], ['y']), {
     stored: ['1 credentials'],
@@ -138,7 +153,7 @@ test('the free screen only lists what you get, in two groups, and the warnings w
   const { said } = play(flow(OTHER_NONE, ['2'], ['n', 'y', ...Array(7).fill('n')]), { stored: ['1 credentials'] });
   const screen = said.slice(said.indexOf('What you get for free'), said.indexOf('Choose a number (Enter = none)', said.indexOf('What you get for free')));
   assert.match(screen, /Does not train on your data\n {2}OpenCode Zen GLM {7}no key, no published limit, free for now/);
-  assert.match(screen, /May train on your data, or does not say\n {2}Mistral {16}about 1 billion tokens a month, 2 requests a minute/);
+  assert.match(screen, /May train on your data, or does not say\n\* Mistral {16}about 1 billion tokens a month, 2 requests a minute/);
   assert.ok(screen.indexOf('OpenCode Zen DeepSeek') < screen.indexOf('May train'));
   assert.doesNotMatch(screen, /Groq|SambaNova/);
   assert.doesNotMatch(screen, /humans may read|OmniRoute/);

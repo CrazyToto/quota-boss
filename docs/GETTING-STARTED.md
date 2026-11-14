@@ -82,6 +82,8 @@ request, and SambaNova asks for a payment method.
 | OpenCode's default free model | `quota-boss use opencode-free on` | varies | yes |
 | Kilo Auto Free (needs Kilo CLI, no key) | choose it in the setup or `quota-boss use kilo-free on` | none published; may be rate limited | yes; providers may log prompts and outputs for improvement, so do not send personal or confidential data |
 
+No account at all: in the setup, the free-offers question has the answer **no-key**. It turns on only OpenCode Zen GLM, OpenCode Zen DeepSeek and Kilo Free, so there is nothing to sign up for. The setup marks every offer that needs a key with a star.
+
 ### Any other API
 
 The setup asks whether you want to add one. Later, run **/boss-add-api**, or directly:
