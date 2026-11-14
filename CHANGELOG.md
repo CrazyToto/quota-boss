@@ -4,10 +4,12 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-14
+
 ### Fixed
 
 - The session rules again tell the boss to hand work down when the table names a cheaper worker; the 0.1.3 shortening had dropped that instruction. A test now keeps the core delegation sentences in every host's rules.
-- Updates now reach `thresholds.json` and the settings help: shipped values live in `defaults/`, `config/thresholds.json` keeps only your own changes (values equal to the shipped ones are removed on update), and user values replace only their own setting instead of a whole group. No more `.new` files for these two; leftover ones the installer wrote earlier are removed.
+- Updates now reach `thresholds.json` and the settings help: shipped values live in `defaults/`, `config/thresholds.json` keeps only your own changes (the first update removes, once, the values an older install copied unchanged), and user values replace only their own setting instead of a whole group. No more `.new` files for these two; leftover ones the installer wrote earlier are removed.
 
 ## [0.1.3] - 2026-11-14
 
