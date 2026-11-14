@@ -2,7 +2,13 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
-## [Unreleased]
+## [Unreleased]
+
+## [0.1.5] - 2026-11-14
+
+### Changed
+
+- Claude workers now use the deterministic CLI runner for the same 10-minute limit, failure classes and journals as other CLI workers. Claude JSON results supply token and cost reports, with prompts sent on stdin.
 
 ## [0.1.4] - 2026-11-14
 

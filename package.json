@@ -1,6 +1,6 @@
 {
   "name": "quota-boss",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Multi-model orchestrator and harness for Claude Code and Codex: the boss routes each sub-task across your Claude, ChatGPT/Codex, Copilot, Grok, Gemini and Perplexity subscriptions and optional free AI offers by task importance, model quality and remaining quota.",
   "license": "MIT",
   "engines": {
