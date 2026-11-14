@@ -18,6 +18,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - An invalid `config/providers.json` no longer removes the routing table silently: hooks, the status line and `route` fall back to the built-in providers and show a warning. Commands that change provider settings stay strict, so the broken file is never overwritten.
 - When the session hook fails with boss mode on, it now prints a warning instead of nothing.
+- Worker copies work on Windows when a path uses a short 8.3 folder name, and the session rules are shorter so the routing table still fits with long home paths.
 
 ## [0.1.2] - 2026-11-13
 

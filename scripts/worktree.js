@@ -33,11 +33,11 @@ function gitClient(cwd, deps) {
 }
 
 function repository(cwd, deps) {
-  cwd = fs.realpathSync(cwd);
+  cwd = fs.realpathSync.native(cwd);
   const git = gitClient(cwd, deps);
-  const root = fs.realpathSync(git(['rev-parse', '--show-toplevel']).stdout.trimEnd());
-  const common = fs.realpathSync(path.resolve(cwd, git(['rev-parse', '--git-common-dir']).stdout.trimEnd()));
-  const local = fs.realpathSync(path.resolve(cwd, git(['rev-parse', '--git-dir']).stdout.trimEnd()));
+  const root = fs.realpathSync.native(git(['rev-parse', '--show-toplevel']).stdout.trimEnd());
+  const common = fs.realpathSync.native(path.resolve(cwd, git(['rev-parse', '--git-common-dir']).stdout.trimEnd()));
+  const local = fs.realpathSync.native(path.resolve(cwd, git(['rev-parse', '--git-dir']).stdout.trimEnd()));
   if (!same(common, local)) throw fail('Run worktree commands from the main worktree.');
   return { git, root, folder: path.join(path.dirname(root), path.basename(root) + '.qb-worktrees') };
 }
@@ -56,7 +56,7 @@ function copyPath(repo, name) {
   for (const directory of [repo.folder, target]) {
     try {
       const stat = fs.lstatSync(directory);
-      if (!stat.isDirectory() || stat.isSymbolicLink() || !same(fs.realpathSync(directory), directory)) {
+      if (!stat.isDirectory() || stat.isSymbolicLink() || !same(fs.realpathSync.native(directory), directory)) {
         throw fail('Worker copy path must stay inside ' + clean(repo.folder) + '.');
       }
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -222,7 +222,7 @@ function run(argv, cwd = process.cwd(), deps = {}) {
 /** Config stays in cwd; only a registered qb branch may supply an alternate workspace. */
 function resolveWorkdir(dir, cwd = process.cwd(), deps = {}) {
   try {
-    const project = fs.realpathSync(cwd), target = fs.realpathSync(path.resolve(cwd, dir));
+    const project = fs.realpathSync.native(cwd), target = fs.realpathSync.native(path.resolve(cwd, dir));
     if (!fs.statSync(target).isDirectory()) throw fail('Not a directory.');
     if (same(project, target)) return target;
     const repo = repository(project, deps);

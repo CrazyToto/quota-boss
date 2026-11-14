@@ -402,7 +402,8 @@ test('integration: real entry point with fake CLI closes stdin and writes only m
   fs.mkdirSync(path.join(home, 'config'), { recursive: true }); fs.mkdirSync(project);
   const fake = path.join(dir, 'fake.js'), observed = path.join(dir, 'observed.json');
   fs.writeFileSync(fake, `const fs = require('fs');
-fs.writeFileSync(${JSON.stringify(observed)}, JSON.stringify({args:process.argv.slice(2), stdin:fs.readFileSync(0,'utf8'),cwd:process.cwd()}));
+let stdin = ''; try { stdin = fs.readFileSync(0, 'utf8'); } catch (error) { stdin = ''; }
+fs.writeFileSync(${JSON.stringify(observed)}, JSON.stringify({args:process.argv.slice(2), stdin, cwd:process.cwd()}));
 process.stderr.write('HTTP 422 invalid request'); process.exitCode=1;`);
   const cfg = config(); cfg.providers.providers.trial.cli.command = 'node'; cfg.providers.providers.trial.cli.args.unshift(fake);
   fs.writeFileSync(path.join(home, 'config', 'providers.json'), JSON.stringify(cfg.providers));

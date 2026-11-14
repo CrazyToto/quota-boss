@@ -12,9 +12,9 @@ const git = lib.findExecutable('git');
 const available = git && spawnSync(git, ['--version'], { windowsHide: true }).status === 0;
 
 function fixture(t, identity = true, suffix = '') {
-  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qb-worktree-test-')));
+  const temp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'qb-worktree-test-')));
   t.after(() => {
-    const resolved = fs.realpathSync(temp);
+    const resolved = fs.realpathSync.native(temp);
     assert.equal(resolved, temp);
     assert.ok(path.basename(resolved).startsWith('qb-worktree-test-'));
     fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -319,7 +319,7 @@ describe('worker worktrees', { skip: !available && 'Git unavailable' }, () => {
     f.call(['commit', '-am', 'worker'], work);
     // Both resolved targets are direct children of this test's known sibling folder.
     for (const target of [empty, work]) {
-      assert.equal(path.dirname(fs.realpathSync(target)), f.folder);
+      assert.equal(path.dirname(fs.realpathSync.native(target)), f.folder);
       assert.equal(path.dirname(f.folder), f.temp);
       fs.rmSync(target, { recursive: true });
     }
