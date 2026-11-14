@@ -291,7 +291,9 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const reread = Math.max(0, finite(gate.reread, 0.3));
         const workSeconds = positive(gate.workSeconds, 150);
         const handoverSeconds = Math.max(0, finite(gate.handoverSeconds?.[settings.host], { 'claude-code': 50, codex: 90, generic: 60 }[settings.host]));
-        const maxExtraSeconds = Math.max(0, finite(gate.maxExtraSeconds?.[size], { small: 60, medium: 180, large: 600 }[size]));
+        // With quota to spare, speed wins; while the boss pool is saving, a slower worker may still be worth its wait.
+        const maxExtraSeconds = Math.max(0, finite((hostSaving ? gate.maxExtraSecondsSaving : gate.maxExtraSeconds)?.[size],
+          (hostSaving ? { small: 60, medium: 180, large: 600 } : { small: 30, medium: 90, large: 300 })[size]));
         const B = own.jobCost * own.price;
         const selfCost = s * B * (1 + (1 - own.P));
         own.gate = { size, selfCost };

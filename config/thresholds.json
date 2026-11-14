@@ -181,6 +181,11 @@
       "generic": 60
     },
     "maxExtraSeconds": {
+      "small": 30,
+      "medium": 90,
+      "large": 300
+    },
+    "maxExtraSecondsSaving": {
       "small": 60,
       "medium": 180,
       "large": 600

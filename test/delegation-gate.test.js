@@ -214,3 +214,16 @@ test.describe('boss effort sources and CLI', () => {
     }
   });
 });
+
+test('time limit is tight with quota to spare and loose while the boss pool saves', () => {
+  const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 250 }));
+  const spare = worker(run({ runs }));
+  assert.equal(spare.gate.extraSeconds, 150);
+  assert.equal(spare.reason, 'lost: handover too slow (medium)');
+  const saving = worker(run({ runs, limits: { claude: { five_hour: { used_percentage: 70 } } } }));
+  assert.equal(saving.gate.extraSeconds, 150);
+  assert.doesNotMatch(String(saving.reason), /lost/);
+  const large = worker(run({ runs: runs.map(r => ({ ...r, seconds: 200 })), size: 'large' }));
+  assert.equal(large.gate.extraSeconds, 200);
+  assert.doesNotMatch(String(large.reason), /lost/);
+});
