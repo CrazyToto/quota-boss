@@ -176,7 +176,7 @@ function doctor(probe = false, options = {}) {
         || raw.workers !== undefined && (!raw.workers || typeof raw.workers !== 'object' || Array.isArray(raw.workers) || Object.values(raw.workers).some(v => typeof v !== 'boolean'))) throw new Error('Invalid project config');
     }
     for (const name of ['models', 'thresholds']) {
-      for (const dir of [paths.defaultConfigDir, path.join(paths.quotaBossHome, 'config')]) {
+      for (const dir of [paths.defaultConfigDir, path.join(__dirname, '..', 'defaults'), path.join(paths.quotaBossHome, 'config')]) {
         const file = path.join(dir, name + '.json');
         invalidFile = file;
         if (fs.existsSync(file)) {

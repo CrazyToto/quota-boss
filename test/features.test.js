@@ -285,7 +285,8 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       assert.doesNotMatch(text, /\{\{QUOTA_BOSS_HOME\}\}/);
     }
     assert.ok(fs.existsSync(path.join(process.env.QUOTA_BOSS_HOME, 'agents', 'consensus.md')));
-    assert.deepEqual(lib.readJson(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'settings-help.json')), settings.HELP);
+    assert.deepEqual(lib.readJson(path.join(process.env.QUOTA_BOSS_HOME, 'defaults', 'settings-help.json')), settings.HELP);
+    assert.equal(fs.existsSync(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'settings-help.json')), false);
     const installed = require(path.join(process.env.QUOTA_BOSS_HOME, 'scripts', 'quota-boss.js'));
     assert.match(installed.run(['settings']), /Change with/);
     assert.match(installed.run(['explain', 'training']), /training/);

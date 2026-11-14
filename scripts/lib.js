@@ -268,7 +268,17 @@ function cliArgsForModel(cli, cliModel, effort) {
   return args;
 }
 
-/** Load shipped defaults and shallow user overrides; merge model entries by key.
+/** Thresholds nest (gate.handover.codex.fixed): a user value replaces only its own leaf, so new shipped keys still arrive. */
+function deepMerge(base, user) {
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(user)) {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) continue;
+    merged[key] = value && typeof value === 'object' && !Array.isArray(value) && base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])
+      ? deepMerge(base[key], value) : value;
+  }
+  return merged;
+}
+/** Load shipped defaults and user overrides; merge model entries by key and thresholds leaf by leaf.
  *  tolerant: a broken user providers.json falls back to the built-in providers and sets warning, so the table never disappears. */
 function loadConfig(project = findProjectConfig(), options = {}) {
   const paths = getPaths();
@@ -277,6 +287,7 @@ function loadConfig(project = findProjectConfig(), options = {}) {
     const shipped = path.join(__dirname, '..', 'defaults', name + '.json');
     const base = object(readJson(fs.existsSync(shipped) ? shipped : path.join(paths.defaultConfigDir, name + '.json'), {}));
     const user = object(readJson(path.join(paths.quotaBossHome, 'config', name + '.json'), {}));
+    if (name === 'thresholds') return deepMerge(base, user);
     const merged = { ...base, ...user };
     if (name === 'models') merged.models = { ...object(base.models), ...object(user.models) };
     return merged;

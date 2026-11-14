@@ -298,7 +298,22 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
       const to = path.join(destination, entry.name);
       if (entry.isDirectory()) copyTree(from, to, kind);
       else if (entry.isFile()) {
-        const data = lib.readBounded(from, 4 * 1024 * 1024);
+        let data = lib.readBounded(from, 4 * 1024 * 1024);
+        // Their shipped values live in defaults/ (below). The help is never user data; the thresholds
+        // file holds only the user's own changes, so a new install seeds it empty and an update leaves it.
+        const userConfig = kind === 'config' && destination === path.join(dirs.home, 'config');
+        if (userConfig && ['settings-help.json', 'thresholds.json'].includes(entry.name)) {
+          // Older installs left a .new (and a help copy) that nothing reads; drop only the ones we wrote.
+          const installed = file => manifest.files.some(item => item.path === file && item.kind === 'config');
+          for (const stale of [`${to}.new`, ...(entry.name === 'settings-help.json' ? [to] : [])]) {
+            if (installed(stale)) remove(stale);
+          }
+        }
+        if (userConfig && entry.name === 'settings-help.json') continue;
+        if (userConfig && entry.name === 'thresholds.json') {
+          if (exists(to)) continue;
+          data = '{}\n';
+        }
         if (kind === 'config' && exists(to)) {
           // A file installed by us stays unchanged on a repeat install. Existing
           // user files always receive a .new, even when identical to defaults.
@@ -336,12 +351,49 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
     if (pruned) say(`Removed ${pruned} unchanged model entries from ${user}, so shipped updates reach them.`);
   };
   pruneUnchangedModels();
+  // Installs before 0.1.4 seeded config/thresholds.json as a full copy and shipped no defaults/thresholds.json.
+  // Once, on the first update, drop the leaves that equal the shipped values, so later updates reach them.
+  // After that the file only ever holds what the user wrote, so nothing is pruned again.
+  // Returns false while the migration is still pending, so defaults/thresholds.json is not written yet.
+  const migrateThresholds = () => {
+    const user = path.join(dirs.home, 'config', 'thresholds.json');
+    const reference = path.join(repo, 'config', 'thresholds.json');
+    if (exists(path.join(dirs.home, 'defaults', 'thresholds.json')) || !exists(user) || !exists(reference)) return true;
+    if (path.resolve(user) === path.resolve(reference)) return true;
+    const pruned = (dry ? f => f(() => {}) : f => lib.withLock(user, f))(verify => {
+      let mine, old;
+      try { mine = JSON.parse(lib.readBounded(user, 4 * 1024 * 1024)); old = JSON.parse(lib.readBounded(reference, 4 * 1024 * 1024)); }
+      catch { return 0; }
+      if (!object(mine) || !object(old)) return 0;
+      let count = 0;
+      const strip = (value, base) => {
+        const next = {};
+        for (const [key, item] of Object.entries(value)) {
+          if (JSON.stringify(item) === JSON.stringify(base?.[key])) { count++; continue; }
+          if (object(item) && object(base?.[key])) {
+            const inner = strip(item, base[key]);
+            if (Object.keys(inner).length) next[key] = inner;
+          } else next[key] = item;
+        }
+        return next;
+      };
+      const next = strip(mine, old);
+      if (!count) return 0;
+      say(`Write ${user}`);
+      if (!dry) { verify(); verifyInstaller(); atomicWrite(user, json(next), () => { verify(); verifyInstaller(); }); }
+      return count;
+    });
+    if (pruned === null) { say(`Skip pruning ${user}: it is busy; run the install again.`); return false; }
+    if (pruned) say(`Removed ${pruned} unchanged threshold values from ${user}, so shipped updates reach them.`);
+    return true;
+  };
+  const thresholdsMigrated = migrateThresholds();
   copyTree(path.join(repo, 'scripts'), path.join(dirs.home, 'scripts'), 'script');
   copyTree(path.join(repo, 'agents'), path.join(dirs.home, 'agents'), 'script');
   copyTree(path.join(repo, 'config'), path.join(dirs.home, 'config'), 'config');
-  for (const name of ['providers.json', 'models.json']) {
+  for (const name of ['providers.json', 'models.json', 'thresholds.json', 'settings-help.json']) {
     const shipped = path.join(repo, 'config', name);
-    if (!exists(shipped)) continue;
+    if (!exists(shipped) || name === 'thresholds.json' && !thresholdsMigrated) continue;
     const target = path.join(dirs.home, 'defaults', name);
     write(target, lib.readBounded(shipped, 1024 * 1024));
     remember(target, 'script');

@@ -5,7 +5,9 @@ const { route, poolPrice } = require('./route');
 const latency = require('./latency');
 const providerHelp = require('./provider-help');
 // Shipped help is trusted text. User configuration can change values, never instructions.
-const HELP = lib.readJson(path.join(__dirname, '..', 'config', 'settings-help.json'), {});
+// Installed copies keep the shipped help in defaults/, because an older config/ copy is never overwritten.
+const shippedHelp = path.join(__dirname, '..', 'defaults', 'settings-help.json');
+const HELP = lib.readJson(require('node:fs').existsSync(shippedHelp) ? shippedHelp : path.join(__dirname, '..', 'config', 'settings-help.json'), {});
 function helpFor(key) {
   if (Object.hasOwn(HELP, key)) return HELP[key];
   if (/^providers\.[a-z][a-z0-9-]{1,31}(?:\.enabled)?$/.test(key)) return HELP['providers.enabled'];

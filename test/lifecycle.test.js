@@ -41,7 +41,9 @@ test('install, doctor, route, upgrade and uninstall preserve user files', t => {
   if (run(installer, ['--no-mcp']) === null) return;
   assert.deepEqual(JSON.parse(fs.readFileSync(settings)), before);
   assert.equal(fs.readFileSync(config, 'utf8'), edit);
-  assert.ok(fs.existsSync(config + '.new'));
+  // Shipped thresholds update through defaults/, so the user's own file gets no .new beside it.
+  assert.equal(fs.existsSync(config + '.new'), false);
+  assert.ok(fs.existsSync(path.join(env.QUOTA_BOSS_HOME, 'defaults', 'thresholds.json')));
   if (run(installer, ['--uninstall', '--no-mcp']) === null) return;
   assert.equal(fs.readFileSync(settings, 'utf8'), original);
   for (const dir of ['agents', 'commands']) {

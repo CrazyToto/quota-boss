@@ -94,7 +94,7 @@ test('paths, safe JSON, and atomic writes stay inside overrides', () => {
   assert.equal(lib.readJson(file, 'oversized', 1), 'oversized');
 });
 
-test('user configuration replaces model entries and shallow threshold groups', () => {
+test('user configuration replaces model entries and merges thresholds leaf by leaf', () => {
   lib.writeJson(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'models.json'), {
     models: { 'gpt-6.1-sol': { pool: 'codex', label: 'Custom', cost: 1, scores: { review: 10 } } }
   });
@@ -103,8 +103,22 @@ test('user configuration replaces model entries and shallow threshold groups', (
   assert.equal(config.models.models['gpt-6.1-sol'].label, 'Custom');
   assert.equal(config.models.models['gpt-6.1-sol'].scores.implementation, undefined);
   assert.ok(config.models.models['claude-opus-5-5']);
-  assert.deepEqual(config.thresholds.claude, { save: 20 });
+  // A user value replaces only its own leaf, so shipped keys the user never set still arrive.
+  assert.equal(config.thresholds.claude.save, 20);
+  assert.equal(config.thresholds.claude.emergency, 85);
   assert.equal(config.thresholds.codex.exhausted, 95);
+  lib.writeJson(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'thresholds.json'), { claude: 7, gate: { size: { small: 0.5 } }, list: [1] });
+  const replaced = lib.loadConfig().thresholds;
+  assert.equal(replaced.claude, 7);
+  assert.equal(replaced.gate.size.small, 0.5);
+  assert.equal(replaced.gate.size.large, 3);
+  assert.equal(replaced.gate.margin, 0.8);
+  assert.deepEqual(replaced.list, [1]);
+  fs.writeFileSync(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'thresholds.json'), '{"__proto__":{"injected":1},"gate":{"constructor":{"x":1}}}');
+  const guarded = lib.loadConfig().thresholds;
+  assert.equal(guarded.injected, undefined);
+  assert.equal(Object.getPrototypeOf(guarded), Object.prototype);
+  assert.equal(guarded.gate.constructor, Object);
 });
 
 test('project lookup uses the nearest config and strict enablement', () => {

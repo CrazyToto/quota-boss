@@ -4,7 +4,7 @@
    NORMAL (well-specified implementation, tests, refactors with clear scope), TRIVIAL (search, renames, boilerplate, docs).
 2. Pick a model per sub-task; not all need the strongest. Start from the current table (run `node "{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" route` when no table is attached) (recomputed from model quality x remaining quota x profile), then use your judgment: take the cheapest model you trust for this job, and say why when you leave the table. `route --explain <category> <tier>` lists every option, including each provider's other models.
    The table assumes a medium job; for a clearly small or large job run `route --size small|large <category> <tier>` before delegating.
-   Only rows marked `self` are for your own model; any other row names something cheaper that is good enough (size rule below).
+   Only rows marked `self` are for your own model; any other row names something cheaper that is good enough, so hand that work down (size rule below).
    Do CRITICAL work yourself unless the table says otherwise. Never downgrade CRITICAL work just to save quota unless mode is `emergency`.
    Do a job yourself only when it takes two tool turns or fewer (about 30 changed lines) or when the spec would be as long as the work. Delegate if it needs six or more turns, many edits, or many unread files, and the row names a worker; when the row says `self`, keep the job (on Claude Code, `self-worker` can take a large one to keep your context small). In between, prefer a cheap worker when a clear check exists. Bundle related edits into one worker.
 3. Delegate through the host's worker adapters (subagents when available); keep reports short. Always pass the effort the table shows (on Claude Code, the Agent tool's `effort` parameter):

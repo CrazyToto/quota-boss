@@ -184,7 +184,9 @@ test('preserves user configs, emits .json.new, and never overwrites them even wi
   f.run(['--force']);
   assert.equal(fs.readFileSync(file, 'utf8'), '{"mine":true}\n');
   assert.equal(fs.readFileSync(`${file}.new`, 'utf8'), '{"models":{}}\n');
-  assert.ok(fs.existsSync(path.join(f.home, 'config/thresholds.json.new')));
+  // Shipped thresholds live in defaults/: no .new, and values equal to them are dropped from the user's file.
+  assert.ok(!fs.existsSync(path.join(f.home, 'config/thresholds.json.new')));
+  assert.deepEqual(readJSON(path.join(f.home, 'config/thresholds.json')), {});
   assert.ok(f.logs.some(line => line.includes('Keep existing config')));
   const before = snapshot(f.temporary);
   f.run();
@@ -579,4 +581,78 @@ test('uninstall removes only our Codex hook and dry-run preserves it', t => {
   assert.equal(fs.readFileSync(file, 'utf8'), bytes);
   f.run(['--uninstall']);
   assert.deepEqual(readJSON(file), { hooks: { Stop: value.hooks.Stop }, foreign: 'keep' });
+});
+
+test('thresholds and help ship to defaults/ and an old full threshold copy keeps only real changes', t => {
+  const f = fixture(t);
+  write(path.join(f.repo, 'config/settings-help.json'), '{"profile":"help"}\n');
+  f.run();
+  // An older install seeded config/thresholds.json as a full copy and never shipped defaults/thresholds.json.
+  fs.rmSync(path.join(f.home, 'defaults/thresholds.json'));
+  write(path.join(f.home, 'config/thresholds.json'), JSON.stringify({ save: 75, mine: 1, gate: { margin: 0.8, size: { small: 0.5 } } }));
+  write(path.join(f.repo, 'config/thresholds.json'), JSON.stringify({ save: 75, gate: { margin: 0.8, maxTotalRatio: 1.3, size: { small: 0.3, large: 3 } } }));
+  f.run();
+  assert.deepEqual(readJSON(path.join(f.home, 'config/thresholds.json')), { mine: 1, gate: { size: { small: 0.5 } } });
+  assert.deepEqual(readJSON(path.join(f.home, 'defaults/thresholds.json')), readJSON(path.join(f.repo, 'config/thresholds.json')));
+  assert.equal(fs.readFileSync(path.join(f.home, 'defaults/settings-help.json'), 'utf8'), '{"profile":"help"}\n');
+  assert.ok(f.logs.some(line => line.includes('Removed 2 unchanged threshold values')));
+  // After the one-time migration nothing is pruned again: a value the user writes stays, even when it
+  // equals the old or the new shipped value, and identical reinstalls keep it too.
+  write(path.join(f.home, 'config/thresholds.json'), JSON.stringify({ mine: 1, save: 75 }));
+  write(path.join(f.repo, 'config/thresholds.json'), JSON.stringify({ save: 80 }));
+  f.run();
+  assert.deepEqual(readJSON(path.join(f.home, 'config/thresholds.json')), { mine: 1, save: 75 });
+  write(path.join(f.home, 'config/thresholds.json'), JSON.stringify({ save: 80 }));
+  f.run(); f.run();
+  assert.deepEqual(readJSON(path.join(f.home, 'config/thresholds.json')), { save: 80 });
+});
+
+test('stale threshold and help leftovers from older installs are removed, user files are not', t => {
+  const f = fixture(t);
+  write(path.join(f.repo, 'config/settings-help.json'), '{"profile":"help"}\n');
+  f.run();
+  // Simulate an older install that recorded a .new and a config help copy in its manifest.
+  const manifestFile = path.join(f.home, 'install-manifest.json');
+  const manifest = readJSON(manifestFile);
+  const staleNew = path.join(f.home, 'config/thresholds.json.new');
+  const staleHelp = path.join(f.home, 'config/settings-help.json');
+  const userNew = path.join(f.home, 'config/settings-help.json.new');
+  write(staleNew, '{}'); write(staleHelp, '{}'); write(userNew, 'mine');
+  manifest.files.push({ path: staleNew, kind: 'config' }, { path: staleHelp, kind: 'config' });
+  write(manifestFile, JSON.stringify(manifest));
+  f.run(['--dry-run']);
+  assert.ok(fs.existsSync(staleNew) && fs.existsSync(staleHelp));
+  f.run();
+  assert.equal(fs.existsSync(staleNew), false);
+  assert.equal(fs.existsSync(staleHelp), false);
+  assert.equal(fs.readFileSync(userNew, 'utf8'), 'mine');
+});
+
+test('a threshold file that cannot be compared is left alone', t => {
+  const f = fixture(t);
+  f.run();
+  write(path.join(f.home, 'config/thresholds.json'), '{broken');
+  f.run();
+  assert.equal(fs.readFileSync(path.join(f.home, 'config/thresholds.json'), 'utf8'), '{broken');
+  write(path.join(f.home, 'config/thresholds.json'), '[1]');
+  f.run();
+  assert.equal(fs.readFileSync(path.join(f.home, 'config/thresholds.json'), 'utf8'), '[1]');
+});
+
+test('a busy threshold file postpones the one-time migration and the shipped thresholds copy together', t => {
+  const f = fixture(t);
+  f.run();
+  fs.rmSync(path.join(f.home, 'defaults/thresholds.json'));
+  const user = path.join(f.home, 'config/thresholds.json');
+  write(user, JSON.stringify({ save: 75, mine: 1 }));
+  // A live lock held by this process makes the migration report busy.
+  write(user + '.lock', JSON.stringify({ pid: process.pid, nonce: 'held' }));
+  f.run();
+  assert.deepEqual(readJSON(user), { save: 75, mine: 1 });
+  assert.equal(fs.existsSync(path.join(f.home, 'defaults/thresholds.json')), false);
+  assert.ok(f.logs.some(line => line.includes('Skip pruning')));
+  fs.rmSync(user + '.lock');
+  f.run();
+  assert.deepEqual(readJSON(user), { mine: 1 });
+  assert.ok(fs.existsSync(path.join(f.home, 'defaults/thresholds.json')));
 });
