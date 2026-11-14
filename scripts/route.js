@@ -370,7 +370,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
 }
 
 /** Compact context contains only registry labels, validated enums and fixed punctuation. */
-function formatTable(result) {
+/** Session hooks pass { ladder: false }: the ladder matters only after a failure, and the rules send the boss to `route` then. */
+function formatTable(result, { ladder: withLadder = true } = {}) {
   const lines = result.note ? [result.note] : [];
   const valid = item => item && TIERS.includes(item.tier) && CATEGORIES.includes(item.category)
     && (['self', 'reviewer', 'opus-worker', 'sonnet-worker', 'researcher', 'haiku-worker', 'codex-worker', 'codex-subagent', 'claude-worker', 'gpt-advisor', 'researcher (manual)'].includes(item.via)
@@ -378,7 +379,7 @@ function formatTable(result) {
     && (item.effort === null || EFFORTS.includes(item.effort))
     && typeof item.model === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(item.model);
   const format = item => {
-    const ladder = (Array.isArray(item.ladder) ? item.ladder : []).slice(0, 3);
+    const ladder = withLadder && Array.isArray(item.ladder) ? item.ladder.slice(0, 3) : [];
     const chain = ladder.map((s, i) => sanitizeLabel(s.label) + (i && s.model === ladder[i - 1].model ? '+' : '')).join('>');
     return item.category + '=' + sanitizeLabel(item.label) + '(' + item.via + (item.effort ? ',' + item.effort : '')
       + (item.cliModel && item.via.startsWith('cli-worker:') || ['codex-subagent', 'codex-worker', 'gpt-advisor', 'claude-worker'].includes(item.via) ? ',model=' + item.model : '') + ')'

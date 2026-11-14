@@ -208,6 +208,7 @@ test('prompt prints one line initially and routing only on a subsequent mode cha
   assert.doesNotMatch(other.stdout, /mode changed/);
   const changed = invoke(prompt.main, input());
   assert.match(changed.stdout, /\[quota-boss\] mode changed -> claude-save\. New routing:\ncritical:/);
+  assert.doesNotMatch(changed.stdout.split('\n').filter(line => /^(critical|normal|trivial):/.test(line)).join('\n'), />/); // prompt tables leave out the ladder
   assert.equal(lib.readState().sessions['session-1'].mode, 'save');
   const stable = invoke(prompt.main, input());
   assert.equal(stable.stdout.trim().split('\n').length, 1);
@@ -248,7 +249,7 @@ test('session and changed-mode prompt use learned exclusions and preserve sample
   const first = start(input());
   const table = first.stdout.split('\n').filter(line => /^(critical|normal|trivial):/.test(line)).join('\n');
   assert.doesNotMatch(table, /Opus 5\.5/);
-  assert.match(table, />/);
+  assert.doesNotMatch(table, />/); // session tables leave out the ladder
   invoke(prompt.main, input());
   const state = lib.readState();
   assert.equal(state.history.codex.length, 1);
@@ -351,7 +352,7 @@ test('Codex session prints only the exact table and limits, with stdin model fir
     const quota = lib.readProviderLimits(config.providers, { claude: state.claude, codex: lib.readCodexLimits(now, config.thresholds) }, now);
     const expected = require('../scripts/route').formatTable(require('../scripts/route').route({ ...config, ...p, bossModel: 'hook-model',
       bossEffort: lib.currentBossEffort(p, state, 'hook-model'), size: config.thresholds.gate?.defaultSize ?? 'medium', limits: quota,
-      history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }));
+      history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }), { ladder: false });
     assert.equal(result.stdout, expected + '\n' + lib.formatLimits(quota, p.profile, config.thresholds, now, config.providers) + '\n');
     assert.match(result.stdout, /boss model hook-model/);
     assert.equal(result.stderr, '');

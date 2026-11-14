@@ -147,3 +147,26 @@ test('core delegation instructions survive every host and terse mode', () => {
     }
   }
 });
+
+test('session tables leave out the ladder and the rules say where to find it', () => {
+  const { formatTable } = require('../scripts/route');
+  const row = { tier: 'normal', category: 'implementation', label: 'Sol', via: 'codex-worker', effort: 'low', model: 'sol',
+    ladder: [{ label: 'Sol', model: 'sol' }, { label: 'Sol', model: 'sol' }, { label: 'Opus', model: 'opus' }], belowThreshold: true };
+  assert.equal(formatTable({ rows: [row] }), 'normal: implementation=Sol(codex-worker,low,model=sol)[Sol>Sol+>Opus][below threshold]');
+  assert.equal(formatTable({ rows: [row] }, { ladder: false }), 'normal: implementation=Sol(codex-worker,low,model=sol)[below threshold]');
+  for (const host of ['claude-code', 'codex', 'generic']) {
+    const text = hosts.rules(host).replace(/\s+/g, ' ');
+    assert.ok(text.includes("`route` also shows each row's ladder"), host);
+    assert.ok(text.includes('On a failed check, run `route` and escalate one ladder step'), host);
+  }
+});
+
+test('each host keeps its own worker line and the shared lines beside it', () => {
+  const claude = hosts.rules('claude-code'), codex = hosts.rules('codex'), generic = hosts.rules('generic');
+  assert.ok(claude.includes('- Claude Code host:') && !claude.includes('- Codex host:'));
+  for (const text of [codex, generic]) assert.ok(text.includes('- Codex host:') && !text.includes('- Claude Code host:'));
+  for (const text of [claude, codex, generic]) {
+    assert.match(text, /^   - `cli-worker:<provider>`: pass the provider id/m);
+    assert.match(text, /^   Two workers on the same files each need a copy/m);
+  }
+});

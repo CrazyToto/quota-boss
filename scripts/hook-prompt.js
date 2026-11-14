@@ -31,7 +31,7 @@ function main() {
     const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
     const mode = lib.computeModes(limits, config.thresholds, now, config.providers).mode;
     const lines = [...(config.warning ? [config.warning] : []), lib.formatLimits(limits, project.profile, config.thresholds, now, config.providers)];
-    const table = previousPool => { const bossModel = lib.currentBossModel(project, state); return formatTable(route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now, previousPool })); };
+    const table = previousPool => { const bossModel = lib.currentBossModel(project, state); return formatTable(route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now, previousPool }), { ladder: false }); };
     let tableShown = false;
     if (typeof input?.session_id === 'string' && input.session_id.length > 0 && input.session_id.length <= 256) {
       lib.updateState(current => {

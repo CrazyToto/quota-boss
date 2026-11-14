@@ -24,7 +24,7 @@ function main() {
     const state = lib.readState();
     const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
     const bossModel = lib.cleanModelId(codexHost ? input?.model : input?.model?.id ?? input?.model) ?? lib.currentBossModel(project, state);
-    let table = formatTable(route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now }));
+    let table = formatTable(route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now }), { ladder: false });
     if (codexHost) {
       const warning = config.warning ? config.warning + '\n' : '';
       const output = warning + table + '\n' + lib.formatLimits(limits, project.profile, config.thresholds, now, config.providers) + '\n';
