@@ -4,6 +4,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-14
+
 ### Added
 
 - Parallel worker copies with `quota-boss worktree add|list|merge|remove|clean`, runner `--cwd` and optional handover `WORKDIR:`.
