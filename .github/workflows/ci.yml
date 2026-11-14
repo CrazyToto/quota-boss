@@ -23,7 +23,7 @@ jobs:
           package-manager-cache: false
       - name: Check syntax
         shell: bash
-        run: for f in bin/*.js install.js scripts/*.js test/*.js; do node --check "$f" || exit 1; done
+        run: for f in bin/*.js install.js scripts/*.js tools/*.js test/*.js; do node --check "$f" || exit 1; done
       - run: node --test
       - name: Packed install lifecycle
         shell: bash

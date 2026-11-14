@@ -21,3 +21,10 @@ Thanks for helping! The most valuable contributions right now:
 
 Host adapters and local diagnostics are specified in [docs/HOSTS.md](docs/HOSTS.md). Add fixture-based
 tests for new output formats; keep doctor tests on fake CLI responses and reserve quota probes for explicit `--probe`.
+
+## Changelog entries
+
+Record each change with `node tools/release.js add patch Fixed "Describe the change."`.
+Choose patch, minor or major and a Keep a Changelog section; commit the generated `.changeset/*.md`.
+Use `node tools/release.js status` to preview the next version and `node tools/release.js version --dry-run`
+to preview release notes. Run `node tools/release.js version` to prepare the release.
