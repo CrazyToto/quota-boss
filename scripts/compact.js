@@ -7,10 +7,12 @@ function compact(text) {
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').split(/\r?\n/).map(l => l.slice(0, 500));
   const failures = [], summaries = [];
   let error = -1;
-  const fail = /^\s*(?:not ok\b|FAIL\b|FAILED\b|FAIL:|--- FAIL:|[×✕❯●]\s|(?:.*\s)?FAILED\b|failures:)/i;
-  const summary = /^(?:\[quota-boss\] (?:Check|Reused)|# (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)\b|\s*(?:Test Suites:|Tests:|Test Files\s|Duration\s|Time:|test result:|=+.*(?:failed|passed|error)|Found \d+ errors?|\d+ (?:passed|failed)|✖ \d+ problems)|(?:ok|FAIL)\s+\S+\s+(?:[\d.]+s|\(cached\)))/i;
+  const fail = /^\s*(?:not ok\b|FAIL\b|FAILED\b|FAIL:|--- FAIL:|[×✕✖❯●]\s|(?:.*\s)?FAILED\b|failures:)/i;
+  const summary = /^(?:\[quota-boss\] (?:Check|Reused|Feedback|Could not record)|[#ℹ] (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)\b|\s*(?:Test Suites:|Tests:|Test Files\s|Duration\s|Time:|test result:|=+.*(?:failed|passed|error)|Found \d+ errors?|\d+ (?:passed|failed)|✖ \d+ problems)|(?:ok|FAIL)\s+\S+\s+(?:[\d.]+s|\(cached\)))/i;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    // A passing test whose name says "failed" is not a failure.
+    if (/^\s*(?:✔|ok\s)/.test(line)) { if (summary.test(line)) summaries.push(i); continue; }
     if (/^\s*\d+:\d+\s+(?:error|warning)\b/.test(line) || fail.test(line) || /\.(?:[cm]?[jt]sx?|py|rs|go)[:(]\d+.*(?:error|warning)/i.test(line)) failures.push(i);
     if (summary.test(line)) summaries.push(i);
     if (error < 0 && (/^\s*\d+:\d+\s+error\b/.test(line) || /\.go:\d+:/.test(line) || /(?:\b(?:\w*Error|error(?:\[E\d+\])?):|AssertionError|Assertion failed|Expected:|error TS\d+|^E\s|^panic:|^\s*error\s)/.test(line))) error = i;

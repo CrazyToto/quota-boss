@@ -36,3 +36,19 @@ test('compact keeps verify verdicts and reused evidence among noise', () => {
   for (const line of lines) assert.ok(output.split('\n').includes(line), line);
   assert.ok(output.split('\n').length <= 40);
 });
+
+test('compact keeps node spec reporter counts and the feedback line on a pass', () => {
+  const input = ['✔ adds (1ms)', 'ℹ tests 16', 'ℹ suites 0', 'ℹ pass 16', 'ℹ fail 0', 'ℹ duration_ms 616.9',
+    '[quota-boss] Check passed.', '[quota-boss] Feedback recorded: claude-opus-5-5 pass.'].join('\n');
+  const output = compact(input);
+  for (const text of ['ℹ tests 16', 'ℹ pass 16', 'ℹ fail 0', 'Check passed.', 'Feedback recorded']) assert.ok(output.includes(text), text);
+  assert.ok(!output.includes('✔ adds'));
+});
+
+test('passing tests named after failures are not reported, real node spec failures are', () => {
+  const input = ['✔ a failed login check is never reported (2ms)', '  ✔ HTTP 400 FAILED path (1ms)', 'ok 3 - failed input is rejected',
+    '✖ parser rejects input (3ms)', '  AssertionError [ERR_ASSERTION]: expected 1', 'ℹ tests 4', 'ℹ fail 1'].join('\n');
+  const output = compact(input);
+  assert.ok(!output.includes('login check') && !output.includes('HTTP 400') && !output.includes('ok 3'), output);
+  for (const text of ['✖ parser rejects input', 'AssertionError', 'ℹ fail 1']) assert.ok(output.includes(text), text);
+});

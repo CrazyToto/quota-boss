@@ -215,4 +215,13 @@ test('route filtering and explain show every candidate with metrics and a decisi
     ['route', '--explain', '--explain'], ['route', 'review', 'normal', 'extra']]) assert.equal(command(args).status, 1);
 });
 
+test('feedback accepts a unique table label and refuses an unknown one', () => {
+  const command = args => invoke(require('../scripts/quota-boss').main, '', args);
+  const ok = command(['feedback', 'GPT-6-Sol', 'implementation', 'normal', 'pass']);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /Feedback recorded: gpt-6-sol implementation normal pass/);
+  assert.equal(lib.readOutcomes().at(-1).model, 'gpt-6-sol');
+  assert.equal(command(['feedback', 'GPT-9-Nope', 'implementation', 'normal', 'pass']).status, 1);
+});
+
 });

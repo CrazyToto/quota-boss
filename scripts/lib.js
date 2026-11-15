@@ -1310,7 +1310,8 @@ function shellCommand(args, platform = process.platform) {
   const quote = platform === 'win32' ? a => '"' + a.replace(/"/g, '\\"') + '"' : a => "'" + a.replace(/'/g, "'\\''") + "'";
   return args.map(a => a !== '' && plain.test(a) ? a : quote(a)).join(' ');
 }
-async function verifyCommand(args) {
+/** onRun(code) runs only when the command really ran, so a reused pass is never logged twice. */
+async function verifyCommand(args, onRun) {
   const fresh = args[0] === '--fresh';
   const rest = fresh ? args.slice(1) : args;
   if (rest[0] !== '--' || !rest.slice(1).join(' ').trim()) throw new Error('Usage: quota-boss verify [--fresh] -- <command...>');
@@ -1348,5 +1349,6 @@ async function verifyCommand(args) {
   }
   // A pipe through compact.js hides the exit code, so the result is also a line it keeps.
   process.stdout.write(code === 0 ? '[quota-boss] Check passed.\n' : '[quota-boss] Check failed with exit code ' + code + '.\n');
+  if (onRun) onRun(code);
   return code;
 }

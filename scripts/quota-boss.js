@@ -17,7 +17,7 @@ const { route, formatTable, formatExplain } = require('./route');
 const USAGES = {
   'worktree': 'worktree add|list|merge|remove|clean [<name>] [--force]',
   'graph': 'graph <explain|affected|path> <name> [<name>]',
-  'verify': 'verify [--fresh] -- <command...>',
+  'verify': 'verify [--fresh] [--log <model> <category> <tier> [--effort <level>]] -- <command...>',
   'setup': 'setup',
   'context': 'context',
   'handoff': 'handoff save|list|show [<name>]',
@@ -341,8 +341,14 @@ function providerCommand(command, rest) {
 }
 
 function resolveModel(registry, name) {
+  if (Object.hasOwn(registry, name)) return name;
   const ofProvider = Object.keys(registry).filter(id => registry[id]?.pool === name);
-  return Object.hasOwn(registry, name) ? name : ofProvider.length === 1 ? ofProvider[0] : null;
+  if (ofProvider.length === 1) return ofProvider[0];
+  // The table shows labels such as "Opus 5.5" and Claude knows its alias "opus"; accept one that fits exactly one model.
+  const word = text => String(text ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const byLabel = word(name) ? Object.keys(registry).filter(id => [registry[id]?.label, registry[id]?.agentModel]
+    .some(alias => alias && word(alias) === word(name))) : [];
+  return byLabel.length === 1 ? byLabel[0] : null;
 }
 
 /** Execute a project CLI command and return human-readable output; invalid input throws. */
@@ -516,10 +522,41 @@ function run(args = process.argv.slice(2)) {
     + (command === 'on' && project.host === 'codex' && lib.loadConfig().providers.providers.claude?.enabled !== false ? '\nWarning: ' + providerHelp.SCRIPTED_CLAUDE_WARNING : '');
 }
 
+/** `verify --log <model> <category> <tier> [--effort <level>]` records the check's pass or fail as feedback. */
+function verifyLog(args) {
+  const fresh = args[0] === '--fresh' ? ['--fresh'] : [];
+  const rest = args.slice(fresh.length);
+  if (rest[0] !== '--log') return { args };
+  const effortGiven = rest[4] === '--effort';
+  // Categories and tiers never share a word, so either order is unambiguous.
+  const [, name, first, second] = rest, effort = effortGiven ? rest[5] : undefined;
+  const [category, tier] = lib.TIERS.includes(first) ? [second, first] : [first, second];
+  const after = rest.slice(effortGiven ? 6 : 4);
+  if (!name || !lib.CATEGORIES.includes(category) || !lib.TIERS.includes(tier)
+    || effortGiven && !lib.EFFORT_ORDER.includes(effort) || after[0] !== '--') throw new Error(usage('verify'));
+  const config = lib.loadConfig();
+  const model = resolveModel(config.models.models, name) ?? name;
+  const cache = lib.readCodexModels(true);
+  if (!Object.hasOwn(config.models.models, model) && !cache.some(m => m?.slug === model)) {
+    throw new Error('Unknown model for --log: pass a model id or a label from the table.');
+  }
+  const log = code => {
+    const result = code === 0 ? 'pass' : 'fail';
+    try {
+      lib.appendOutcome({ model, category, tier, result, effort }, config.models, cache);
+      process.stdout.write('[quota-boss] Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + result + '.\n');
+    } catch (error) { process.stderr.write('[quota-boss] Could not record feedback: ' + error.message + '\n'); }
+  };
+  return { args: [...fresh, ...after], log };
+}
+
 /** Run the CLI, reporting bad input with exit status one. */
 function main() {
   if (process.argv[2] === 'verify') {
-    lib.verifyCommand(process.argv.slice(3)).then(code => { process.exitCode = code; }, error => {
+    let args = process.argv.slice(3), log;
+    try { ({ args, log } = verifyLog(args)); }
+    catch (error) { process.stderr.write('quota-boss: ' + error.message + '\n'); process.exitCode = 1; return; }
+    lib.verifyCommand(args, log).then(code => { process.exitCode = code; }, error => {
       process.stderr.write('quota-boss: ' + error.message + '\n'); process.exitCode = 1;
     });
     return;

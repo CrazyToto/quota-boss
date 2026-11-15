@@ -125,3 +125,30 @@ test('split node -e arguments execute and print a stdout verdict for success and
     assert.equal(r.stderr,'');
   }
 });
+
+test('--log records pass and fail once per real run, resolves table labels and never logs a reuse', t => {
+  const f=fixture(t);
+  const outcomes=path.join(f.env.QUOTA_BOSS_HOME,'outcomes.jsonl');
+  const run=(extra,cmd=f.command,env={})=>child.spawnSync(process.execPath,[cli,'verify',...extra,'--',cmd],{cwd:f.repo,env:{...f.env,...env},encoding:'utf8'});
+  const lines=()=>fs.existsSync(outcomes)?fs.readFileSync(outcomes,'utf8').trim().split('\n').filter(Boolean).map(l=>JSON.parse(l)):[];
+  let r=run(['--log','Opus 5.5','implementation','normal']);
+  assert.equal(r.status,0,r.stderr); assert.match(r.stdout,/Check passed\.\n\[quota-boss\] Feedback recorded: claude-opus-5-5 pass\./);
+  assert.deepEqual(lines().map(o=>[o.model,o.category,o.tier,o.result]),[['claude-opus-5-5','implementation','normal','pass']]);
+  r=run(['--log','claude-opus-5-5','implementation','normal']);
+  assert.match(r.stdout,/Reused:/); assert.doesNotMatch(r.stdout,/Feedback/); assert.equal(lines().length,1);
+  r=run(['--fresh','--log','opus','normal','implementation']);
+  assert.match(r.stdout,/Feedback recorded: claude-opus-5-5 pass./); assert.deepEqual([lines().at(-1).category,lines().at(-1).tier],['implementation','normal']);
+  r=run(['--fresh','--log','gpt-6.1-sol','implementation','normal','--effort','high'],f.command,{FAIL_VERIFY:'1'});
+  assert.equal(r.status,7); assert.match(r.stdout,/Feedback recorded: gpt-6\.1-sol fail\./);
+  assert.deepEqual(lines().at(-1).effort,'high'); assert.equal(lines().at(-1).result,'fail');
+});
+
+test('--log rejects bad arguments before executing anything', t => {
+  const f=fixture(t);
+  for (const extra of [['--log'],['--log','Opus 5.5','implementation'],['--log','Opus 5.5','bogus','normal'],['--log','Opus 5.5','implementation','NORMAL'],
+    ['--log','no-such-model','implementation','normal'],['--log','Opus 5.5','implementation','normal','--effort','huge'],['--log','Opus 5.5','implementation','normal','extra']]) {
+    const r=child.spawnSync(process.execPath,[cli,'verify',...extra,'--',f.command],{cwd:f.repo,env:f.env,encoding:'utf8'});
+    assert.equal(r.status,1,extra.join(' ')); assert.match(r.stderr,/Usage:|Unknown model/);
+  }
+  assert.equal(f.count(),0); assert.ok(!fs.existsSync(path.join(f.env.QUOTA_BOSS_HOME,'outcomes.jsonl')));
+});

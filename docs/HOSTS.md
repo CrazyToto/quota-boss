@@ -104,7 +104,8 @@ before activation so interrupted installs can be uninstalled.
 ## Local CLI use
 
 `quota-boss verify [--fresh] -- <command...>` reuses passing test evidence for the same Git revision
-for six hours (up to 50 entries); `--fresh` forces a run.
+for six hours (up to 50 entries); `--fresh` forces a run. `--log <model> <category> <tier> [--effort <level>]`
+records the run's pass or fail as feedback, so no separate `feedback` call is needed; a reused pass is not logged again.
 Run `quota-boss set short-answers on` for shorter answers.
 
 Set `QUOTA_BOSS_HOME` to override `~/.claude/quota-boss`. Deprecated `HARNESS_HOME` remains a user environment fallback. Project files in the checkout are ignored.
