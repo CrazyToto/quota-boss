@@ -78,7 +78,14 @@ function weighted(pool, tokens, thresholds = {}) {
     return sum + number(tokens[key]) * (Number.isFinite(override) && override >= 0 ? override : fallback);
   }, 0);
 }
+// Models with no public price, billed like a listed model (docs/BENCHMARKS.md does the same).
+const PRICED_AS = { 'codex-auto-review': 'gpt-6.1-sol' };
+function priceModel(model, config) {
+  const models = config.models?.models || {};
+  return !Object.hasOwn(models, model) && Object.hasOwn(PRICED_AS, model) ? PRICED_AS[model] : model;
+}
 function price(model, config) {
+  model = priceModel(model, config);
   const cost = Object.hasOwn(config.models?.models || {}, model) ? config.models.models[model]?.cost : undefined;
   return Number.isFinite(cost) && cost >= 0 ? cost : 1;
 }
@@ -283,7 +290,7 @@ function formatReport(data, options) {
       + Math.abs(change).toFixed(1) + '% ' + (change >= 0 ? 'more' : 'less') + ' than actual');
     lines.push('rough estimate, same token count assumed');
   }
-  const unknown = [...new Set(jobs.map(j => j.model))].filter(model => !Object.hasOwn(options.config.models?.models || {}, model)).sort();
+  const unknown = [...new Set(jobs.map(j => j.model))].filter(model => !Object.hasOwn(options.config.models?.models || {}, priceModel(model, options.config))).sort();
   if (unknown.length) lines.push('Unknown models (cost 1): ' + unknown.slice(0, 5).map(lib.sanitizeLabel).join(', ') + (unknown.length > 5 ? ', ...' : ''));
   lines.push(footer);
   return lines.join('\n');
@@ -297,4 +304,4 @@ function savings(options = {}) {
 }
 
 module.exports = { MAX_BYTES, MAX_FILES, DEFAULT_WEIGHTS, parseArgs, encodedProject, sameProject, reader, jsonLines,
-  duration, weighted, price, claudeJob, codexJob, windowDelta, windowUse, collect, median, formatReport, savings };
+  duration, weighted, PRICED_AS, price, claudeJob, codexJob, windowDelta, windowUse, collect, median, formatReport, savings };

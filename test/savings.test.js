@@ -302,3 +302,11 @@ test('stale transcripts and old Codex day folders are skipped before reading', (
     assert.equal(data.jobs.length, 0);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('codex-auto-review is priced as GPT-6.1-Sol and not listed as unknown', () => {
+  const models = { models: { 'gpt-6.1-sol': { cost: 5 } } };
+  assert.equal(savings.price('codex-auto-review', { models }), 5);
+  assert.equal(savings.price('codex-auto-review', { models: { models: {} } }), 1);
+  assert.equal(savings.price('codex-auto-review', { models: { models: { 'codex-auto-review': { cost: 2 }, 'gpt-6.1-sol': { cost: 5 } } } }), 2);
+  assert.equal(savings.price('other-unlisted', { models }), 1);
+});
