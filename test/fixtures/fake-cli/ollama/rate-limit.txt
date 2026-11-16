@@ -1,0 +1,2 @@
+# scripts/provider-help.js: ollama; scripts/cli-run.js generic text/exit contract (no provider-specific output envelope or exit code documented); exit 1
+HTTP 429 too many requests

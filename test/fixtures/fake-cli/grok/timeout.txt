@@ -1,0 +1,1 @@
+# scripts/provider-help.js: grok; scripts/cli-run.js generic text/exit contract (no provider-specific output envelope or exit code documented); hang until killed

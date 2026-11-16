@@ -36,7 +36,7 @@ const USAGES = {
   'timing': 'timing <model> <category|-> <tier|-> <seconds> ok|fail',
   'boss': 'boss',
   'rules': 'rules --host <host>',
-  'doctor': 'doctor [--probe]',
+  'doctor': 'doctor [--probe|--report]',
   'tools': 'tools [install <id...>|logins]',
   'add-api': 'add-api [<preset>|<id> <provider/model> --trains <yes|no> [--free] [--budget <amount> <unit> <window>]]',
   'free-models': 'free-models <models-dev.json> [<openrouter.json>]',
@@ -49,7 +49,7 @@ const USAGES = {
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor                           check the installation\n\nSettings:\n  settings                         every setting with the command that changes it\n  set <name> <value>               change one setting, e.g. set profile frugal\n  explain <setting>                what a setting does and when to choose it\n\nProviders and models:\n  use                              list subscriptions, free offers and models\n  use <id> on|off                  switch one provider or model\n  only <id...>|off                 allow only these providers\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  free-models <files>              check free offers against models.dev/OpenRouter lists\n  local on <model>|off             use a local model through Ollama\n  providers, models, tools         details on providers, rated models and CLIs\n  worktree add|merge|clean <name>  separate copies for parallel workers\n\nReports:\n  route                            which model gets which kind of job right now\n  savings                          what delegation saved\n  stats                            jobs and results per model\n  context                          size of this session\n  boss                             which model suits you as boss\n\nAdd --project to use, only and cap to change this project only.';
+const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--probe|--report]        check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting with the command that changes it\n  set <name> <value>               change one setting, e.g. set profile frugal\n  explain <setting>                what a setting does and when to choose it\n\nProviders and models:\n  use                              list subscriptions, free offers and models\n  use <id> on|off                  switch one provider or model\n  only <id...>|off                 allow only these providers\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  free-models <files>              check free offers against models.dev/OpenRouter lists\n  local on <model>|off             use a local model through Ollama\n  providers, models, tools         details on providers, rated models and CLIs\n  worktree add|merge|clean <name>  separate copies for parallel workers\n\nReports:\n  route                            which model gets which kind of job right now\n  savings                          what delegation saved\n  stats                            jobs and results per model\n  context                          size of this session\n  boss                             which model suits you as boss\n\nAdd --project to use, only and cap to change this project only.';
 const WORKER_NAMES = { codex: 'codex-tasks', gpt: 'gpt-reviews', perplexity: 'perplexity' };
 const SET_NAMES = { profile: 'profile', 'short-answers': 'terse', rules: 'rules', consensus: 'consensus', training: 'allow-training', 'codex-tasks': 'workers', 'gpt-reviews': 'workers', perplexity: 'workers', statusline: 'statusline', context: 'context' };
 
@@ -389,8 +389,8 @@ function run(args = process.argv.slice(2)) {
     return hosts.rules(hosts.checkHost(rest[1]), lib.findProjectConfig());
   }
   if (command === 'doctor') {
-    if (rest.length > 1 || rest.length && rest[0] !== '--probe') throw new Error(usage(command));
-    return diagnostics.doctor(rest.length === 1);
+    if (rest.length > 1 || rest.length && !['--probe', '--report'].includes(rest[0])) throw new Error(usage(command));
+    return rest[0] === '--report' ? diagnostics.report() : diagnostics.doctor(rest.length === 1);
   }
   if (command === 'setup') return setupWizard.setup(rest, run);
   if (command === 'handoff') return context.handoffCommand(rest, lib.findProjectConfig());

@@ -1,0 +1,2 @@
+# scripts/provider-help.js: copilot; scripts/cli-run.js generic text/exit contract (no provider-specific output envelope or exit code documented); exit 130 convention
+Cancelled

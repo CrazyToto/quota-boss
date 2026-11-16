@@ -67,7 +67,8 @@ everything again. Run the first command again to update.
    did what.
 
 The step-by-step guide is in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md). If something looks wrong, run
-`quota-boss doctor`: it lists each problem with its fix and spends no quota.
+`quota-boss doctor`: it lists each problem with its fix and spends no quota. To report a bug, paste the output of `quota-boss doctor --report` into the issue: it lists versions,
+providers, self-tests and failure counts, never paths, names or keys.
 
 ## Commands
 

@@ -232,6 +232,67 @@ function doctor(probe = false, options = {}) {
   lines.push(problems ? problems + ' problem(s) found.' : 'No problems found.');
   return lines.join('\n');
 }
+
+/** Issue-safe report: never include arbitrary config labels, CLI output or journal text. */
+function redactReport(text, env = process.env) {
+  const os = require('node:os');
+  const privateValues = [os.homedir(), os.hostname()];
+  try { privateValues.push(os.userInfo().username); } catch {}
+  for (const [key, value] of Object.entries(env)) if (/key|token|secret|password|credential|session|user|home|host|project/i.test(key) && value.length >= 4) privateValues.push(value);
+  for (const value of privateValues.filter(Boolean).sort((a, b) => b.length - a.length)) text = text.split(value).join('<redacted>');
+  return text.replace(/\b(?:Bearer\s+\S+|(?:sk|ghp|github_pat)[-_][\w-]+)/gi, '<redacted>')
+    .replace(/((?:api[_ -]?key|token|secret|password|session[_ -]?id)\s*[=:]\s*)\S+/gi, '$1<redacted>')
+    .replace(/[\w.+-]+@[\w.-]+/g, '<redacted>')
+    .replace(/(?:[A-Za-z]:[\\/]|\\\\|\/)[^\r\n]*/g, '<redacted>');
+}
+function report(options = {}) {
+  const now = options.now ?? Date.now(), env = options.env || process.env;
+  const project = lib.normalizeProject((options.findProjectConfig || lib.findProjectConfig)());
+  const config = (options.loadConfig || lib.loadConfig)(project);
+  const state = (options.readState || lib.readState)();
+  const platform = options.platform || process.platform;
+  const find = options.findExecutable || (name => lib.findExecutable(name, env, platform));
+  const shipped = name => lib.readJson(path.join(__dirname, '..', 'defaults', name + '.json'), null)
+    || lib.readJson(path.join(__dirname, '..', 'config', name + '.json'), {});
+  const known = shipped('providers').providers || {};
+  const models = shipped('models').models || {};
+  // install.js copies scripts and defaults, but does not copy package.json.
+  const packageVersion = version(lib.readJson(path.join(__dirname, '..', 'package.json'), {}).version) || 'unknown';
+  const customModels = new Map();
+  let customProvider = 0;
+  const lines = ['quota-boss ' + packageVersion, 'Node ' + process.versions.node,
+    'OS ' + platform + ' ' + process.arch,
+    'Hosts detected: ' + ['claude', 'codex'].filter(id => find(id)).map(id => id === 'claude' ? 'claude-code' : id).join(', ').replace(/^$/, 'none'),
+    'Boss mode: ' + (project.enabled ? 'on' : 'off') + '; profile=' + project.profile + '; rules=' + project.rules];
+  for (const [id, provider] of Object.entries(config.providers.providers)) {
+    // Custom identifiers can contain personal data; retain their count, not their names.
+    const safeId = Object.hasOwn(known, id) ? id : 'custom-provider-' + ++customProvider;
+    const command = provider.cli?.command || (['claude', 'codex'].includes(id) ? id : null);
+    const executable = command && find(command);
+    let cliVersion;
+    if (executable) {
+      const result = lib.runExecutable(executable, ['--version'], { platform, env, spawnSync: options.spawnSync || child.spawnSync, encoding: 'utf8', timeout: 1000, maxBuffer: 65536 });
+      if (!result.error && result.status === 0) cliVersion = version(result.stdout);
+    }
+    const tests = Object.entries(config.models.models).filter(([, model]) => model.pool === id).map(([key]) => state.selfTests?.[key]).filter(Boolean);
+    const passed = tests.filter(value => value.result === 'pass');
+    const evidence = passed.some(value => Number.isFinite(value.at) && value.at <= now && value.at >= now - 7 * 86400000) ? 'pass' : passed.length ? 'stale' : 'none';
+    lines.push(safeId + ': enabled=' + (provider.enabled !== false ? 'yes' : 'no') + '; CLI found=' + (executable ? 'yes' : 'no') + '; version=' + (cliVersion || 'unavailable') + '; self-test=' + evidence);
+  }
+  const counts = new Map();
+  for (const entry of (options.readOutcomes || lib.readOutcomes)(now, { history: { outcomeDays: 7 } })) {
+    if (entry.t < now - 7 * 86400000 || entry.t > now || !['fail', 'limited', 'unavailable'].includes(entry.result)) continue;
+    if (!Object.hasOwn(models, entry.model) && !customModels.has(entry.model)) customModels.set(entry.model, 'custom-model-' + (customModels.size + 1));
+    const model = Object.hasOwn(models, entry.model) ? entry.model : customModels.get(entry.model);
+    const key = model + ' ' + entry.result;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  lines.push('Feedback failure classes (last 7 days):');
+  for (const [key, count] of [...counts].sort()) lines.push(key + ': ' + count);
+  if (!counts.size) lines.push('none');
+  return redactReport(lines.join('\n'), env);
+}
+
 function stats(days = 30, now = Date.now()) {
   const config = lib.loadConfig();
   const records = lib.readOutcomes(now, { history: { outcomeDays: Math.min(90, days) } }).filter(e => e.t >= now - days * 86400000);
@@ -279,4 +340,4 @@ function stats(days = 30, now = Date.now()) {
   if (!records.length) lines.push('No recorded outcomes.');
   return lines.join('\n');
 }
-module.exports = { doctor, stats, version, older, openCodeOffers };
+module.exports = { report, redactReport, doctor, stats, version, older, openCodeOffers };
