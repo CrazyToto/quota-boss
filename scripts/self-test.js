@@ -14,11 +14,13 @@ function validSelfTest(test, cli) {
     && test.cli.package?.size === cli.package?.size && test.cli.package?.mtimeMs === cli.package?.mtimeMs);
 }
 
-function evidenceStatus(id, models = {}, selfTests = {}) {
+function evidenceStatus(id, models = {}, selfTests = {}, command = null, find = lib.findExecutable) {
   const ids = Object.entries(models.models || {}).filter(([, m]) => m.pool === id && m.enabled !== false).map(([key]) => key);
-  const passed = ids.filter(key => selfTests?.[key]?.result === 'pass').length;
-  return passed ? 'self-test passed (' + passed + ' of ' + ids.length + ' models)'
-    : 'untested: quota-boss providers test ' + id;
+  const cli = command ? lib.cliFingerprint(command, find) : null;
+  const passed = ids.filter(key => selfTests?.[key]?.result === 'pass');
+  const valid = command ? passed.filter(key => validSelfTest(selfTests[key], cli)) : passed;
+  if (valid.length) return 'self-test passed (' + valid.length + ' of ' + ids.length + ' models)';
+  return passed.length ? 'self-test stale (CLI changed): quota-boss providers test ' + id : 'untested: quota-boss providers test ' + id;
 }
 function failure(result, output, correct) {
   if (result.error?.code === 'ENOENT') return 'not installed';

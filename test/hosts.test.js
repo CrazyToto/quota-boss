@@ -35,9 +35,17 @@ test.describe('hosts and diagnostics', () => {
     const ids = Object.entries(models).filter(([, m]) => m.pool === 'grok' && m.enabled !== false).map(([id]) => id);
     lib.writeState({ selfTests: Object.fromEntries(ids.map(id => [id, { result: 'pass', at: 1 }])) });
     const report = fakeDoctor(false, options);
-    assert.ok(report.includes('grok: self-test passed (' + ids.length + ' of ' + ids.length + ' models)'));
+    // Passes without a CLI fingerprint (older versions, or a CLI that has since changed) no longer count.
+    assert.ok(report.includes('grok: self-test stale (CLI changed): quota-boss providers test grok'));
     assert.doesNotMatch(report, /antigravity: untested/);
-    assert.match(cli.run(['providers']), /self-test passed/);
+    assert.match(cli.run(['providers']), /self-test stale/);
+    const { evidenceStatus } = require('../scripts/self-test');
+    const find = () => process.execPath, current = lib.cliFingerprint('grok', find);
+    const tests = Object.fromEntries(ids.map(id => [id, { result: 'pass', at: 1, cli: current }]));
+    const config = lib.loadConfig().models;
+    assert.equal(evidenceStatus('grok', config, tests, 'grok', find), 'self-test passed (' + ids.length + ' of ' + ids.length + ' models)');
+    assert.match(evidenceStatus('grok', config, tests, 'grok', () => null), /stale/);
+    assert.equal(evidenceStatus('grok', config, tests), 'self-test passed (' + ids.length + ' of ' + ids.length + ' models)');
   });
   test('doctor resolves OpenCode model templates and omits unresolved defaults', () => {
     const offer = (model, defaultModel) => ({ enabled: true, cli: { command: 'opencode', args: ['run', '-m', model], defaultModel } });

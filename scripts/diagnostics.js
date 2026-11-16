@@ -216,7 +216,7 @@ function doctor(probe = false, options = {}) {
       problem(what, 'add it to ' + fix.replace(/\.$/, ''));
     }
     for (const [id, p] of Object.entries(config.providers.providers)) if (p.enabled !== false && p.evidence === 'docs')
-      lines.push(id + ': ' + require('./self-test').evidenceStatus(id, config.models, state.selfTests));
+      lines.push(id + ': ' + require('./self-test').evidenceStatus(id, config.models, state.selfTests, p.cli?.command));
   }
   if (!probe) lines.push('Probes skipped (use --probe to spend quota).');
   else if (config) {
@@ -276,7 +276,8 @@ function report(options = {}) {
     }
     const tests = Object.entries(config.models.models).filter(([, model]) => model.pool === id).map(([key]) => state.selfTests?.[key]).filter(Boolean);
     const passed = tests.filter(value => value.result === 'pass');
-    const evidence = passed.some(value => Number.isFinite(value.at) && value.at <= now && value.at >= now - 7 * 86400000) ? 'pass' : passed.length ? 'stale' : 'none';
+    const fingerprint = command ? lib.cliFingerprint(command, find) : null;
+    const evidence = passed.some(value => require('./self-test').validSelfTest(value, fingerprint)) ? 'pass' : passed.length ? 'stale' : 'none';
     lines.push(safeId + ': enabled=' + (provider.enabled !== false ? 'yes' : 'no') + '; CLI found=' + (executable ? 'yes' : 'no') + '; version=' + (cliVersion || 'unavailable') + '; self-test=' + evidence);
   }
   const counts = new Map();

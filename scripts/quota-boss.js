@@ -81,7 +81,7 @@ function providerReport(config, limits, models = {}, selfTests = {}) {
     lines.push([id, p.kind, p.enabled !== false ? 'yes' : 'no', p.quota.source,
       usage ? values(w => usage.windows[w]?.used_percent) : '-',
       Object.entries(config.caps?.[id] ?? {}).map(([w, cap]) => w + '=' + (cap === null ? 'off' : format(cap))).join(',') || 'off',
-      usage ? values(w => usage.effective[w]?.used_percent) : '-', p.trainsOnData === true ? 'yes' : 'no', p.tos ?? 'official-cli'].join(' | ') + (p.evidence === 'docs' ? ' | ' + require('./self-test').evidenceStatus(id, models, selfTests) : ''));
+      usage ? values(w => usage.effective[w]?.used_percent) : '-', p.trainsOnData === true ? 'yes' : 'no', p.tos ?? 'official-cli'].join(' | ') + (p.evidence === 'docs' ? ' | ' + require('./self-test').evidenceStatus(id, models, selfTests, p.cli?.command) : ''));
   }
   return lines.join('\n');
 }

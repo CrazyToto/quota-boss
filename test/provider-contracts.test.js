@@ -82,7 +82,7 @@ test('doctor report contains only safe metadata and seven-day feedback counts', 
   const config = { providers: { providers: { grok: { enabled: false, cli: shipped.grok.cli }, [secrets.join(' ')]: { enabled: true } } }, models: { models: { [model]: { pool: 'grok' } } } };
   const deps = { now, env: { USERNAME: secrets[0], PROJECT_NAME: secrets[1], HOSTNAME: secrets[2], SESSION_ID: secrets[3], API_KEY: secrets[4] },
     findProjectConfig: () => ({ enabled: true, profile: 'frugal', rules: 'tiny', directory: secrets[6], name: secrets[1] }),
-    loadConfig: () => config, readState: () => ({ selfTests: { [model]: { result: 'pass', at: now, text: secrets.join(' ') } }, secret: secrets }),
+    loadConfig: () => config, readState: () => ({ selfTests: { [model]: { result: 'pass', at: now, cli: require('../scripts/lib').cliFingerprint('grok', () => process.execPath), text: secrets.join(' ') } }, secret: secrets }),
     findExecutable: name => name === 'grok' ? process.execPath : null,
     spawnSync: () => ({ status: 0, stdout: '1.2.3 ' + secrets.join(' ') }),
     readOutcomes: () => [{ t: now, model, result: 'limited', text: secrets.join(' ') }, { t: now - 8 * 86400000, model, result: 'fail' }, { t: now, model: secrets.join(' '), result: 'unavailable' }] };
