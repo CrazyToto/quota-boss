@@ -20,7 +20,10 @@ function main() {
     const config = lib.loadConfig(project, { tolerant: true });
     const now = Date.now();
     const size = parts => Buffer.byteLength(parts.filter(Boolean).join('\n')) + 1;
-    if (!codexHost && project.rules === 'tiny') {
+    // Tiny start only while Claude quota is normal: a saving boss must see the table at once to hand work down.
+    const tiny = !codexHost && project.rules === 'tiny';
+    const saving = tiny && routing.claudeSaving(config, now);
+    if (tiny && !saving) {
       const fixed = [hosts.boot(), graph.sessionText(project.directory), config.warning];
       const notes = context.sessionStartText(project, input?.source, input?.cwd, now, context.HOOK_BUDGET - size(fixed) - 1);
       process.stdout.write([...fixed, notes].filter(Boolean).join('\n') + '\n');
@@ -33,7 +36,9 @@ function main() {
       process.stdout.write(Buffer.byteLength(output) > 8000 ? warning + '[quota-boss] Run node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" route before delegating.\n' : output);
       return;
     }
-    const fixed = [hosts.rules('claude-code', project), graph.sessionText(project.directory), [limits, config.warning].filter(Boolean).join('\n')];
+    // A saving tiny project gets the full start, marked as loaded so the worker gate lets the first delegation through.
+    const rules = saving ? hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...project, rules: 'full' }) : hosts.rules('claude-code', project);
+    const fixed = [rules, graph.sessionText(project.directory), [limits, config.warning].filter(Boolean).join('\n')];
     // Above the host's limit only a short preview reaches the boss, so the table and the notes wait for the first prompt
     // when they do not fit beside the rules.
     const late = size([...fixed, table]) > context.HOOK_BUDGET;

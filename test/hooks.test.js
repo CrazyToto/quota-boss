@@ -101,6 +101,24 @@ test('tiny startup has only the six boot lines, graph, warning and existing note
   assert.equal(result.status, 0);
 });
 
+test('tiny startup falls back to the marked full start while the Claude pool is saving', t => {
+  enable({ rules: 'tiny' });
+  const context = require('../scripts/context');
+  t.mock.method(context, 'sessionStartText', () => 'previous-session notes');
+  lib.writeState({ claude: limits(80).claude });
+  const result = invoke(session.main, input());
+  assert.ok(result.stdout.startsWith(hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...lib.findProjectConfig(), rules: 'full' }) + '\n'));
+  assert.equal(result.stdout.split(hosts.RULES_LOADED).length, 2, 'marker once, table not repeated by the rules');
+  assert.match(result.stdout, /critical: architecture=/);
+  assert.match(result.stdout, /Claude 5h 80%/);
+  assert.match(result.stdout, /previous-session notes/);
+  assert.doesNotMatch(result.stdout, /Do a job yourself when it takes two tool turns/);
+  assert.equal(result.stdout.split('critical: architecture=').length, 2);
+  // The marker in the start text lets the first worker call through.
+  lib.writeState({ claude: limits(4).claude });
+  assert.ok(invoke(session.main, input()).stdout.startsWith(hosts.boot()));
+});
+
 test('default and explicit full startup preserve the original output byte for byte', t => {
   const context = require('../scripts/context'), graph = require('../scripts/graph');
   const { route, formatTable } = require('../scripts/route');
