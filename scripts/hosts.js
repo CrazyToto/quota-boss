@@ -21,7 +21,7 @@ function rules(host, project = {}) {
   try { text = lib.readBounded(path.join(__dirname, '..', 'templates', 'RULES.md'), 1024 * 1024).trim(); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (project.consensus === false) text = text.split('\n').filter(line => !line.includes('use `consensus` before deciding')).join('\n').trimEnd();
-  text = text.split('\n').filter(line => !line.includes(project.split === true ? 'Independent jobs run at the same time:' : 'Split a large job only when')).join('\n');
+  if (project.split !== true) text = text.split('\n').filter(line => !line.includes('Split a large job only when')).join('\n');
   // Each host reads only its own worker list: the other hosts' lines cost tokens in every session.
   const other = host === 'claude-code' ? '   - Codex host:' : '   - Claude Code host:';
   let skipping = false;

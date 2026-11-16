@@ -17,12 +17,12 @@ function gitClient(cwd, deps) {
   const env = deps.env || process.env, platform = deps.platform || process.platform;
   const git = (deps.findExecutable || lib.findExecutable)('git', env, platform, cwd);
   if (!git) throw fail('Git not found on the trusted PATH.');
-  return (args, directory = cwd, allowed = []) => {
+  return (args, directory = cwd, allowed = [], input) => {
     const options = lib.childProcessOptions(env, platform);
     for (const key of Object.keys(options.env)) if (GIT_ENV.test(key)) delete options.env[key];
     const result = (deps.spawnSync || childProcess.spawnSync)(git, args, {
       ...options, cwd: directory, shell: false, windowsHide: true,
-      encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+      encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, input,
     });
     if (result.error || result.status !== 0 && !allowed.includes(result.status)) {
       const first = String(result.stderr || '').trim().split(/\r?\n/)[0];
@@ -42,17 +42,23 @@ function repository(cwd, deps) {
   return { git, root, common, folder: path.join(path.dirname(root), path.basename(root) + '.qb-worktrees') };
 }
 
-function parseScope(value) {
+function parseScope(value, root) {
   return value.split(',').map(entry => {
     const normalized = entry.replace(/\\/g, '/').replace(/^(\.\/)+/, '');
     if (!normalized || /[\x00-\x1f\x7f]/.test(normalized) || normalized.startsWith('/')
       || /(^|\/)[a-z]:/i.test(normalized) || normalized.split('/').includes('..')) {
       throw fail('Invalid scope path: ' + clean(entry) + '.', 2);
     }
-    const result = path.posix.normalize(normalized);
+    let result = path.posix.normalize(normalized);
     if (result === '.' || result === './' || same(result.replace(/\/$/, ''), '.qb-plan.md')) {
       throw fail('Invalid scope path: ' + clean(entry) + '.', 2);
     }
+    let directory = normalized.endsWith('/.');
+    if (root) {
+      try { directory ||= fs.statSync(path.join(root, result)).isDirectory(); }
+      catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+    }
+    if (directory && !result.endsWith('/')) result += '/';
     return result;
   });
 }
@@ -63,7 +69,10 @@ function scopeFile(repo, name) {
 
 function readScope(repo, name) {
   try { return parseScope(fs.readFileSync(scopeFile(repo, name), 'utf8').replace(/\n$/, '').split('\n').join(',')); }
-  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw fail('Scope file for ' + name + ' is invalid: ' + scopeFile(repo, name));
+  }
 }
 
 function removeScope(repo, name) {
@@ -185,9 +194,11 @@ function merge(repo, names) {
   for (const entry of entries) {
     const { name, target, scope } = entry;
     commitCopy(repo, name, target);
+    entry.hasChanges = ahead(repo, name);
     const base = repo.git(['merge-base', 'HEAD', 'qb/' + name], repo.root).stdout.trim();
     const fields = repo.git(['diff', '--name-status', '--no-renames', '-z', base, 'qb/' + name], repo.root).stdout.split('\0');
     const files = fields.filter((field, index) => index % 2 === 1);
+    entry.newFiles = files.filter((file, index) => fields[index * 2] === 'A');
     const outside = files.filter(file => same(file, '.qb-plan.md') || scope && !scope.some(allowed => {
       const candidate = process.platform === 'win32' ? file.toLowerCase() : file;
       const rule = process.platform === 'win32' ? allowed.toLowerCase() : allowed;
@@ -201,27 +212,46 @@ function merge(repo, names) {
     for (const file of files) owners.set(process.platform === 'win32' ? file.toLowerCase() : file, name);
   }
   if (entries.length === 1 && !entries[0].scope) return mergeSingle(repo, entries[0].name);
-  const completed = [];
+  const completed = [], skipped = [];
   let staged = [];
-  for (const { name } of entries) {
+  for (const entry of entries) {
+    const { name, hasChanges } = entry;
+    if (!hasChanges) {
+      skipped.push('Nothing to merge from ' + name + '.');
+      continue;
+    }
     // Diverged merges require a clean index, even when the files are disjoint.
-    if (staged.length) repo.git(['--literal-pathspecs', 'reset', '--quiet', 'HEAD', '--', ...staged], repo.root);
+    const input = staged.join('\0') + '\0';
+    let mergeError;
     try {
-      try { repo.git(['merge', '--squash', 'qb/' + name], repo.root); }
-      finally {
-        if (staged.length) repo.git(['--literal-pathspecs', 'add', '-f', '-A', '--', ...staged], repo.root);
-      }
+      if (staged.length) repo.git(['--literal-pathspecs', 'reset', '--quiet', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'], repo.root, [], input);
+      repo.git(['merge', '--squash', 'qb/' + name], repo.root);
+    } catch (error) { mergeError = error; }
+    try {
+      if (staged.length) repo.git(['--literal-pathspecs', 'add', '-f', '-A', '--pathspec-from-file=-', '--pathspec-file-nul'], repo.root, [], input);
+    } catch (error) {
+      mergeError = mergeError ? fail(mergeError.message + '\nCould not re-add earlier changes: ' + error.message) : error;
     }
-    catch (error) {
-      const conflicts = repo.git(['diff', '--name-only', '--diff-filter=U', '-z'], repo.root).stdout.split('\0').filter(Boolean);
-      throw fail(error.message + '\nMerged copies: ' + (completed.join(', ') || 'none') + '.\nConflicted copy: ' + name
+    if (!mergeError) {
+      try { staged = repo.git(['diff', '--cached', '--name-only', '-z'], repo.root).stdout.split('\0').filter(Boolean); }
+      catch (error) { mergeError = error; }
+    }
+    if (mergeError) {
+      let conflicts = [];
+      try { conflicts = repo.git(['diff', '--name-only', '--diff-filter=U', '-z'], repo.root).stdout.split('\0').filter(Boolean); }
+      catch { /* Keep the original error even if conflict inspection fails. */ }
+      throw fail(mergeError.message + '\nMerged copies: ' + (completed.map(copy => copy.name).join(', ') || 'none') + '.\nConflicted copy: ' + name
         + '.\nConflicted files:\n' + (conflicts.slice(0, 20).map(clean).join('\n') || 'none')
-        + '\ngit reset --merge undoes the whole merge.');
+        + (completed.length ? '\nChanges from copies ' + completed.map(copy => copy.name).join(', ')
+          + ' are in the main folder (staged or unstaged).' : '')
+        + '\nNew files from completed copies:\n' + (completed.flatMap(copy => copy.newFiles).map(clean).join('\n') || 'none')
+        + '\n`git reset --merge` followed by `git clean` of the listed new files is NOT run automatically.');
     }
-    completed.push(name);
-    staged = repo.git(['diff', '--cached', '--name-only', '-z'], repo.root).stdout.split('\0').filter(Boolean);
+    completed.push(entry);
   }
-  return 'Merged ' + names.join(', ') + ' into the main folder as uncommitted changes. Run the full check once and read the diff. A failed package: send the error to its worker (same WORKDIR), then `git reset --merge` and merge again. When done: commit, then quota-boss worktree clean.';
+  return [...skipped, completed.length ? 'Merged ' + completed.map(copy => copy.name).join(', ')
+    + ' into the main folder as uncommitted changes. Run the full check once and read the diff. A failed package: send the error to its worker (same WORKDIR), then `git reset --merge` and merge again. When done: commit, then quota-boss worktree clean.'
+    : 'No copies have changes; nothing merged.'].join('\n');
 }
 
 function mergeSingle(repo, name) {
@@ -259,10 +289,17 @@ function run(argv, cwd = process.cwd(), deps = {}) {
       if (!['--scope', '--plan'].includes(option) || options.has(option) || !value || value.startsWith('--')) throw fail(USAGE, 2);
       options.add(option);
       if (option === '--scope') scope = parseScope(value);
-      else plan = fs.readFileSync(path.resolve(cwd, value));
+      else {
+        const file = path.resolve(cwd, value);
+        try {
+          if (!fs.statSync(file).isFile()) throw fail('Not a file.');
+          plan = fs.readFileSync(file);
+        } catch { throw fail('Invalid plan file: ' + clean(file) + '. Provide a readable file.\n' + USAGE, 2); }
+      }
     }
   }
   const repo = repository(cwd, deps);
+  if (scope) scope = parseScope(scope.join(','), repo.root);
   if (action === 'list') {
     const entries = copies(repo);
     const rows = entries.map(entry => clean(entry.name) + '\t' + clean(path.resolve(entry.path)) + '\t'
@@ -278,12 +315,23 @@ function run(argv, cwd = process.cwd(), deps = {}) {
     if (fs.existsSync(target)) throw fail('Worker copy path already exists: ' + name + '.');
     const changed = dirty(repo, repo.root, true);
     if (plan !== undefined) excludePlan(repo);
-    repo.git(['worktree', 'add', '-b', 'qb/' + name, target, 'HEAD'], repo.root);
-    if (scope) {
-      fs.mkdirSync(path.dirname(scopeFile(repo, name)), { recursive: true });
-      fs.writeFileSync(scopeFile(repo, name), scope.join('\n') + '\n');
+    try {
+      if (scope) {
+        fs.mkdirSync(path.dirname(scopeFile(repo, name)), { recursive: true });
+        fs.writeFileSync(scopeFile(repo, name), scope.join('\n') + '\n');
+      }
+      repo.git(['worktree', 'add', '-b', 'qb/' + name, target, 'HEAD'], repo.root);
+      if (plan !== undefined) fs.writeFileSync(path.join(target, '.qb-plan.md'), plan);
+    } catch (error) {
+      const cleanupErrors = [];
+      try { removeScope(repo, name); } catch (cleanup) { cleanupErrors.push(cleanup.message); }
+      try {
+        if (copies(repo).some(copy => copy.name === name && same(path.resolve(copy.path), target))) removeCopy(repo, name, true);
+        if (branches(repo).includes('qb/' + name)) removeBranch(repo, name, true);
+      } catch (cleanup) { cleanupErrors.push(cleanup.message); }
+      if (cleanupErrors.length) error.message += '\nCleanup failed: ' + cleanupErrors.join('; ');
+      throw error;
     }
-    if (plan !== undefined) fs.writeFileSync(path.join(target, '.qb-plan.md'), plan);
     return clean(target) + '\nPass it as WORKDIR: in the handover. Uncommitted changes in the main folder are not in the copy.'
       + '\nWhen the worker is done: quota-boss worktree merge ' + name + ', resolve any conflict, run the check once, commit. At task end: quota-boss worktree clean.'
       + (changed ? '\nWarning: the main folder has uncommitted tracked changes.' : '')

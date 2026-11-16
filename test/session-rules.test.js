@@ -8,7 +8,7 @@ const hosts = require('../scripts/hosts');
 const root = path.join(__dirname, '..');
 const consensus = 'use `consensus` before deciding';
 
-test('split switches between large-job and independent-job rules, defaulting off on every host', () => {
+test('split adds the large-job rule and always keeps the independent-job rule on every host', () => {
   const split = 'Split a large job only when', independent = 'Independent jobs run at the same time:';
   const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
   assert.match(template, /   Independent jobs run at the same time:.*\n   Split a large job only when/);
@@ -22,9 +22,8 @@ test('split switches between large-job and independent-job rules, defaulting off
       }
       const enabled = hosts.rules(host, { rules: 'full', terse, split: true });
       assert.ok(enabled.includes(split));
-      assert.ok(!enabled.includes(independent));
-      assert.equal(enabled.split('\n').filter(line => !line.includes(split)).join('\n'),
-        baseline.split('\n').filter(line => !line.includes(independent)).join('\n'));
+      assert.ok(enabled.includes(independent));
+      assert.equal(enabled.split('\n').filter(line => !line.includes(split)).join('\n'), baseline);
       for (const phrase of ['worktree add <name> --scope <paths> --plan <file>', 'worktree merge <name1> <name2>', 'test doubles for the other package']) assert.ok(enabled.includes(phrase));
     }
   }

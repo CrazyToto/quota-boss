@@ -60,6 +60,23 @@ describe('worker worktrees', { skip: !available && 'Git unavailable' }, () => {
     assert.equal(fs.existsSync(path.join(f.root, 'nested', '.git')), false);
   });
 
+  for (const value of ['src', 'src/.']) {
+    test('scope treats an existing main directory as a prefix: ' + value, t => {
+      const f = fixture(t), nested = path.join(f.root, 'nested');
+      fs.mkdirSync(nested);
+      fs.mkdirSync(path.join(f.root, 'src'));
+      fs.writeFileSync(path.join(f.root, 'src', 'existing.txt'), 'base\n');
+      f.call(['add', 'src']); f.call(['commit', '-m', 'source directory']);
+      const output = worktree.run(['add', 'directory', '--scope', value], nested, { env: f.env });
+      assert.match(output, /SCOPE: src\/$/);
+      assert.equal(fs.readFileSync(path.join(f.root, '.git', 'qb-scope', 'directory'), 'utf8'), 'src/\n');
+      const target = path.join(f.folder, 'directory');
+      fs.writeFileSync(path.join(target, 'src', 'new.txt'), 'worker\n');
+      assert.match(f.run('merge', 'directory'), /^Merged directory into/);
+      assert.equal(f.call(['diff', '--cached', '--name-only']), 'src/new.txt');
+    });
+  }
+
   test('invalid scopes and malformed options fail before creating a copy or branch', t => {
     const f = fixture(t);
     for (const value of [',file.txt', 'file.txt,', 'a,,b', '/absolute', '\\absolute', '//server/share',
@@ -95,6 +112,61 @@ describe('worker worktrees', { skip: !available && 'Git unavailable' }, () => {
     f.run('merge', 'one');
     assert.equal(f.call(['ls-tree', '--name-only', 'qb/one']), 'file.txt');
     assert.equal(fs.existsSync(path.join(f.folder, 'one')), true);
+  });
+
+  test('directory and missing plans fail with usage status before creating anything', t => {
+    const f = fixture(t);
+    for (const plan of [f.temp, path.join(f.temp, 'missing')]) {
+      const result = f.command('add', 'bad-plan', '--scope', 'file.txt', '--plan', plan);
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(result.stderr, /Invalid plan file:.*\nUsage:/);
+      assert.equal(f.call(['branch', '--list', 'qb/bad-plan']), '');
+      assert.equal(fs.existsSync(path.join(f.root, '.git', 'qb-scope', 'bad-plan')), false);
+      assert.equal(fs.existsSync(f.folder), false);
+    }
+  });
+
+  for (const failure of ['worktree add', 'partial worktree add', 'plan copy']) {
+    test('add rolls back scope, copy and branch after failed ' + failure + ' and permits retry', t => {
+      const f = fixture(t), plan = path.join(f.temp, 'plan.md');
+      fs.writeFileSync(plan, 'plan\n');
+      const scope = path.join(f.root, '.git', 'qb-scope', 'retry');
+      const target = path.join(f.folder, 'retry');
+      assert.throws(() => worktree.run(['add', 'retry', '--scope', 'file.txt', '--plan', plan], f.root,
+        { env: f.env, spawnSync(file, args, options) {
+          if (args[0] === 'worktree' && args[1] === 'add') {
+            assert.equal(fs.readFileSync(scope, 'utf8'), 'file.txt\n');
+            if (failure !== 'worktree add') {
+              const result = spawnSync(file, args, options);
+              assert.equal(result.status, 0, result.stderr);
+              if (failure === 'plan copy') {
+                fs.mkdirSync(path.join(target, '.qb-plan.md'));
+                return result;
+              }
+            }
+            return { status: 1, stderr: 'injected worktree add failure' };
+          }
+          return spawnSync(file, args, options);
+        } }), failure === 'plan copy' ? /EISDIR|EPERM|EACCES/ : /injected worktree add failure/);
+      assert.equal(fs.existsSync(scope), false);
+      assert.equal(fs.existsSync(target), false);
+      assert.equal(f.call(['branch', '--list', 'qb/retry']), '');
+      assert.doesNotThrow(() => f.add('retry', '--scope', 'file.txt', '--plan', plan));
+    });
+  }
+
+  test('an invalid scope file identifies its copy and path before committing worker changes', t => {
+    const f = fixture(t), target = f.add('invalid', '--scope', 'file.txt');
+    const scope = path.join(f.root, '.git', 'qb-scope', 'invalid');
+    fs.writeFileSync(scope, '../outside\n');
+    fs.writeFileSync(path.join(target, 'file.txt'), 'worker\n');
+    const head = f.call(['rev-parse', 'qb/invalid']);
+    assert.throws(() => f.run('merge', 'invalid'), error => {
+      assert.equal(error.message, 'Scope file for invalid is invalid: ' + scope);
+      return true;
+    });
+    assert.equal(f.call(['rev-parse', 'qb/invalid']), head);
+    assert.equal(f.call(['status', '--porcelain']), '');
   });
 
   for (const kind of ['tracked file', 'deletion', 'untracked file', 'directory without slash', 'directory prefix boundary']) {
@@ -246,13 +318,81 @@ describe('worker worktrees', { skip: !available && 'Git unavailable' }, () => {
 
   test('a scoped empty copy stays available after merging', t => {
     const f = fixture(t), target = f.add('empty', '--scope', 'file.txt');
-    assert.match(f.run('merge', 'empty'), /^Merged empty into the main folder as uncommitted changes/);
+    assert.equal(f.run('merge', 'empty'), 'Nothing to merge from empty.\nNo copies have changes; nothing merged.');
     assert.equal(fs.existsSync(target), true);
     assert.notEqual(f.call(['branch', '--list', 'qb/empty']), '');
     assert.equal(f.call(['status', '--porcelain']), '');
   });
 
-  test('later conflicts report completed and conflicted copies; reset undoes the entire call', t => {
+  for (const changed of [false, true]) {
+    test('multi merge skips empty copies and keeps them ' + (changed ? 'alongside changed copies' : 'when all are empty'), t => {
+      const f = fixture(t), a = f.add('empty'), b = f.add('other');
+      if (changed) fs.writeFileSync(path.join(b, 'file.txt'), 'worker\n');
+      const merges = [];
+      const output = worktree.run(['merge', 'empty', 'other'], f.root, { env: f.env, spawnSync(file, args, options) {
+        if (args[0] === 'merge') merges.push(args.at(-1));
+        return spawnSync(file, args, options);
+      } });
+      assert.ok(output.startsWith('Nothing to merge from empty.\n'));
+      assert.deepEqual(merges, changed ? ['qb/other'] : []);
+      if (changed) {
+        assert.match(output, /\nMerged other into the main folder/);
+        assert.equal(f.call(['diff', '--cached', '--name-only']), 'file.txt');
+      } else {
+        assert.equal(output, 'Nothing to merge from empty.\nNothing to merge from other.\nNo copies have changes; nothing merged.');
+        assert.equal(f.call(['status', '--porcelain']), '');
+      }
+      for (const [name, target] of [['empty', a], ['other', b]]) {
+        assert.equal(fs.existsSync(target), true);
+        assert.notEqual(f.call(['branch', '--list', 'qb/' + name]), '');
+      }
+    });
+  }
+
+  test('hundreds of staged literal paths are reset and re-added through NUL-delimited stdin', t => {
+    const f = fixture(t), a = f.add('many'), b = f.add('next');
+    const files = Array.from({ length: 350 }, (_, index) => '[literal]-' + String(index).padStart(3, '0') + '-'.repeat(85) + '.txt');
+    for (const file of files) fs.writeFileSync(path.join(a, file), 'worker a\n');
+    fs.writeFileSync(path.join(b, 'file.txt'), 'worker b\n');
+    const transfers = [];
+    worktree.run(['merge', 'many', 'next'], f.root, { env: f.env, spawnSync(file, args, options) {
+      if (args[0] === '--literal-pathspecs' && ['reset', 'add'].includes(args[1])) {
+        transfers.push(args[1]);
+        assert.ok(args.includes('--pathspec-from-file=-'));
+        assert.ok(args.includes('--pathspec-file-nul'));
+        assert.ok(args.join(' ').length < 200);
+        assert.equal(options.input, files.join('\0') + '\0');
+        assert.ok(options.input.length > 32767);
+      }
+      return spawnSync(file, args, options);
+    } });
+    assert.deepEqual(transfers, ['reset', 'add']);
+    assert.deepEqual(f.call(['diff', '--cached', '--name-only', '-z']).split('\0').filter(Boolean).sort(), [...files, 'file.txt'].sort());
+    assert.equal(f.call(['diff', '--name-only']), '');
+  });
+
+  test('merge and re-add errors preserve the original error first and earlier unstaged changes', t => {
+    const f = fixture(t), a = f.add('a'), b = f.add('b');
+    fs.writeFileSync(path.join(a, 'a.txt'), 'worker a\n');
+    fs.writeFileSync(path.join(b, 'file.txt'), 'worker b\n');
+    assert.throws(() => worktree.run(['merge', 'a', 'b'], f.root, { env: f.env, spawnSync(file, args, options) {
+      if (args[0] === 'merge' && args.at(-1) === 'qb/b') return { status: 1, stderr: 'original merge failure' };
+      if (args[0] === '--literal-pathspecs' && args[1] === 'add') return { status: 1, stderr: 're-add failure' };
+      return spawnSync(file, args, options);
+    } }), error => {
+      assert.ok(error.message.startsWith('original merge failure\nCould not re-add earlier changes: re-add failure\n'));
+      assert.match(error.message, /Merged copies: a\.\nConflicted copy: b\./);
+      assert.match(error.message, /main folder \(staged or unstaged\)/);
+      assert.match(error.message, /New files from completed copies:\na.txt\n/);
+      return true;
+    });
+    assert.equal(fs.readFileSync(path.join(f.root, 'a.txt'), 'utf8'), 'worker a\n');
+    assert.equal(f.call(['diff', '--cached', '--name-only']), '');
+    assert.equal(fs.readFileSync(path.join(a, 'a.txt'), 'utf8'), 'worker a\n');
+    assert.equal(fs.readFileSync(path.join(b, 'file.txt'), 'utf8'), 'worker b\n');
+  });
+
+  test('later conflicts report completed changes and manual cleanup while preserving both copies', t => {
     const f = fixture(t), a = f.add('a', '--scope', 'a.txt'), b = f.add('b', '--scope', 'file.txt');
     fs.writeFileSync(path.join(a, 'a.txt'), 'worker a\n');
     fs.writeFileSync(path.join(b, 'file.txt'), 'worker b\n');
@@ -260,13 +400,19 @@ describe('worker worktrees', { skip: !available && 'Git unavailable' }, () => {
     f.call(['commit', '-am', 'main change']);
     assert.throws(() => f.run('merge', 'a', 'b'), error => {
       assert.match(error.message, /Merged copies: a\.\nConflicted copy: b\.\nConflicted files:\nfile.txt/);
-      assert.match(error.message, /git reset --merge undoes the whole merge/);
+      assert.match(error.message, /Changes from copies a are in the main folder \(staged or unstaged\)/);
+      assert.match(error.message, /New files from completed copies:\na.txt\n/);
+      assert.match(error.message, /`git reset --merge` followed by `git clean` of the listed new files is NOT run automatically/);
       return true;
     });
-    assert.equal(fs.existsSync(path.join(f.root, 'a.txt')), true);
+    assert.equal(fs.readFileSync(path.join(f.root, 'a.txt'), 'utf8'), 'worker a\n');
     assert.equal(f.call(['diff', '--name-only', '--diff-filter=U']), 'file.txt');
     assert.equal(fs.existsSync(a), true);
     assert.equal(fs.existsSync(b), true);
+    assert.equal(fs.readFileSync(path.join(a, 'a.txt'), 'utf8'), 'worker a\n');
+    assert.equal(fs.readFileSync(path.join(b, 'file.txt'), 'utf8'), 'worker b\n');
+    assert.equal(f.call(['show', 'qb/a:a.txt']), 'worker a');
+    assert.equal(f.call(['show', 'qb/b:file.txt']), 'worker b');
     f.call(['reset', '--merge']);
     assert.equal(f.call(['status', '--porcelain']), '');
     assert.equal(fs.existsSync(path.join(f.root, 'a.txt')), false);
