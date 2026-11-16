@@ -129,3 +129,29 @@ per medium job (450 s for this large job), about three times the measured speed.
 a normal job now stays with an Opus boss unless a worker is about as fast; while the Claude pool is saving, the looser
 time limit still lets large jobs go to Codex. A second opinion from GPT-6.1 Sol agreed and advised against splitting
 work into parallel workers as a blanket rule until it is measured. Three runs per arm show direction only.
+
+### Codex as the boss, rerun with all task sizes (2026-11-16)
+
+Codex CLI host, GPT-6.1 Sol at medium effort, with the same fixtures and hidden checks as above. Boss on used current
+main with the delegation gate from d4de92d. The Claude pool was above 60%, so routing ran in Claude saving mode.
+USD are list-price equivalents from Codex session logs, including Codex's own auto-review sessions.
+
+| Task | Arm | Runs | Hidden | Time (s), mean (runs) | USD, mean (runs) |
+|---|---|---|---|---|---|
+| small | off | 2 | 5/5 both | 65 (53, 77) | 0.078 (0.086, 0.070) |
+| small | on | 2 | 5/5 both | 44 (34, 53) | 0.046 (0.054, 0.038) |
+| medium | off | 2 | 18/18 both | 132 (139, 124) | 0.136 (0.135, 0.137) |
+| medium | on | 2 | 18/18 both | 110 (97, 122) | 0.127 (0.108, 0.147) |
+| large | off | 3 | 32/32 all | 209 (205, 186, 236) | 0.198 (0.225, 0.171, 0.200) |
+| large | on | 3 | 32/32 all | 219 (193, 210, 254) | 0.195 (0.207, 0.180, 0.197) |
+
+In every boss-on run the boss kept the work itself: one GPT-6.1 Sol session and no worker. That is what the gate should
+do at this size. Every boss-off run and the boss-on medium and large runs also started a short `codex-auto-review`
+session, Codex's own approval reviewer from the user's config. These cost $0.015 to $0.029 per run. Boss-on small runs
+had none. The boss rules may explain this: they tell Codex to retry a refused command launch with another shell, so it
+asks for fewer approvals. This was seen on one Windows machine and is not a general claim.
+
+Boss on cost slightly less on all three sizes and finished sooner on small and medium. Large took 10 s longer on average,
+within the spread of the runs. All hidden results were the same. Two or three runs per arm are a small sample: read the
+cost differences as no extra cost, not as a measured saving. The earlier Codex-boss benchmark cost 2.3 to 2.7 times
+boss off before the fixes and about 1.2 times after. The rules overhead on this Codex host is now gone.
