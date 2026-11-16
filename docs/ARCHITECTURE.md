@@ -129,6 +129,7 @@ Return `{ mode, rows: [{tier, category, model, label, pool, via, effort, belowTh
 `formatTable(result)` -> compact text, one line per tier, e.g.
 `critical: architecture=Opus 5.5(self) debugging=Opus 5.5(self) implementation=GPT-6.1-Sol(codex-worker,high) ...`
 Max ~6 lines total.
+On Claude Code, `routeTable(params)` adds a `[large:Model(worker,effort,model=id)]` hint to medium `self` rows when a large job would use a worker; the hint omits its ladder.
 
 Workers that need the same files can use separate `qb/<name>` branches in the sibling `<repo>.qb-worktrees/<name>` folder. `worktree add` prints the optional handover `WORKDIR:`; runners accept it as `--cwd` while keeping project config in the main folder. `worktree merge` squashes changes into the main folder for review, one check and a commit; conflicts keep the copy. `worktree list|remove|clean` manage copies, keeping work unless `--force` is given.
 

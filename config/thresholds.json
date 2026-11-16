@@ -150,7 +150,7 @@
     "architecture": "medium"
   },
   "gate": {
-    "$comment": "Handover numbers come from one benchmark sample per host (docs/BENCHMARKS.md) and will later be learned from logged runs.",
+    "$comment": "Claude-code normal.implementation fixed comes from the 2026-11-16 saving-mode benchmark (2 medium + 3 large runs, docs/BENCHMARKS.md); other jobs keep fixed 0.2 until measured. Other handover numbers come from one sample per host and will later be learned from logged runs. jobs overrides fixed and/or perSize by tier.category.",
     "defaultSize": "medium",
     "size": {
       "small": 0.3,
@@ -162,7 +162,12 @@
     "handover": {
       "claude-code": {
         "fixed": 0.2,
-        "perSize": 0.35
+        "perSize": 0.35,
+        "jobs": {
+          "normal.implementation": {
+            "fixed": 0.5
+          }
+        }
       },
       "codex": {
         "fixed": 1.5,

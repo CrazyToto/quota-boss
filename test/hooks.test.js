@@ -119,9 +119,9 @@ test('tiny startup falls back to the marked full start while the Claude pool is 
   assert.ok(invoke(session.main, input()).stdout.startsWith(hosts.boot()));
 });
 
-test('default and explicit full startup preserve the original output byte for byte', t => {
+test('default and explicit full startup match fresh routing with large-job hints byte for byte', t => {
   const context = require('../scripts/context'), graph = require('../scripts/graph');
-  const { route, formatTable } = require('../scripts/route');
+  const { routeTable, formatTable } = require('../scripts/route');
   const now = 1800000000000;
   t.mock.method(Date, 'now', () => now);
   t.mock.method(graph, 'sessionText', () => 'graph context');
@@ -136,7 +136,7 @@ test('default and explicit full startup preserve the original output byte for by
       const codex = lib.readCodexLimits(now, config.thresholds), state = lib.readState();
       const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
       const bossModel = lib.currentBossModel(p, state);
-      let table = formatTable(route({ ...config, ...p, bossModel, bossEffort: lib.currentBossEffort(p, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }), { ladder: false });
+      let table = formatTable(routeTable({ ...config, ...p, bossModel, bossEffort: lib.currentBossEffort(p, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }), { ladder: false });
       const fixed = [hosts.rules('claude-code', p), graph.sessionText(p.directory), [lib.formatLimits(limits, p.profile, config.thresholds, now, config.providers), config.warning].filter(Boolean).join('\n')];
       if (Buffer.byteLength([...fixed, table].filter(Boolean).join('\n')) + 1 > context.HOOK_BUDGET) table = '[quota-boss] The routing table arrives with the user\'s first message.';
       assert.equal(invoke(session.main, input()).stdout, [fixed[0], fixed[1], 'previous-session notes', table, fixed[2]].filter(Boolean).join('\n') + '\n');
@@ -378,6 +378,27 @@ test('prompt prints one line initially and routing only on a subsequent mode cha
   assert.equal(lib.readState().sessions['session-1'].mode, 'save');
   const stable = invoke(prompt.main, input());
   assert.equal(stable.stdout.trim().split('\n').length, 1);
+});
+
+test('saving session and changed-mode prompt show large hints and retain the previous pool', t => {
+  const now = 1800000000000;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(lib, 'currentBossModel', () => 'claude-opus-5-5');
+  t.mock.method(lib, 'currentBossEffort', () => null);
+  enable();
+  codexLog();
+  lib.writeState({ claude: limits(75).claude, sessions: { 'session-1': { mode: 'normal', pool: 'codex', updated_at: now - 1000 } } });
+  const p = lib.findProjectConfig(), config = lib.loadConfig(p, { tolerant: true });
+  const { state, limits: quota } = require('../scripts/session-routing').readLimits(config, now);
+  const { routeTable, formatTable } = require('../scripts/route');
+  const expected = formatTable(routeTable({ ...config, ...p, bossModel: 'claude-opus-5-5', bossEffort: null,
+    size: 'medium', limits: quota, history: state.history, selfTests: state.selfTests,
+    outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now, previousPool: 'codex' }), { ladder: false });
+  assert.match(require('../scripts/session-routing').build(p, config).table, /implementation=Opus 5\.5\(self\)\[large:GPT-6\.1-Sol\(codex-worker,low,model=gpt-6\.1-sol\)\]/);
+  const changed = invoke(prompt.main, input());
+  assert.ok(changed.stdout.includes('. New routing:\n' + expected + '\n'));
+  assert.match(changed.stdout, /\[large:/);
+  assert.doesNotMatch(changed.stdout.split('\n').filter(line => /^(critical|normal|trivial):/.test(line)).join('\n'), />/);
 });
 
 test('prompt retains fifty most recent sessions, handles special keys, and never echoes IDs', () => {

@@ -13,7 +13,7 @@ const providerHelp = require('./provider-help');
 const setupWizard = require('./setup-wizard');
 const context = require('./context');
 const latency = require('./latency');
-const { route, formatTable, formatExplain } = require('./route');
+const { route, routeTable, formatTable, formatExplain } = require('./route');
 const USAGES = {
   'worktree': 'worktree add|list|merge|remove|clean [<name>] [--force]',
   'graph': 'graph <explain|affected|path> <name> [<name>]',
@@ -476,7 +476,8 @@ function run(args = process.argv.slice(2)) {
     const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now, command === 'route');
     if (command === 'route') {
       const bossModel = lib.currentBossModel(active, state);
-      const result = route({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
+      const routing = size === undefined && !explain && active.host !== 'codex' ? routeTable : route;
+      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
       const match = row => (!filters[0] || row.category === filters[0]) && (!filters[1] || row.tier === filters[1]);
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
       return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));

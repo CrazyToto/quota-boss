@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { route, formatExplain, formatTable } = require('../scripts/route');
+const { route, routeTable, formatExplain, formatTable } = require('../scripts/route');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 const hosts = require('../scripts/hosts');
@@ -19,6 +19,11 @@ const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-10, `${a} != ${b}`);
 const model = (pool, cost) => ({ pool, cost, label: pool, agentModel: 'haiku', scores: { implementation: 9 }, efforts: ['low', 'medium', 'high', 'xhigh'] });
 const fixture = (pool = 'codex') => ({ categories: ['implementation'], models: { boss: model('claude', 10), worker: model(pool, 1) } });
 const run = (extra = {}) => route({ models: fixture(), bossModel: 'boss', thresholds, now, size: 'medium', ...extra });
+// A more capable worker passes the calibrated cost gate so latency tests isolate the time limit.
+const timeModels = fixture();
+timeModels.models.boss.scores.implementation = 8;
+const savingParams = { models: registry, thresholds, now, host: 'claude-code', bossModel: 'claude-opus-5-5',
+  size: 'medium', limits: { claude: { five_hour: { used_percentage: 75 } } } };
 
 test('omitted, undefined, null and invalid size preserve routing without gate fields', () => {
   const baseline = route({ models: registry, thresholds, now });
@@ -29,15 +34,117 @@ test('omitted, undefined, null and invalid size preserve routing without gate fi
   }
 });
 
-test('Claude boss keeps small implementation and delegates medium and large to Codex', () => {
-  for (const size of ['small', 'medium', 'large']) {
-    const result = route({ models: registry, thresholds, now, host: 'claude-code', bossModel: 'claude-opus-5-5', size });
+test('calibrated Claude boss keeps small and medium normal implementation and delegates large to Codex', () => {
+  // The saving-mode benchmark found no Claude saving on medium jobs; large jobs saved about 33%.
+  for (const limits of [{}, savingParams.limits]) for (const size of ['small', 'medium', 'large']) {
+    const result = route({ ...savingParams, limits, size });
     const winner = result.rows.find(c => c.tier === 'normal' && c.category === 'implementation');
-    assert.equal(winner.pool, size === 'small' ? 'claude' : 'codex');
-    if (size === 'small') {
+    assert.equal(winner.model, size === 'large' ? 'gpt-6.1-sol' : 'claude-opus-5-5');
+    if (size !== 'large') {
       assert.equal(winner.via, 'self');
-      assert.equal(normal(result).find(c => c.model === 'gpt-6.1-sol').reason, 'lost: handover costs more than it saves (small)');
+      assert.equal(normal(result).find(c => c.model === 'gpt-6.1-sol').reason, 'lost: handover costs more than it saves (' + size + ')');
+    } else assert.equal(winner.via, 'codex-worker');
+  }
+});
+
+test('built-in handover defaults match the shipped calibration', () => {
+  const { handover, ...gate } = thresholds.gate;
+  assert.deepEqual(handover, { 'claude-code': { fixed: 0.2, perSize: 0.35, jobs: { 'normal.implementation': { fixed: 0.5 } } },
+    codex: { fixed: 1.5, perSize: 0.4 }, generic: { fixed: 0.5, perSize: 0.35 } });
+  for (const host of ['claude-code', 'codex', 'generic']) for (const size of ['small', 'medium', 'large']) {
+    const params = { ...savingParams, host, size, bossModel: host === 'codex' ? 'gpt-6.1-sol' : savingParams.bossModel };
+    assert.deepEqual(route({ ...params, thresholds: { ...thresholds, gate } }), route(params));
+  }
+});
+
+test('at 75% Claude use only normal implementation gets the calibrated handover cost', () => {
+  const result = route(savingParams);
+  const h = thresholds.gate.handover['claude-code'];
+  const baseline = route({ ...savingParams, thresholds: { ...thresholds, gate: { ...thresholds.gate,
+    handover: { ...thresholds.gate.handover, 'claude-code': { ...h, jobs: {} } } } } });
+  const calibrated = row => row.tier === 'normal' && row.category === 'implementation';
+  assert.equal(result.rows.find(calibrated).via, 'self');
+  assert.equal(baseline.rows.find(calibrated).via, 'codex-worker');
+  assert.deepEqual(result.rows.filter(row => !calibrated(row)), baseline.rows.filter(row => !calibrated(row)));
+  assert.deepEqual(result.candidates.filter(row => !calibrated(row)), baseline.candidates.filter(row => !calibrated(row)));
+  for (const [tier, category] of [['normal', 'mechanical'], ['trivial', 'implementation']]) {
+    assert.equal(result.rows.find(row => row.tier === tier && row.category === category).via, 'codex-worker');
+  }
+  assert.equal(route({ ...savingParams, size: 'large' }).rows.find(calibrated).via, 'codex-worker');
+  assert.equal(routeTable(savingParams).rows.find(calibrated).large.via, 'codex-worker');
+});
+
+test('job handover overrides change only their tier and category and support either cost', () => {
+  const h = thresholds.gate.handover['claude-code'];
+  const baseline = route(savingParams);
+  const matches = row => row.tier === 'normal' && row.category === 'mechanical';
+  for (const job of [{ fixed: 0.9 }, { perSize: 0.9 }, { fixed: 0, perSize: 0 }]) {
+    const result = route({ ...savingParams, thresholds: { ...thresholds, gate: { ...thresholds.gate,
+      handover: { ...thresholds.gate.handover, 'claude-code': { ...h, jobs: { ...h.jobs, 'normal.mechanical': job } } } } } });
+    assert.notDeepEqual(result.candidates.filter(matches), baseline.candidates.filter(matches));
+    for (const key of ['rows', 'candidates', 'options']) {
+      assert.deepEqual(result[key].filter(row => !matches(row)), baseline[key].filter(row => !matches(row)));
     }
+    const c = result.candidates.find(row => matches(row) && row.model === 'gpt-6.1-sol');
+    const before = baseline.candidates.find(row => matches(row) && row.model === c.model);
+    const boss = baseline.candidates.find(row => matches(row) && row.via === 'self');
+    close(c.gate.bossSide - before.gate.bossSide,
+      ((job.fixed ?? h.fixed) + (job.perSize ?? h.perSize) - h.fixed - h.perSize) * boss.jobCost * boss.price);
+  }
+});
+
+test('invalid or negative job costs fall back independently to host handover costs', () => {
+  const h = { fixed: 0.3, perSize: 0.25 };
+  const withJob = job => run({ thresholds: { ...thresholds, gate: { ...thresholds.gate,
+    handover: { 'claude-code': { ...h, jobs: { 'normal.implementation': job } } } } } });
+  for (const bad of [undefined, null, NaN, Infinity, -Infinity, -0.1, '0.5', {}, []]) {
+    assert.deepEqual(withJob(bad), withJob({}));
+    assert.deepEqual(withJob({ fixed: bad, perSize: bad }), withJob({}));
+    assert.deepEqual(withJob({ fixed: bad, perSize: 0.1 }), withJob({ fixed: h.fixed, perSize: 0.1 }));
+    assert.deepEqual(withJob({ fixed: 0.1, perSize: bad }), withJob({ fixed: 0.1, perSize: h.perSize }));
+  }
+});
+
+test('routeTable attaches the matching large choice only when a medium self row changes via', () => {
+  const result = routeTable(savingParams);
+  const medium = route(savingParams), large = route({ ...savingParams, size: 'large' });
+  assert.ok(result.rows.some(row => row.large));
+  assert.ok(result.rows.some(row => row.via === 'self' && !row.large));
+  assert.ok(result.rows.some(row => row.via !== 'self'));
+  for (const row of result.rows) {
+    const alternative = large.rows.find(item => item.tier === row.tier && item.category === row.category);
+    const { large: hint, ...primary } = row;
+    assert.deepEqual(primary, medium.rows.find(item => item.tier === row.tier && item.category === row.category));
+    if (row.via === 'self' && alternative && alternative.via !== row.via) assert.deepEqual(hint, alternative);
+    else assert.ok(!Object.hasOwn(row, 'large'));
+  }
+  for (const key of ['candidates', 'options', 'mode', 'note']) assert.deepEqual(result[key], medium[key]);
+});
+
+test('routeTable preserves non-medium routing and is pure and deterministic', t => {
+  for (const size of [undefined, null, 'small', 'large', 'huge']) {
+    const params = { ...savingParams, size };
+    assert.deepEqual(routeTable(params), route(params));
+  }
+  assert.deepEqual(routeTable(), route());
+  assert.deepEqual(routeTable({ size: 'medium' }).rows, []);
+  const before = JSON.stringify(savingParams);
+  const expected = routeTable(savingParams);
+  t.mock.method(Date, 'now', () => { throw new Error('Routing must use the supplied clock'); });
+  assert.deepEqual(routeTable(savingParams), expected);
+  assert.equal(JSON.stringify(savingParams), before);
+});
+
+test('formatTable renders a sanitized large hint without its ladder or nested hints', () => {
+  const large = { tier: 'normal', category: 'implementation', model: 'gpt-6.1-sol', label: 'GPT-6.1-Sol\n<script>!',
+    via: 'codex-worker', effort: 'low', ladder: [{ label: 'Hidden ladder', model: 'other' }], large: { label: 'Hidden hint' } };
+  const row = { tier: 'normal', category: 'implementation', model: 'claude-opus-5-5', label: 'Opus 5.5', via: 'self', effort: null, large };
+  const expected = 'normal: implementation=Opus 5.5(self)[large:' + lib.sanitizeLabel(large.label) + '(codex-worker,low,model=gpt-6.1-sol)]';
+  assert.equal(formatTable({ rows: [row] }), expected);
+  assert.equal(formatTable({ rows: [row] }, { ladder: false }), expected);
+  for (const invalid of [null, {}, { ...large, tier: 'bad' }, { ...large, category: 'bad' }, { ...large, via: 'bad\nworker' },
+    { ...large, effort: 'ultra' }, { ...large, model: 'bad\nmodel' }]) {
+    assert.equal(formatTable({ rows: [{ ...row, large: invalid }] }), 'normal: implementation=Opus 5.5(self)');
   }
 });
 
@@ -52,7 +159,8 @@ test('same-pool and other-pool costs count worker and relay exactly once', () =>
     const boss = own(result), c = worker(result), B = 13;
     const selfCost = 13 * (2 - boss.P);
     const workerCost = 1.3 * 0.85 * (pool === 'claude' ? 1.95 : 1.3);
-    const bossSide = 0.55 * B + (1 - c.P) * B + (pool === 'claude' ? workerCost : 0.117);
+    // Calibrated fixed 0.5 + perSize 0.35 for one medium job.
+    const bossSide = 0.85 * B + (1 - c.P) * B + (pool === 'claude' ? workerCost : 0.117);
     close(c.gate.bossSide, bossSide);
     close(c.gate.total, bossSide + (pool === 'claude' ? 0 : workerCost));
     close(c.gate.selfCost, selfCost);
@@ -75,7 +183,9 @@ test('other pool must save boss quota and respect total ceiling; same pool uses 
 
 test('slow worker fails time only after passing costs', () => {
   const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 1000 }));
-  const c = worker(run({ runs }));
+  const c = worker(run({ runs, models: timeModels }));
+  assert.ok(c.gate.bossSide <= thresholds.gate.margin * c.gate.selfCost);
+  assert.ok(c.gate.total <= thresholds.gate.maxTotalRatio * c.gate.selfCost);
   assert.equal(c.reason, 'lost: handover too slow (medium)');
   // handover 50 + worker 1000 - boss 50 (Claude Code boss speed)
   assert.equal(c.gate.extraSeconds, 1000);
@@ -122,7 +232,8 @@ test('boss effort changes self cost, keeps display effort null, and ignores inva
 
 test('all host rules include the size instruction from the shared rules', () => {
   for (const host of ['claude-code', 'codex', 'generic']) {
-    assert.match(hosts.rules(host), /table assumes a medium job;.*route --size small\|large <category> <tier>/);
+    assert.match(hosts.rules(host), /table assumes a medium job;.*\[large:\.\.\.\].*worker for a clearly large job/);
+    assert.match(hosts.rules(host), /other clearly small or large jobs run `route --size small\|large <category> <tier>` before choosing who does it/);
   }
 });
 
@@ -214,14 +325,29 @@ test.describe('boss effort sources and CLI', () => {
       assert.throws(() => cli.run(['route', ...args]), /Usage:/);
     }
   });
+  test('CLI adds large hints only to default plain tables and preserves Codex host tables', t => {
+    let project = lib.normalizeProject({ host: 'claude-code' });
+    t.mock.method(lib, 'findProjectConfig', () => project);
+    t.mock.method(lib, 'currentBossModel', () => project.host === 'codex' ? 'gpt-6.1-sol' : 'claude-opus-5-5');
+    t.mock.method(lib, 'currentBossEffort', () => null);
+    t.mock.method(lib, 'readProviderLimits', () => savingParams.limits);
+    assert.match(cli.run(['route', 'implementation', 'normal']), /implementation=Opus 5\.5\(self\).*\[large:GPT-6\.1-Sol\(codex-worker,low,model=gpt-6\.1-sol\)\]/);
+    for (const size of ['small', 'medium', 'large']) {
+      assert.doesNotMatch(cli.run(['route', '--size', size]), /\[large:/);
+    }
+    assert.doesNotMatch(cli.run(['route', '--explain']), /\[large:/);
+    project = lib.normalizeProject({ host: 'codex' });
+    assert.equal(cli.run(['route']), cli.run(['route', '--size', 'medium']));
+    assert.doesNotMatch(cli.run(['route']), /\[large:/);
+  });
 });
 
 test('time limit is tight with quota to spare and loose while the boss pool saves', () => {
   const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 150 }));
-  const spare = worker(run({ runs }));
+  const spare = worker(run({ runs, models: timeModels }));
   assert.equal(spare.gate.extraSeconds, 150);
   assert.equal(spare.reason, 'lost: handover too slow (medium)');
-  const saving = worker(run({ runs, limits: { claude: { five_hour: { used_percentage: 70 } } } }));
+  const saving = worker(run({ runs, models: timeModels, limits: { claude: { five_hour: { used_percentage: 70 } } } }));
   assert.equal(saving.gate.extraSeconds, 150);
   assert.doesNotMatch(String(saving.reason), /lost/);
   const large = worker(run({ runs: runs.map(r => ({ ...r, seconds: 110 })), size: 'large' }));

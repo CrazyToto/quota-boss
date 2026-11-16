@@ -155,3 +155,56 @@ Boss on cost slightly less on all three sizes and finished sooner on small and m
 within the spread of the runs. All hidden results were the same. Two or three runs per arm are a small sample: read the
 cost differences as no extra cost, not as a measured saving. The earlier Codex-boss benchmark cost 2.3 to 2.7 times
 boss off before the fixes and about 1.2 times after. The rules overhead on this Codex host is now gone.
+
+### Claude Code: tiny rules and saving mode (2026-11-16)
+
+Claude Code host, Opus 5.5 boss at default effort, profile balanced, same fixtures and hidden checks as above (small,
+medium, large). Boss on used `--rules full` (rules, routing table and notes at session start) or `--rules tiny` (a
+six-line start; the full rules and a fresh table load on demand). `--claude-mode normal` simulates Claude 5h use of 10%
+and `--claude-mode save` 75% (`QUOTA_BOSS_CLAUDE_5H`, commit 7f83d72), so routing prices Claude as it would at that use.
+While Claude is saving, tiny starts with the full rules (557cd4b), so the saving runs below are tiny projects that
+started with full rules. USD are list-price estimates per run.
+
+Quota to spare:
+
+| Task | Arm | Runs | Hidden | Time (s), mean (runs) | Claude USD, mean (runs) |
+|---|---|---|---|---|---|
+| small | off | 2 | 5/5 both | 32 (39, 25) | 0.184 (0.183, 0.185) |
+| small | on, full | 5 | 5/5 all | 27 (37, 26, 21, 25, 25) | 0.217 (0.241, 0.213, 0.196, 0.217, 0.219) |
+| small | on, tiny | 5 | 5/5 all | 24 (30, 31, 19, 21, 21) | 0.181 (0.181, 0.209, 0.171, 0.164, 0.181) |
+| medium | off | 2 | 18/18 both | 50 (55, 45) | 0.276 (0.273, 0.278) |
+| medium | on, full | 5 | 18/18 all | 52 (55, 47, 54, 53, 52) | 0.320 (0.315, 0.312, 0.338, 0.330, 0.306) |
+| medium | on, tiny | 5 | 18/18 all | 46 (46, 50, 47, 43, 45) | 0.284 (0.284, 0.285, 0.290, 0.275, 0.284) |
+| large | off | 2 | 32/32 both | 151 (153, 149) | 0.722 (0.734, 0.710) |
+| large | on, tiny | 2 | 32/32 both | 155 (137, 172) | 0.738 (0.673, 0.802) |
+
+In every boss-on run with quota to spare the boss kept the work, with no Codex use, as the gate should.
+
+Claude saving:
+
+| Task | Arm | Runs | Hidden | Time (s), mean (runs) | Claude USD, mean (runs) | Codex USD, mean (runs) |
+|---|---|---|---|---|---|---|
+| medium | off | 2 | 18/18 both | 50 (55, 45) | 0.276 (0.273, 0.278) | 0 |
+| medium | on, saving | 2 | 18/18 both | 203 (222, 184) | 0.276 (0.277, 0.275) | 0.153 (0.151, 0.154) |
+| large | off | 2 | 32/32 both | 151 (153, 149) | 0.722 (0.734, 0.710) | 0 |
+| large | on, saving | 3 | 32/32 all | 304 (341, 272, 298) | 0.476 (0.326, 0.461, 0.642) | 0.188 (0.246, 0.138, 0.179) |
+
+Tiny and full had the same hidden results. Tiny cost about the same as boss off (small 2% less, medium 3% more, large
+2% more) and was faster on small and medium; large took 4 s more on average. Full rules cost 16-18% more than boss off
+on small and medium. The difference is the startup text.
+
+In every large saving run the boss handed the build to one Codex worker (GPT-6.1 Sol or GPT-6 Sol). Mean Claude use fell
+by about a third (0.476 against 0.722) at the same hidden result. Codex added about 0.19 and the run took about twice
+as long. Claude use varied from 0.326 to 0.642: the boss sometimes fixed worker bugs itself.
+
+The medium saving handover saved no Claude (0.276 against 0.276), added Codex cost and took about four times as long.
+The gate had priced the boss side of a Claude Code handover too low. Its `handover.claude-code.fixed` is now overridden
+to 0.5 for normal implementation jobs only, fitted to these runs: a saving boss keeps a medium job and still hands a large
+one to Codex; other jobs keep 0.2 until measured. The compact table
+now shows a `[large:...]` note on a row that the boss keeps at medium size but would hand down when large.
+
+Earlier `--claude-mode save` runs only renamed the mode while routing still priced Claude at the real low use, so the
+boss never handed work down; they are left out. Runs between 03:41 and 03:49 UTC ran two at a time, so their times are
+less clean; cost and hidden results are not affected. In one medium saving run the boss gave the Codex wrapper agent
+Sonnet instead of its Haiku default (+$0.04); the rules now say to leave the Agent model unset for CLI wrapper workers
+(1c61475). Two to five runs per arm show direction only.

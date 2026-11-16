@@ -284,10 +284,13 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const s = positive(gate.size?.[size], { small: 0.3, medium: 1, large: 3 }[size]);
         const margin = clamp(finite(gate.margin, 0.8), 0, 1);
         const maxTotalRatio = Math.max(1, finite(gate.maxTotalRatio, 1.3));
-        const defaults = { 'claude-code': { fixed: 0.2, perSize: 0.35 }, codex: { fixed: 1.5, perSize: 0.4 }, generic: { fixed: 0.5, perSize: 0.35 } };
-        const h = gate.handover?.[settings.host];
-        const fixed = Math.max(0, finite(h?.fixed, defaults[settings.host].fixed));
-        const perSize = Math.max(0, finite(h?.perSize, defaults[settings.host].perSize));
+        // Only normal implementation was measured in the Claude Code saving-mode benchmark (docs/BENCHMARKS.md).
+        const defaults = { 'claude-code': { fixed: 0.2, perSize: 0.35, jobs: { 'normal.implementation': { fixed: 0.5 } } },
+          codex: { fixed: 1.5, perSize: 0.4 }, generic: { fixed: 0.5, perSize: 0.35 } };
+        const h = gate.handover?.[settings.host] ?? defaults[settings.host];
+        const job = h.jobs?.[tier + '.' + category];
+        const fixed = finite(job?.fixed, -1) >= 0 ? job.fixed : Math.max(0, finite(h.fixed, defaults[settings.host].fixed));
+        const perSize = finite(job?.perSize, -1) >= 0 ? job.perSize : Math.max(0, finite(h.perSize, defaults[settings.host].perSize));
         const reread = Math.max(0, finite(gate.reread, 0.3));
         // The boss's own speed per medium job. Measured 2026-11-16: an Opus boss did a 3-unit job in about 150 s.
         // A worker without measured latency is assumed as fast as the boss unless workSeconds says otherwise.
@@ -374,6 +377,19 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
   return { mode: modes.mode, rows, options, candidates, note: bossModelNote(bossModel, registry, bossPool) };
 }
 
+/** Add large-job alternatives to medium self rows without changing ordinary routing. */
+function routeTable(params = {}) {
+  const result = route(params);
+  if (params.size !== 'medium') return result;
+  const large = route({ ...params, size: 'large' });
+  for (const row of result.rows) {
+    if (row.via !== 'self') continue;
+    const alternative = large.rows.find(item => item.tier === row.tier && item.category === row.category);
+    if (alternative && alternative.via !== row.via) row.large = alternative;
+  }
+  return result;
+}
+
 /** Compact context contains only registry labels, validated enums and fixed punctuation. */
 /** Session hooks pass { ladder: false }: the ladder matters only after a failure, and the rules send the boss to `route` then. */
 function formatTable(result, { ladder: withLadder = true } = {}) {
@@ -383,20 +399,21 @@ function formatTable(result, { ladder: withLadder = true } = {}) {
       || typeof item.via === 'string' && item.via.startsWith('cli-worker:') && validProviderId(item.via.slice(11)))
     && (item.effort === null || EFFORTS.includes(item.effort))
     && typeof item.model === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(item.model);
-  const format = item => {
-    const ladder = withLadder && Array.isArray(item.ladder) ? item.ladder.slice(0, 3) : [];
+  const format = (item, showLadder = withLadder) => {
+    const ladder = showLadder && Array.isArray(item.ladder) ? item.ladder.slice(0, 3) : [];
     const chain = ladder.map((s, i) => sanitizeLabel(s.label) + (i && s.model === ladder[i - 1].model ? '+' : '')).join('>');
-    return item.category + '=' + sanitizeLabel(item.label) + '(' + item.via + (item.effort ? ',' + item.effort : '')
+    return sanitizeLabel(item.label) + '(' + item.via + (item.effort ? ',' + item.effort : '')
       + (item.cliModel && item.via.startsWith('cli-worker:') || ['codex-subagent', 'codex-worker', 'gpt-advisor', 'claude-worker'].includes(item.via) ? ',model=' + item.model : '') + ')'
       + (chain ? '[' + chain + ']' : '')
       + (item.tier === 'critical' && item.category === 'architecture' && item.options?.includes('consensus') && item.consensus
         ? '[option:consensus=' + sanitizeLabel(item.consensus.label) + ',high]' : '') + (item.belowThreshold ? '[below threshold]' : '');
   };
+  const row = item => item.category + '=' + format(item) + (valid(item.large) ? '[large:' + format(item.large, false) + ']' : '');
   for (const tier of TIERS) {
     const primary = (result.rows || []).filter(item => item.tier === tier && valid(item));
-    if (primary.length) lines.push(tier + ': ' + primary.map(format).join(' '));
+    if (primary.length) lines.push(tier + ': ' + primary.map(row).join(' '));
     const optional = (result.options || []).filter(item => item.tier === tier && valid(item));
-    if (optional.length) lines.push(tier + ' options: ' + optional.map(format).join(' '));
+    if (optional.length) lines.push(tier + ' options: ' + optional.map(row).join(' '));
   }
   return lines.join('\n');
 }
@@ -410,4 +427,4 @@ function formatExplain(result) {
       : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's') : '')).join('\n');
 }
 
-module.exports = { bossModelId, bossModelNote, route, formatTable, formatExplain, successProbability, projectWindow, poolPrice };
+module.exports = { bossModelId, bossModelNote, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice };
