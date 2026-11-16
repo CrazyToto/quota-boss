@@ -1,14 +1,15 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
+const { find: findTranscript, analyze: analyzeTranscript } = require('./transcript');
 function parseArm(value) {
  if (!/^(off|on|on:(quality|balanced|frugal))$/.test(value || '')) throw new Error('Invalid arm: ' + value);
  return { arm: value, mode: value === 'off' ? 'off' : 'on', profile: value.split(':')[1] || 'balanced' };
@@ -76,7 +77,7 @@ try {
   }
 }
 
-// The boss may log feedback during the run. Keep it in the result, not in the owner's outcome log.
+// The boss may log feedback during the run; QUOTA_BOSS_BENCH tags it (see below).
 const outcomes = path.join(os.homedir(), '.claude', 'quota-boss', 'outcomes.jsonl');
 const outcomesSize = fs.existsSync(outcomes) ? fs.statSync(outcomes).size : 0;
 // Subscription windows per pool before and after the run (percent used, as `quota-boss status` reports them).
@@ -92,10 +93,10 @@ if (host === 'claude') {
   const cli = ['-p', '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits',
     '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
-  run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '', ...modeEnv } });
+  run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '', QUOTA_BOSS_BENCH: runName, ...modeEnv } });
 } else {
   run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
-    { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, ...modeEnv } });
+    { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, QUOTA_BOSS_BENCH: runName, ...modeEnv } });
 }
 const seconds = Math.round((Date.now() - started) / 1000);
 if (run.error) {
@@ -106,11 +107,11 @@ if (run.error) {
 fs.writeFileSync(path.join(out, `stdout-${runName}.txt`), String(run.stdout || ''));
 fs.writeFileSync(path.join(out, `stderr-${runName}.txt`), String(run.stderr || ''));
 
+// Feedback from this run carries its bench tag and stays in the log (the router skips tagged lines), so other
+// sessions writing at the same time lose nothing.
 let feedback = [];
 if (fs.existsSync(outcomes) && fs.statSync(outcomes).size > outcomesSize) {
-  const all = fs.readFileSync(outcomes);
-  feedback = all.subarray(outcomesSize).toString('utf8').split('\n').filter(Boolean);
-  fs.writeFileSync(outcomes, all.subarray(0, outcomesSize));
+  feedback = fs.readFileSync(outcomes).subarray(outcomesSize).toString('utf8').split('\n').filter(l => l.includes('"bench":' + JSON.stringify(runName)));
 }
 
 // Claude usage from the result JSON (boss and every Claude subagent).
@@ -121,7 +122,10 @@ if (host === 'claude') {
     claude = {
       usd: r.total_cost_usd, turns: r.num_turns, subtype: r.subtype, denied: (r.permission_denials || []).length, sessionId: r.session_id,
       models: Object.fromEntries(Object.entries(r.modelUsage || {}).map(([k, v]) => [k, +(v.costUSD || 0).toFixed(4)])),
+      tokens: Object.fromEntries(Object.entries(r.modelUsage || {}).map(([k, v]) => [k, { input: v.inputTokens || 0, cacheRead: v.cacheReadInputTokens || 0, cacheWrite: v.cacheCreationInputTokens || 0, output: v.outputTokens || 0 }])),
     };
+    // What filled the boss context, from the session transcript (null when it cannot be found).
+    try { const file = findTranscript(r.session_id); claude.boss = file ? analyzeTranscript(file) : null; } catch (e) { claude.boss = { error: e.message }; }
   } catch { claude = { error: 'no JSON result' }; }
 }
 

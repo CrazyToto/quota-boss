@@ -57,4 +57,15 @@ const LARGE = [
 const LARGE_CHORES = ' Also do these small chores: rename padLeft in src/format.js to alignRight with the same behavior; add a JSDoc comment above every function in src/math.js; in package.json add "description": "Small inventory tool" and "bin": {"inventory": "src/cli.js"}; write README.md with a "## Usage" section that shows one example line per CLI command in the form "node src/cli.js db.json <command> ...".';
 prompts.large = LARGE + LARGE_CHORES;
 
-module.exports = { prompts, setup, fixtures };
+// Folder tasks: bench/fixtures/<task>/ is the whole fixture, <task>.prompt.txt the prompt and <task>.check.js the hidden checks.
+const FOLDER = path.join(__dirname, 'fixtures');
+const folderTasks = fs.existsSync(FOLDER) ? fs.readdirSync(FOLDER).filter(n => fs.existsSync(path.join(FOLDER, n + '.prompt.txt'))) : [];
+for (const name of folderTasks) prompts[name] = fs.readFileSync(path.join(FOLDER, name + '.prompt.txt'), 'utf8').trim();
+const baseSetup = setup;
+function setupAny(dir, task) {
+  if (!folderTasks.includes(task)) return baseSetup(dir, task);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.cpSync(path.join(FOLDER, task), dir, { recursive: true });
+}
+
+module.exports = { prompts, setup: setupAny, fixtures, folderTasks };

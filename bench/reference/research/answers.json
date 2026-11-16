@@ -1,0 +1,10 @@
+{
+  "q1": { "answer": 8192, "source": "docs/limits.md" },
+  "q2": { "answer": "rfc3339", "source": "docs/configuration.md" },
+  "q3": { "answer": 2400, "source": "docs/CHANGELOG.md" },
+  "q4": { "answer": "ndjson", "source": "docs/migration.md" },
+  "q5": { "answer": 3, "source": "docs/precedence.md" },
+  "q6": { "answer": 1875, "source": "docs/retries.md" },
+  "q7": { "answer": "QV_ELEASE_SCOPE", "source": "docs/authentication-errors.md" },
+  "q8": { "answer": ["cache.trustMtime", "network.legacyProxy", "output.colorMode"], "source": "docs/migration.md" }
+}

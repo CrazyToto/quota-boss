@@ -58,6 +58,13 @@ function report(out) {
       hiddenPassRate: hidden && +hidden[2] ? +hidden[1] / +hidden[2] : NaN,
       ownTestCount: Number.isFinite(r.ownPass) && Number.isFinite(r.ownFail) ? r.ownPass + r.ownFail : NaN,
       reviewScore: scores.get(runName(r)),
+      // Tokens over all Claude models and all Codex sessions, and the boss's own API calls and context size.
+      claudeTokens: tokenSum(r.claude && r.claude.tokens),
+      codexTokens: Array.isArray(r.codexSessions) ? r.codexSessions.reduce((t, s) => t + (s.input || 0) + (s.output || 0), 0) : NaN,
+      bossCalls: r.claude?.boss?.calls ?? NaN,
+      bossAvgContext: r.claude?.boss?.avgContext ?? NaN,
+      bossReadShare: r.claude?.boss?.share ? (r.claude.boss.share.read || 0) : NaN,
+      delegations: r.claude?.boss?.agents ? Object.values(r.claude.boss.agents).reduce((t, v) => t + v, 0) : NaN,
     });
   }
   return [...groups.values()].map(g => {
@@ -74,6 +81,11 @@ function report(out) {
       totalUsdRatioToOff: off ? ratio(g.values.map(v => v.totalUsd).filter(Number.isFinite), off.values.map(v => v.totalUsd).filter(Number.isFinite)) : null,
     };
   });
+}
+
+function tokenSum(models) {
+  if (!models) return NaN;
+  return Object.values(models).reduce((t, m) => t + m.input + m.cacheRead + m.cacheWrite + m.output, 0);
 }
 
 function poolDelta(r, key) {

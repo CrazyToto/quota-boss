@@ -133,7 +133,8 @@ else if (task === 'medium') medium();
 else if (task === 'mixed') { medium(); trivial(); }
 else if (task === 'large') { large(); trivial('Small inventory tool', 'inventory', ['import', 'list', 'quote', 'report']); }
 else if (['bugfix','refactor','docs'].includes(task)) additions();
-else { console.error('Usage: node bench/hidden-check.js <small|medium|mixed> <run folder>'); process.exit(2); }
+else if (fs.existsSync(path.join(__dirname, 'fixtures', task + '.check.js'))) require(path.join(__dirname, 'fixtures', task + '.check.js'))(dir, { check, eq, throwsType, load });
+else { console.error('Usage: node bench/hidden-check.js <task> <run folder>'); process.exit(2); }
 console.log(passed + '/' + total);
 function additions() {
  if (task === 'bugfix') {

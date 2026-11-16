@@ -273,3 +273,45 @@ test('large hidden checks: empty fixture fails, the reference solution passes al
   assert.equal(r.stderr, '');
   assert.equal(r.stdout.trim(), total + '/' + total);
 });
+
+test('transcript analysis splits the boss context by kind and counts calls once', () => {
+  const { analyze, find } = require('./transcript');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-tr-'));
+  const dir = path.join(root, 'proj');
+  fs.mkdirSync(dir);
+  const u = { input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000, output_tokens: 5 };
+  const lines = [
+    { type: 'user', message: { content: 'do it' } },
+    { type: 'assistant', message: { id: 'm1', usage: u, content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a' } }] } },
+    { type: 'assistant', message: { id: 'm1', usage: u, content: [{ type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'node --test' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(300) }, { type: 'tool_result', tool_use_id: 't2', content: 'y'.repeat(100) }] } },
+    { type: 'assistant', message: { id: 'm2', usage: { ...u, cache_read_input_tokens: 3000 }, content: [{ type: 'tool_use', id: 't3', name: 'Agent', input: { subagent_type: 'scout' } }, { type: 'text', text: 'ok' }] } },
+    { type: 'assistant', isSidechain: true, message: { id: 'side', usage: u, content: [] } },
+  ];
+  fs.writeFileSync(path.join(dir, 's1.jsonl'), lines.map(l => JSON.stringify(l)).join('\n') + '\n');
+  assert.strictEqual(find('s1', root), path.join(dir, 's1.jsonl'));
+  assert.strictEqual(find('missing', root), null);
+  const r = analyze(path.join(dir, 's1.jsonl'));
+  assert.strictEqual(r.calls, 2);
+  assert.strictEqual(r.maxContext, 3110);
+  assert.strictEqual(r.avgContext, 2110);
+  assert.deepStrictEqual(r.tokens, { input: 20, cacheRead: 4000, cacheWrite: 200, output: 10 });
+  assert.deepStrictEqual(r.agents, { scout: 1 });
+  assert.ok(r.share.read > r.share.test && r.share.test > 0);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('bench feedback is tagged and never teaches the router', () => {
+  const lib = require('../scripts/lib');
+  const now = Date.now();
+  const base = { t: now - 1000, model: 'gpt-6.1-sol', category: 'implementation', tier: 'normal', result: 'pass' };
+  const kept = lib.recentOutcomes([base, { ...base, bench: 'run-1' }], now);
+  assert.deepStrictEqual(kept, [base]);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-bench-tag-'));
+  const env = { ...process.env, QUOTA_BOSS_HOME: home, QUOTA_BOSS_BENCH: 'run-1' };
+  const r = spawnSync(process.execPath, ['-e', "require('./scripts/lib').appendOutcome({model:'gpt-6.1-sol',category:'implementation',tier:'normal',result:'pass'},{models:{'gpt-6.1-sol':{}}})"], { cwd: path.join(__dirname, '..'), env, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const line = JSON.parse(fs.readFileSync(path.join(home, 'outcomes.jsonl'), 'utf8').trim());
+  assert.strictEqual(line.bench, 'run-1');
+  fs.rmSync(home, { recursive: true, force: true });
+});

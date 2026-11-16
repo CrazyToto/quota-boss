@@ -787,7 +787,8 @@ function validOutcome(value) {
 function recentOutcomes(outcomes = [], now = 0, thresholds = {}) {
   const settings = historySettings(thresholds);
   return (Array.isArray(outcomes) ? outcomes : []).slice(-settings.outcomeLines)
-    .filter(value => validOutcome(value) && value.t <= now && value.t >= now - settings.outcomeDays * 86400000);
+    // Benchmark results stay in the log but never teach the router.
+    .filter(value => validOutcome(value) && !value.bench && value.t <= now && value.t >= now - settings.outcomeDays * 86400000);
 }
 
 /** Tail reads are byte bounded as well as line and age bounded. Oversized lines are ignored. */
@@ -818,6 +819,9 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
     if (!EFFORT_ORDER.includes(value.effort)) throw new Error('Feedback effort is invalid.');
     entry.effort = value.effort;
   }
+  // A benchmark run tags its feedback, so other sessions writing at the same time keep theirs.
+  const bench = String(process.env.QUOTA_BOSS_BENCH || '');
+  if (/^[A-Za-z0-9._-]{1,120}$/.test(bench)) entry.bench = bench;
   const file = getPaths().outcomesFile;
   appendRegular(file, JSON.stringify(entry) + '\n');
   return entry;
