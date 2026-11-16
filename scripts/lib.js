@@ -12,7 +12,7 @@ const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 const RATE_LIMIT_MINUTES = 15;
 const PROFILES = ['quality', 'balanced', 'frugal'];
 const HOSTS = ['claude-code', 'codex', 'generic'];
-const DEFAULT_RULES = 'full';
+const DEFAULT_RULES = 'tiny';
 const WORKERS = ['codex', 'gpt', 'perplexity'];
 const CONTEXT_SUGGEST_DEFAULT = 100000, CONTEXT_SUGGEST_MIN = 20000, CONTEXT_SUGGEST_MAX = 2000000;
 

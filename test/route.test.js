@@ -100,7 +100,7 @@ test('route variants never change home files, including history and oversized us
 });
 
 test('session table prints the unknown boss note exactly once before its rows', () => {
-  enable();
+  enable({ rules: 'full' });
   const result = invoke(require('../scripts/hook-session').main, JSON.stringify({ cwd: project, model: 'claude-opus-5-6' }));
   assert.equal(result.status, 0);
   assert.ok(Buffer.byteLength(result.stdout) <= require('../scripts/context').HOOK_BUDGET);

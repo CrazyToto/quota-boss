@@ -8,18 +8,19 @@ const hosts = require('../scripts/hosts');
 const root = path.join(__dirname, '..');
 const consensus = 'use `consensus` before deciding';
 
+// Full start text: the tiny default adds the on-demand routing table on Claude Code.
 test('consensus false removes only its line for every host', () => {
   for (const host of ['claude-code', 'codex', 'generic']) {
-    const baseline = hosts.rules(host);
+    const baseline = hosts.rules(host, { rules: 'full', rules: 'full' });
     assert.ok(baseline.includes(consensus));
-    assert.equal(hosts.rules(host, { consensus: true }), baseline);
+    assert.equal(hosts.rules(host, { rules: 'full', consensus: true }), baseline);
     for (const value of [undefined, null, 0, 'false']) {
-      assert.equal(hosts.rules(host, { consensus: value }), baseline);
+      assert.equal(hosts.rules(host, { rules: 'full', consensus: value }), baseline);
     }
-    const enabled = hosts.rules(host, { consensus: true, terse: true });
-    const disabled = hosts.rules(host, { consensus: false, terse: true });
+    const enabled = hosts.rules(host, { rules: 'full', consensus: true, terse: true });
+    const disabled = hosts.rules(host, { rules: 'full', consensus: false, terse: true });
     assert.equal(disabled, enabled.split('\n').filter(line => !line.includes(consensus)).join('\n'));
-    const off = hosts.rules(host, { consensus: false });
+    const off = hosts.rules(host, { rules: 'full', consensus: false });
     const expected = baseline.replace(/^.*use `consensus` before deciding.*(?:\n|$)/m, '');
     assert.equal(off, host === 'claude-code' ? expected.trimEnd() : expected);
     assert.ok(!off.includes(consensus));
@@ -32,13 +33,13 @@ test('rule filtering preserves neighbours and handles absent or unreadable rules
   let content = 'before\nremove: use `consensus` before deciding\nafter';
   lib.readBounded = (file, size) => path.basename(file) === 'RULES.md' ? content : original(file, size);
   try {
-    assert.equal(hosts.rules('claude-code', { consensus: false }), 'before\nafter');
+    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), 'before\nafter');
     content = 'before\nremove: use `consensus` before deciding';
-    assert.equal(hosts.rules('claude-code', { consensus: false }), 'before');
+    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), 'before');
     content = 'before\nafter';
-    assert.equal(hosts.rules('claude-code', { consensus: false }), content);
+    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), content);
     lib.readBounded = () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); };
-    assert.equal(hosts.rules('claude-code', { consensus: false }), '');
+    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), '');
     lib.readBounded = () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
     assert.throws(() => hosts.rules('claude-code'), /denied/);
   } finally { lib.readBounded = original; }

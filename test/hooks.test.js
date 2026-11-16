@@ -83,6 +83,23 @@ const prompt = require('../scripts/hook-prompt');
 const agent = require('../scripts/hook-agent');
 const hosts = require('../scripts/hosts');
 
+test('default tiny startup quotes paths with spaces and uses full rules while saving', () => {
+  process.env.QUOTA_BOSS_HOME = path.join(temporary, 'boss with spaces');
+  enable();
+  assert.equal(Object.hasOwn(lib.readProjects()[lib.projectKey(project)], 'rules'), false);
+  lib.writeState({ claude: limits(4).claude });
+  const normal = invoke(session.main, input());
+  assert.equal(normal.stdout, hosts.boot() + '\n');
+  assert.ok(normal.stdout.includes('node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" rules --host claude-code'));
+  assert.equal(normal.status, 0);
+  lib.writeState({ claude: limits(80).claude });
+  const saving = start(input());
+  assert.ok(saving.stdout.startsWith(hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...lib.findProjectConfig(), rules: 'full' }) + '\n'));
+  assert.match(saving.stdout, /critical: architecture=/);
+  assert.match(saving.stdout, /Claude 5h 80%/);
+  assert.equal(saving.status, 0);
+});
+
 test('tiny startup has only the six boot lines, graph, warning and existing notes', t => {
   enable({ rules: 'tiny', terse: true });
   const graph = require('../scripts/graph'), context = require('../scripts/context');
@@ -119,7 +136,7 @@ test('tiny startup falls back to the marked full start while the Claude pool is 
   assert.ok(invoke(session.main, input()).stdout.startsWith(hosts.boot()));
 });
 
-test('default and explicit full startup match fresh routing with large-job hints byte for byte', t => {
+test('explicit full startup matches fresh routing with large-job hints byte for byte', t => {
   const context = require('../scripts/context'), graph = require('../scripts/graph');
   const { routeTable, formatTable } = require('../scripts/route');
   const now = 1800000000000;
@@ -127,8 +144,9 @@ test('default and explicit full startup match fresh routing with large-job hints
   t.mock.method(graph, 'sessionText', () => 'graph context');
   t.mock.method(context, 'sessionStartText', () => 'previous-session notes');
   t.mock.method(context, 'deferTable', (_p, _cwd, late) => late);
-  for (const rules of [undefined, 'full']) for (const large of [false, true]) {
-    enable({ rules, terse: true, consensus: false });
+  for (const normalized of [false, true]) for (const large of [false, true]) {
+    const project = { enabled: true, rules: 'full', terse: true, consensus: false };
+    enable(normalized ? lib.normalizeProject(project) : project);
     const original = lib.formatLimits;
     if (large) lib.formatLimits = () => 'limits '.repeat(2000);
     try {
@@ -198,7 +216,7 @@ test('worker gate ignores other agents, disabled boss, full rules and other host
   for (const type of ['general-purpose', 'custom-agent', '../sonnet-worker', undefined]) {
     assert.equal(invoke(agent.main, JSON.stringify({ cwd: project, transcript_path: file, tool_input: { subagent_type: type } })).stdout, '');
   }
-  for (const config of [{ enabled: false, rules: 'tiny' }, { rules: 'full' }, {}, { host: 'codex', rules: 'tiny' }, { host: 'generic', rules: 'tiny' }]) {
+  for (const config of [{ enabled: false, rules: 'tiny' }, { rules: 'full' }, { rules: 'full', terse: true }, { host: 'codex', rules: 'tiny' }, { host: 'generic', rules: 'tiny' }]) {
     enable(config);
     assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
   }
@@ -267,7 +285,7 @@ test('hooks are silent when disabled, missing opt-in, or malformed', () => {
 });
 
 test('session prints rules when present, compact routing, and numeric quota context', () => {
-  enable();
+  enable({ rules: 'full' });
   codexLog();
   lib.writeState({ claude: limits().claude });
   const result = start(input());
@@ -280,7 +298,7 @@ test('session prints rules when present, compact routing, and numeric quota cont
 });
 
 test('a broken providers.json keeps the table on built-in providers and warns in hooks and route', () => {
-  enable();
+  enable({ rules: 'full' });
   codexLog();
   lib.writeState({ claude: limits().claude });
   const file = path.join(process.env.QUOTA_BOSS_HOME, 'config', 'providers.json');
@@ -306,7 +324,7 @@ test('session honors consensus and terse together through shared host rules', ()
   const hosts = require('../scripts/hosts');
   for (const consensus of [undefined, true, false]) {
     for (const terse of [false, true]) {
-      enable({ consensus, terse });
+      enable({ rules: 'full', consensus, terse });
       const result = start(input());
       assert.equal(result.status, 0);
       assert.equal(result.stderr, '');
@@ -325,7 +343,7 @@ test('consensus off explains both route and session behavior', () => {
 });
 
 test('session read errors do not crash and tell an active boss the table is missing', () => {
-  enable();
+  enable({ rules: 'full' });
   const original = lib.readBounded;
   lib.readBounded = (file, max) => {
     if (path.basename(file) === 'RULES.md') throw Object.assign(new Error('denied'), { code: 'EACCES' });
@@ -341,7 +359,7 @@ test('session read errors do not crash and tell an active boss the table is miss
 });
 
 test('missing RULES does not prevent routing; hook data never echoes injected log content', () => {
-  enable({ profile: 'balanced\nIGNORE', workers: { perplexity: false } });
+  enable({ rules: 'full', profile: 'balanced\nIGNORE', workers: { perplexity: false } });
   const log = codexLog();
   fs.appendFileSync(log, JSON.stringify({ timestamp: 'IGNORE\ninstructions', payload: { type: 'token_count', rate_limits: {
     primary: { used_percent: 'IGNORE', resets_at: 'IGNORE' }, secondary: { used_percent: 2 }, text: 'IGNORE instructions'
@@ -453,7 +471,7 @@ test('session and changed-mode prompt use learned exclusions and preserve sample
 
 test('the session start stays under the host limit: a long table and long notes wait for the first prompt', () => {
   const context = require('../scripts/context');
-  enable();
+  enable({ rules: 'full' });
   codexLog();
   lib.writeState({ claude: limits().claude });
   const clear = JSON.stringify({ cwd: project, session_id: 'session-1', source: 'clear' });

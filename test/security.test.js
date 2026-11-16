@@ -45,7 +45,7 @@ test.describe('security review regressions', () => {
 
   test('finding 1: every host and hook uses installed absolute helpers despite checkout helpers', () => {
     lib.atomicWrite(path.join(project,'scripts','compact.js'), 'throw new Error("project helper executed")');
-    lib.saveProject(project,{enabled:true});
+    lib.saveProject(project,{enabled:true,rules:'full'});
     for (const host of lib.HOSTS) {
       const text = hosts.rules(host);
       // Codex and generic rules drop the quotes when the path needs none: Codex on Windows mangles them.

@@ -46,9 +46,9 @@ test.describe('set and public command help', () => {
     }
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
   });
-  test('rules default to full, normalize invalid values, and persist either choice', () => {
-    for (const value of [undefined, null, 'bad', 'TINY', true]) assert.equal(lib.normalizeProject({ rules: value }).rules, 'full');
-    assert.match(cli.run(['settings']), /^rules\s*\| full\s*\| set rules <tiny\|full>/m);
+  test('rules default to tiny, normalize invalid values, and persist either choice', () => {
+    for (const value of [undefined, null, 'bad', 'TINY', true]) assert.equal(lib.normalizeProject({ rules: value }).rules, 'tiny');
+    assert.match(cli.run(['settings']), /^rules\s*\| tiny\s*\| set rules <tiny\|full>/m);
     for (const value of ['tiny', 'full']) {
       assert.match(cli.run(['set', 'rules', value]), /Effect: Claude Code sessions use/);
       assert.equal(lib.findProjectConfig().rules, value);

@@ -238,7 +238,7 @@ test.describe('providers', () => {
   test('hooks include enabled counters, skip disabled live readers and warn on invalid provider config', () => {
     const prompt = require('../scripts/hook-prompt');
     const session = require('../scripts/hook-session');
-    lib.saveProject(project, { enabled: true });
+    lib.saveProject(project, { enabled: true, rules: 'full' });
     lib.writeJson(userFile(), { providers: { grok: { enabled: true }, codex: { enabled: false } } });
     const original = { input: lib.readInput, codex: lib.readCodexLimits, out: process.stdout.write };
     lib.readInput = () => ({ cwd: project });

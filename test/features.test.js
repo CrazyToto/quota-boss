@@ -207,7 +207,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     }
     for (const args of [['settings', 'extra'], ['explain'], ['explain', 'missing'], ['explain', 'short-answers', 'extra']]) assert.throws(() => cli.run(args));
     assert.equal((projectValue() !== undefined), false);
-    lib.saveProject(project, { enabled: true, custom: { keep: 42 } });
+    lib.saveProject(project, { enabled: true, rules: 'full', custom: { keep: 42 } });
     cli.run(['use', 'opencode-free', 'on']);
     assert.doesNotMatch(cli.run(['route']), /OpenCode free/);
     for (const [command, key] of [['training', 'allowTrainingProviders'], ['short-answers', 'terse'], ['consensus', 'consensus']]) {

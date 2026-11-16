@@ -57,10 +57,10 @@
   },
   "rules": {
     "title": "Session rules",
-    "what": "Claude Code starts with full rules (default) or tiny text that loads full rules and fresh routing on demand; while the Claude pool is saving, tiny starts with the full rules too.",
+    "what": "Claude Code starts with tiny text (default) that loads full rules and fresh routing on demand, or full rules with the full option; while the Claude pool is saving, tiny starts with the full rules too.",
     "quality": "same",
     "quota": "saves",
-    "when": "Use tiny to compare startup tokens; full rules must load before delegation, review or CRITICAL work.",
+    "when": "Use full when you want the whole rules and routing table in context from the first message.",
     "advanced": false
   },
   "short-answers": {
