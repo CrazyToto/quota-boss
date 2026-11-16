@@ -131,7 +131,7 @@ test('Claude mode flag labels runs and reaches quota and host children', t => {
     assert.equal(row.label, `${host}-${host === 'claude' ? 'opus' : 'gpt-6.1-sol'}-on-save`);
     const children = calls.filter(c => c.command === host || (c.command === process.execPath && c.args[0].endsWith('quota-boss.js')));
     assert.ok(children.length > 2);
-    for (const child of children) assert.equal(child.env.QUOTA_BOSS_CLAUDE_MODE, 'save');
+    for (const child of children) assert.equal(child.env.QUOTA_BOSS_CLAUDE_5H, '75');
   }
 });
 

@@ -18,12 +18,12 @@ test.beforeEach(() => {
   project = path.join(temporary, 'project');
   fs.mkdirSync(project);
   savedCwd = process.cwd();
-  savedEnv = Object.fromEntries(['QUOTA_BOSS_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QUOTA_BOSS_NO_CLIPBOARD', 'QUOTA_BOSS_CLAUDE_MODE'].map(key => [key, process.env[key]]));
+  savedEnv = Object.fromEntries(['QUOTA_BOSS_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QUOTA_BOSS_NO_CLIPBOARD', 'QUOTA_BOSS_CLAUDE_5H'].map(key => [key, process.env[key]]));
   process.env.QUOTA_BOSS_HOME = path.join(temporary, 'quota-boss');
   process.env.CLAUDE_CONFIG_DIR = path.join(temporary, 'claude');
   process.env.CODEX_HOME = path.join(temporary, 'codex');
   process.env.QUOTA_BOSS_NO_CLIPBOARD = '1';
-  delete process.env.QUOTA_BOSS_CLAUDE_MODE;
+  delete process.env.QUOTA_BOSS_CLAUDE_5H;
   process.chdir(project);
 });
 
@@ -363,19 +363,24 @@ test('mode thresholds use each explicit weekly threshold and inclusive boundarie
   assert.match(lib.formatLimits(old, 'balanced', thresholds), /codex numbers \d+[hd] old \(refresh on the next Codex run\)/);
 });
 
-test('benchmark Claude mode override wins and invalid values are ignored', () => {
-  for (const mode of ['normal', 'save', 'emergency']) {
-    process.env.QUOTA_BOSS_CLAUDE_MODE = mode;
-    for (const values of [[0, 0, 80, 0], [95, 99, 80, 0]]) {
-      const result = lib.computeModes(limits(...values));
-      assert.equal(result.claudeMode, mode);
-      assert.equal(result.codexMode, 'tight');
-      assert.equal(result.mode, mode === 'normal' ? 'codex-tight' : mode + '+codex-tight');
-    }
+test('benchmark Claude 5h override drives both mode and limits, invalid values are ignored', () => {
+  const providers = lib.loadProviders({});
+  const real = { five_hour: { used_percentage: 4, resets_at: 1 }, seven_day: { used_percentage: 49 } };
+  const now = 1800000000000;
+  for (const [value, mode] of [['10', 'normal'], ['75', 'save'], ['90', 'emergency'], ['0', 'normal'], ['100', 'emergency']]) {
+    process.env.QUOTA_BOSS_CLAUDE_5H = value;
+    const limits = lib.readProviderLimits(providers, { claude: real }, now, true);
+    assert.deepEqual(limits.claude.five_hour, { used_percentage: Number(value), resets_at: now / 1000 + 9000 });
+    assert.deepEqual(limits.claude.seven_day, real.seven_day);
+    assert.equal(lib.computeModes(limits, {}, now).claudeMode, mode);
   }
-  process.env.QUOTA_BOSS_CLAUDE_MODE = 'SAVE';
-  assert.equal(lib.computeModes(limits(95, 99)).claudeMode, 'emergency');
-  assert.equal(lib.computeModes(limits(0, 0)).claudeMode, 'normal');
+  for (const value of ['101', '-5', 'SAVE', '7.5', '', '1000']) {
+    process.env.QUOTA_BOSS_CLAUDE_5H = value;
+    assert.deepEqual(lib.readProviderLimits(providers, { claude: real }, now, true).claude, real);
+  }
+  delete process.env.QUOTA_BOSS_CLAUDE_5H;
+  assert.deepEqual(lib.readProviderLimits(providers, { claude: real }, now, true).claude, real);
+  assert.equal(lib.readProviderLimits(providers, {}, now, true).claude, undefined);
 });
 
 test('Claude updates retain absent fields and reject non-numeric injected values', () => {

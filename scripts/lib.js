@@ -679,9 +679,7 @@ function computeModes(limits = {}, thresholds = {}, now = Date.now(), providers)
   const { c5h, cWeek, x5h, xWeek } = limitValues(limits, now);
   const threshold = (group, key, fallback) => number(thresholds[group]?.[key]) ?? fallback;
   const hit = (value, group, key, fallback) => value !== undefined && value >= threshold(group, key, fallback);
-  // benchmark override, not a user setting.
-  const claudeMode = ['normal', 'save', 'emergency'].includes(process.env.QUOTA_BOSS_CLAUDE_MODE) ? process.env.QUOTA_BOSS_CLAUDE_MODE
-    : hit(c5h, 'claude', 'emergency', 85) || hit(cWeek, 'claudeWeekly', 'emergency', 95) ? 'emergency'
+  const claudeMode = hit(c5h, 'claude', 'emergency', 85) || hit(cWeek, 'claudeWeekly', 'emergency', 95) ? 'emergency'
     : hit(c5h, 'claude', 'save', 60) || hit(cWeek, 'claudeWeekly', 'save', 80) ? 'save' : 'normal';
   const codexMode = hit(x5h, 'codex', 'exhausted', 95) || hit(xWeek, 'codexWeekly', 'exhausted', 97) ? 'exhausted'
     : hit(x5h, 'codex', 'tight', 80) || hit(xWeek, 'codexWeekly', 'tight', 85) ? 'tight' : 'normal';
@@ -1049,6 +1047,13 @@ function appendUsage(id, amount, unit, config, now = Date.now()) {
   return entry;
 }
 /** Preserve the exact live sources while adding enabled counters. No network or CLI execution. */
+/** Benchmark override, not a user setting: a simulated Claude 5h use, so modes and quota prices both follow it. */
+function benchClaude(claude, now) {
+  const raw = process.env.QUOTA_BOSS_CLAUDE_5H;
+  const used = /^\d{1,3}$/.test(raw ?? '') ? Number(raw) : NaN;
+  if (!(used <= 100)) return claude;
+  return { ...object(claude), five_hour: { used_percentage: used, resets_at: Math.floor(now / 1000) + 9000 } };
+}
 function readProviderLimits(config, live = {}, now = Date.now(), readOnly = false) {
   validateProviders(config);
   const limits = {};
@@ -1056,7 +1061,8 @@ function readProviderLimits(config, live = {}, now = Date.now(), readOnly = fals
   const usage = counters.length ? readUsage(now, readOnly) : { entries: [], truncated: false };
   for (const [id, p] of Object.entries(config.providers)) {
     if (p.enabled === false) continue;
-    if (p.quota.source === 'claude-statusline' || p.quota.source === 'codex-logs') limits[id] = live[id];
+    if (p.quota.source === 'claude-statusline') limits[id] = benchClaude(live[id], now);
+    else if (p.quota.source === 'codex-logs') limits[id] = live[id];
     else if (p.quota.source === 'counter') {
       const windows = {};
       for (const [name, budget] of Object.entries(p.quota.windows)) {

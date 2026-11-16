@@ -26,7 +26,8 @@ const claudeMode = args['claude-mode'] === undefined ? null : args['claude-mode'
 if (claudeMode !== null && !['normal', 'save', 'emergency'].includes(claudeMode)) { console.error(USAGE); process.exit(2); }
 const rules = args.rules === undefined ? null : args.rules;
 if (rules !== null && !['tiny', 'full'].includes(rules)) { console.error(USAGE); process.exit(2); }
-const modeEnv = claudeMode ? { QUOTA_BOSS_CLAUDE_MODE: claudeMode } : {};
+// A simulated Claude 5h use typical for the mode, so the router prices Claude as it would at that use.
+const modeEnv = claudeMode ? { QUOTA_BOSS_CLAUDE_5H: String({ normal: 10, save: 75, emergency: 90 }[claudeMode]) } : {};
 const reps = Number(args.reps || 1);
 if (!Number.isInteger(reps) || reps < 1) throw new Error('reps must be a positive integer');
 if (reps > 1) {
