@@ -79,8 +79,9 @@ test('subagent metadata, missing metadata, sanitized role, duration and models',
   assert.equal(jobs.find(j => j.model === 'haiku').seconds, 60);
   assert.equal(jobs.find(j => j.model === 'unlisted').units, 178 / 1e6);
   const output = savings.savings(f.options);
-  assert.match(output, /Unknown models \(cost 1\): unlisted/);
-  assert.match(output, /no boss sessions found/);
+  assert.match(output, /Unknown models \(priced at 1\): unlisted/);
+  assert.match(output, /No boss sessions found, so there is nothing to compare/);
+  assert.match(output, /haiku +1 +0.000 +60s/);
 });
 
 test('current project, Windows case-insensitive matching, --all and descendant cwd', t => {
@@ -131,9 +132,9 @@ test('window resets, missing counters and decreases are omitted or clamped corre
   const f = fixture(t);
   f.codex(rollout(f.root, 'exec', 99));
   f.codex(rollout(f.root), 'boss');
-  const output = savings.savings(f.options);
-  assert.match(output, /boss: 3.0% \/ 6.0%; 0 runs left out/);
-  assert.match(output, /workers: 0.0% \/ 0.0%; 1 runs left out of one or both sums \(1 window reset\)/);
+  const output = savings.savings({ ...f.options, details: true });
+  assert.match(output, /boss: 3.0% \/ 6.0%\n/);
+  assert.match(output, /workers: 0.0% \/ 0.0%; 1 runs not counted \(1 crossed a window reset\)/);
   assert.deepEqual(savings.windowDelta({ used_percent: 20, resets_at: 1 }, { used_percent: 10, resets_at: 1 }), { delta: 0, reset: false, resetsAt: 1, from: 20, to: 10 });
   assert.deepEqual(savings.windowDelta({}, {}), { delta: null, reset: false });
 });
@@ -158,8 +159,10 @@ test('global counters and successful runs, median, cutoff, malformed and future 
   const result = savings.collect(f.options);
   assert.equal(result.usage.length, 3);
   assert.equal(result.runs.length, 2);
-  assert.match(savings.formatReport(result, f.options), /api: 2 \| 100 \| 0.25/);
-  assert.match(savings.formatReport(result, f.options), /gpt \/ normal: 2 \| 20/);
+  const report = savings.formatReport(result, { ...f.options, details: true });
+  assert.match(report, /api: 2 \| 100 \| 0.25/);
+  assert.match(report, /gpt \/ normal: 2 \| 20s/);
+  assert.doesNotMatch(savings.formatReport(result, f.options), /api: 2/);
   assert.deepEqual(fs.readFileSync(f.paths.usageFile), before);
 });
 
@@ -185,23 +188,27 @@ test('symlink files and directories are skipped when the platform allows creatio
 
 test('empty report, stable ordering, compact totals, boss estimate and no sensitive output', t => {
   const f = fixture(t);
-  assert.equal(savings.savings(f.options), 'Savings: last 30 days, project Project\nNo sessions found in this window.\nNumbers come from local transcripts; cost units are relative prices, not a bill.');
+  assert.equal(savings.savings(f.options), 'Quota Boss savings - last 30 days, project Project\nNo sessions found in this window.\nUnits are relative model prices from local transcripts, not a bill.');
   f.claude([assistant('SECRET-SESSION-ID', 'opus', 1000000)]);
   f.codex(rollout(f.root, 'exec'));
   const output = savings.savings(f.options);
   assert.equal(output, savings.savings(f.options));
-  assert.match(output, /claude: .*1.0M\/10/);
-  assert.match(output, /rough estimate, same token count assumed/);
-  assert.match(output, /total 10.012 units, 0\.1% more than actual/);
-  assert.ok(output.indexOf('claude:') < output.indexOf('codex:'));
+  assert.match(output, /About 0% cheaper than doing everything with opus\n/);
+  assert.match(output, /actual {6}10\.0 units\n  opus alone {2}10\.0 units \(estimate, same tokens assumed\)/);
+  assert.match(output, /More: savings --details$/);
+  const detailed = savings.savings({ ...f.options, details: true });
+  assert.match(detailed, /claude: .*1.0M\/10/);
+  assert.ok(detailed.indexOf('claude:') < detailed.indexOf('codex:'));
+  assert.doesNotMatch(detailed, /More: savings --details/);
   for (const sensitive of ['SECRET-SESSION-ID', 'SECRET-ACCOUNT-ID', 'SECRET MESSAGE TEXT', f.paths.claudeDir, f.paths.codexDir, 'rollout-one']) assert.ok(!output.includes(sensitive));
   assert.ok(output.split('\n').length <= 40);
 });
 
 test('argument parser accepts either flag order and rejects every unsupported form with USAGE', () => {
-  assert.deepEqual(savings.parseArgs([], 'USAGE'), { days: 30, all: false });
-  for (const args of [['--all', '--days', '7'], ['--days', '7', '--all']]) assert.deepEqual(savings.parseArgs(args, 'USAGE'), { days: 7, all: true });
-  for (const args of [['--days'], ['--days', '0'], ['--days', '-1'], ['--days', '1.5'], ['--days', '366'], ['--days', 'NaN'], ['--days', '01'], ['--wat'], ['extra'], ['--all', '--all'], ['--days', '7', '--days', '8']]) {
+  assert.deepEqual(savings.parseArgs([], 'USAGE'), { days: 30, all: false, details: false });
+  assert.deepEqual(savings.parseArgs(['--details', '--days', '3'], 'USAGE'), { days: 3, all: false, details: true });
+  for (const args of [['--all', '--days', '7'], ['--days', '7', '--all']]) assert.deepEqual(savings.parseArgs(args, 'USAGE'), { days: 7, all: true, details: false });
+  for (const args of [['--days'], ['--days', '0'], ['--days', '-1'], ['--days', '1.5'], ['--days', '366'], ['--days', 'NaN'], ['--days', '01'], ['--wat'], ['extra'], ['--all', '--all'], ['--details', '--details'], ['--details=1'], ['--days', '7', '--days', '8']]) {
     assert.throws(() => savings.parseArgs(args, 'USAGE'), /^Error: USAGE$/);
     assert.throws(() => cli.run(['savings', ...args]), /Usage: quota-boss/);
   }
@@ -214,7 +221,7 @@ test('CLI uses isolated home paths, both flag orders and no writes', t => {
   t.after(() => { for (const [key, value] of Object.entries(original)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
   for (const args of [['savings', '--days', '7', '--all'], ['savings', '--all', '--days', '7']]) {
     const output = cli.run(args);
-    assert.match(output, /^Savings: last 7 days, all projects/);
+    assert.match(output, /^Quota Boss savings - last 7 days, all projects/);
     assert.match(output, /No sessions found in this window/);
   }
   assert.equal(fs.existsSync(f.paths.quotaBossHome), false);
@@ -230,7 +237,7 @@ test('shared scan budget never reads more than 2000 files', t => {
 test('multi-model Claude file counts once per pool and report stays bounded with many groups', t => {
   const f = fixture(t);
   f.claude([assistant('a', 'opus'), assistant('b', 'haiku')]);
-  assert.match(savings.savings(f.options), /claude: .* \| 1\n/);
+  assert.match(savings.savings({ ...f.options, details: true }), /claude: .* \| 1\n/);
   for (let i = 0; i < 15; i++) {
     f.claude([assistant('worker', 'model-' + i)], 'session/subagents/agent-' + i + '.jsonl');
   }
@@ -238,8 +245,12 @@ test('multi-model Claude file counts once per pool and report stays bounded with
   f.write(path.join(f.paths.quotaBossHome, 'runs.jsonl'), Array.from({ length: 15 }, (_, i) => ({ t: now, model: 'model-' + i, tier: 'normal', ok: true, seconds: 10 })));
   const report = savings.savings(f.options);
   assert.ok(report.split('\n').length <= 40);
-  assert.match(report, /more groups omitted/);
-  assert.match(report, /worker:unknown \/ model-/);
+  assert.match(report, /\.\.\. 10 more \(savings --details\)/);
+  assert.doesNotMatch(report, /provider-/);
+  const detailed = savings.savings({ ...f.options, details: true });
+  assert.ok(detailed.split('\n').length <= 60);
+  assert.match(detailed, /\.\.\. \d+ more\n/);
+  assert.match(detailed, /unknown \/ model-/);
 });
 
 test('usage journal above compaction threshold remains unchanged and oversized Codex logs are skipped', t => {
@@ -266,7 +277,8 @@ test('Codex object source classifies as worker, and each window is omitted indep
   assert.deepEqual(job.windows.primary, { delta: null, reset: true });
   assert.equal(job.windows.secondary.delta, 6);
   assert.equal(job.windows.secondary.reset, false);
-  assert.match(savings.savings(f.options), /workers: 0.0% \/ 6.0%; 1 runs left out/);
+  assert.match(savings.savings({ ...f.options, details: true }), /workers: 0.0% \/ 6.0%; 1 runs not counted/);
+  assert.match(savings.savings(f.options), /Codex subscription used by workers: 6% of one week/);
 });
 
 test('overlapping Codex runs in one window count once, separate runs and windows add up', () => {

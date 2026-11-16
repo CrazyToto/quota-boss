@@ -31,7 +31,7 @@ Take <args> from $ARGUMENTS; empty means status. Only these forms are allowed:
 - add-api [<preset>|<id> <provider/model> --trains <yes|no> [--free] [--budget <amount> <unit> <window>]]
 - remove-api <id>
 - tools [install <id...>|logins]
-- savings [--days <1-365>] [--all]
+- savings [--days <1-365>] [--all] [--details]
 - use
 - use <provider-id|model-id> <on|off> [--project]
 - only <provider-id...> [--project]

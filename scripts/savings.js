@@ -12,14 +12,15 @@ const DEFAULT_WEIGHTS = {
 };
 
 function parseArgs(args, usage) {
-  let days = 30, all = false, seenDays = false;
+  let days = 30, all = false, details = false, seenDays = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--all' && !all) all = true;
+    else if (args[i] === '--details' && !details) details = true;
     else if (args[i] === '--days' && !seenDays && /^[1-9]\d{0,2}$/.test(args[i + 1]) && Number(args[i + 1]) <= 365) {
       days = Number(args[++i]); seenDays = true;
     } else throw new Error(usage);
   }
-  return { days, all };
+  return { days, all, details };
 }
 
 const number = value => Number.isFinite(value) && value >= 0 ? value : 0;
@@ -250,50 +251,90 @@ function grouped(values, key) {
 }
 const sum = (values, key) => values.reduce((total, value) => total + number(value[key]), 0);
 const percent = (part, total) => (total ? 100 * part / total : 0).toFixed(1) + '%';
+const LABELS = { 'codex-auto-review': 'Codex auto-review' };
+function modelLabel(model, config) {
+  const entry = config.models?.models?.[model];
+  return lib.sanitizeLabel(LABELS[model] || (typeof entry?.label === 'string' ? entry.label : model)) || 'unknown';
+}
+function units(n) {
+  return n >= 100 ? String(Math.round(n)) : n >= 1 ? n.toFixed(1) : n.toFixed(3);
+}
+function time(seconds) {
+  if (seconds === '?') return '?';
+  return seconds < 90 ? seconds + 's' : seconds < 5400 ? (seconds / 60).toFixed(1) + ' min' : (seconds / 3600).toFixed(1) + ' h';
+}
+function table(rows) {
+  const widths = rows[0].map((_, i) => Math.max(...rows.map(r => r[i].length)));
+  return rows.map(r => ('  ' + r.map((cell, i) => i ? cell.padStart(widths[i]) : cell.padEnd(widths[i])).join('  ')).trimEnd());
+}
+const share = (part, total) => (total ? 100 * part / total : 0).toFixed(0) + '%';
+const byUnits = groups => groups.sort((a, b) => sum(b[1], 'units') - sum(a[1], 'units') || a[0].localeCompare(b[0]));
 function formatReport(data, options) {
   const { jobs, usage, runs } = data;
-  const lines = ['Savings: last ' + options.days + ' days, ' + (options.all ? 'all projects' : 'project ' + lib.sanitizeLabel(path.basename(options.root)))];
-  const footer = 'Numbers come from local transcripts; cost units are relative prices, not a bill.';
+  const config = options.config || {};
+  const lines = ['Quota Boss savings - last ' + options.days + ' days, ' + (options.all ? 'all projects' : 'project ' + lib.sanitizeLabel(path.basename(options.root)))];
+  const footer = 'Units are relative model prices from local transcripts, not a bill.';
   if (!jobs.length && !usage.length && !runs.length) return [...lines, 'No sessions found in this window.', footer].join('\n');
   const total = sum(jobs, 'units'), bosses = jobs.filter(j => j.role === 'boss'), workers = jobs.filter(j => j.role !== 'boss');
-  // Keep every section available while bounding the whole report to ~40 lines.
-  function section(title, rows, limit = 5) {
-    lines.push(title);
-    lines.push(...rows.slice(0, limit));
-    if (rows.length > limit) lines.push('... ' + (rows.length - limit) + ' more groups omitted');
+  const bossModels = byUnits(grouped(bosses, j => j.model));
+  lines.push('');
+  if (!bossModels.length) lines.push('No boss sessions found, so there is nothing to compare.');
+  else {
+    const model = bossModels[0][0], label = modelLabel(model, config);
+    const estimate = sum(bosses, 'units') + sum(workers, 'weighted') / 1e6 * price(model, config);
+    const saved = estimate ? 100 * (estimate - total) / estimate : 0;
+    if (!workers.length) lines.push('No worker jobs yet: the boss (' + label + ') did everything.');
+    else {
+      lines.push('About ' + Math.abs(saved).toFixed(0) + '% ' + (saved >= 0 ? 'cheaper' : 'more expensive') + ' than doing everything with ' + label);
+      const width = Math.max(6, label.length + 6);
+      lines.push('  ' + 'actual'.padEnd(width) + '  ' + units(total) + ' units', '  ' + (label + ' alone').padEnd(width) + '  ' + units(estimate) + ' units (estimate, same tokens assumed)');
+    }
+  }
+  const bossLabel = bossModels.length ? ' (' + bossModels.slice(0, 2).map(([m]) => modelLabel(m, config)).join(', ') + ')' : '';
+  lines.push('', 'Who did the work', ...table([
+    ['boss' + bossLabel, units(sum(bosses, 'units')) + ' units', share(sum(bosses, 'units'), total)],
+    ['workers', units(sum(workers, 'units')) + ' units', share(sum(workers, 'units'), total)]
+  ]));
+  if (workers.length) {
+    const groups = byUnits(grouped(workers, j => modelLabel(j.model, config)));
+    lines.push('', ...table([['Workers', 'jobs', 'units', 'median time'], ...groups.slice(0, 5).map(([label, group]) =>
+      [label, String(new Set(group.map(j => j.jobId)).size), units(sum(group, 'units')), time(median(group.map(j => j.seconds)))])]));
+    if (groups.length > 5) lines.push('  ... ' + (groups.length - 5) + ' more (savings --details)');
+    const codex = workers.filter(j => j.windows);
+    if (codex.length) lines.push('', 'Codex subscription used by workers: ' + windowUse(codex, 'secondary').toFixed(0) + '% of one week');
+  }
+  const unknown = [...new Set(jobs.map(j => j.model))].filter(model => !Object.hasOwn(config.models?.models || {}, priceModel(model, config))).sort();
+  if (unknown.length) lines.push('', 'Unknown models (priced at 1): ' + unknown.slice(0, 5).map(lib.sanitizeLabel).join(', ') + (unknown.length > 5 ? ', ...' : ''));
+  if (options.details) lines.push('', ...details(data, bosses, workers, total));
+  lines.push('', footer);
+  if (!options.details) lines.push('More: savings --details');
+  return lines.join('\n');
+}
+function details(data, bosses, workers, total) {
+  const { jobs, usage, runs } = data, lines = [];
+  function section(title, rows, limit = 8) {
+    lines.push(title, ...rows.slice(0, limit));
+    if (rows.length > limit) lines.push('... ' + (rows.length - limit) + ' more');
     if (!rows.length) lines.push('(none)');
   }
-  section('Per pool: cost units | share | tokens in/out | sessions/jobs', grouped(jobs, j => j.pool).map(([key, group]) =>
-    key + ': ' + sum(group, 'units').toFixed(3) + ' | ' + percent(sum(group, 'units'), total) + ' | ' + compact(sum(group, 'input')) + '/' + compact(sum(group, 'output')) + ' | ' + new Set(group.map(j => j.jobId)).size));
-  lines.push('Boss vs workers: boss ' + sum(bosses, 'units').toFixed(3) + ', workers ' + sum(workers, 'units').toFixed(3) + ', worker share ' + percent(sum(workers, 'units'), total));
-  const byUnits = groups => groups.sort((a, b) => sum(b[1], 'units') - sum(a[1], 'units') || a[0].localeCompare(b[0]));
-  section('Per worker type: role / model | jobs | units | median seconds/job', byUnits(grouped(workers, j => j.role + ' / ' + j.model)).map(([, group]) =>
-    'worker:' + lib.sanitizeLabel(group[0].role.replace('worker:', '')) + ' / ' + lib.sanitizeLabel(group[0].model) + ': ' + group.length + ' | ' + sum(group, 'units').toFixed(3) + ' | ' + median(group.map(j => j.seconds))), 5);
-  lines.push('Codex windows: 5h / week percentage points used, added up over the period, so the 5h sum can pass 100% (overlapping runs counted once; includes other Codex use at the same time)');
+  section('Per pool: units | share | tokens in/out | sessions and jobs', grouped(jobs, j => j.pool).map(([key, group]) =>
+    key + ': ' + units(sum(group, 'units')) + ' | ' + percent(sum(group, 'units'), total) + ' | ' + compact(sum(group, 'input')) + '/' + compact(sum(group, 'output')) + ' | ' + new Set(group.map(j => j.jobId)).size));
+  section('Per worker agent: agent / model | jobs | units | median time', byUnits(grouped(workers, j => j.role + ' / ' + j.model)).map(([, group]) =>
+    lib.sanitizeLabel(group[0].role.replace('worker:', '')) + ' / ' + lib.sanitizeLabel(group[0].model) + ': ' + group.length + ' | ' + units(sum(group, 'units')) + ' | ' + time(median(group.map(j => j.seconds)))));
+  lines.push('Codex quota: 5h / week percentage points added up over the period (a 5h sum above 100% means several full windows; parallel runs count once; other Codex use at the same time is included)');
   for (const [label, group] of [['boss', bosses], ['workers', workers]]) {
     const codex = group.filter(j => j.windows);
+    if (!codex.length) continue;
     const delta = key => windowUse(codex, key).toFixed(1) + '%';
     const omitted = codex.filter(j => Object.values(j.windows).some(w => w.delta === null)).length;
     const resets = codex.filter(j => Object.values(j.windows).some(w => w.reset)).length;
-    lines.push(label + ': ' + delta('primary') + ' / ' + delta('secondary') + '; ' + omitted + ' runs left out of one or both sums (' + resets + ' window reset)');
+    lines.push(label + ': ' + delta('primary') + ' / ' + delta('secondary') + (omitted ? '; ' + omitted + ' runs not counted (' + resets + ' crossed a window reset)' : ''));
   }
-  section('Other providers (global usage.jsonl): calls | tokens | usd', grouped(usage, e => e.provider).map(([id, group]) =>
-    lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd'].map(unit => group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0)).join(' | ')), 4);
-  section('Time per job (global runs.jsonl): model / tier | count | median seconds', grouped(runs, e => e.model + ' / ' + e.tier).map(([, group]) =>
-    lib.sanitizeLabel(group[0].model) + ' / ' + group[0].tier + ': ' + group.length + ' | ' + median(group.map(e => e.seconds))), 4);
-  const bossModels = grouped(bosses, j => j.model).sort((a, b) => sum(b[1], 'units') - sum(a[1], 'units') || a[0].localeCompare(b[0]));
-  if (!bossModels.length) lines.push('If the boss had done the worker jobs: no boss sessions found');
-  else {
-    const model = bossModels[0][0], estimate = sum(bosses, 'units') + sum(workers, 'weighted') / 1e6 * price(model, options.config);
-    const change = total ? 100 * (estimate - total) / total : 0;
-    lines.push('If the boss had done the worker jobs (' + lib.sanitizeLabel(model) + '): total ' + estimate.toFixed(3) + ' units, '
-      + Math.abs(change).toFixed(1) + '% ' + (change >= 0 ? 'more' : 'less') + ' than actual');
-    lines.push('rough estimate, same token count assumed');
-  }
-  const unknown = [...new Set(jobs.map(j => j.model))].filter(model => !Object.hasOwn(options.config.models?.models || {}, priceModel(model, options.config))).sort();
-  if (unknown.length) lines.push('Unknown models (cost 1): ' + unknown.slice(0, 5).map(lib.sanitizeLabel).join(', ') + (unknown.length > 5 ? ', ...' : ''));
-  lines.push(footer);
-  return lines.join('\n');
+  section('Other providers: calls | tokens | usd', grouped(usage, e => e.provider).map(([id, group]) =>
+    lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd'].map(unit => group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0) || '-').join(' | ')));
+  section('Time per job (all projects): model / tier | count | median time', grouped(runs, e => e.model + ' / ' + e.tier).map(([, group]) =>
+    lib.sanitizeLabel(group[0].model) + ' / ' + group[0].tier + ': ' + group.length + ' | ' + time(median(group.map(e => e.seconds)))));
+  return lines;
 }
 function savings(options = {}) {
   const project = options.root ? null : lib.findProjectConfig();

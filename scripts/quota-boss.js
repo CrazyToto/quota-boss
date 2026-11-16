@@ -43,7 +43,7 @@ const USAGES = {
   'remove-api': 'remove-api <id>',
   'local': 'local [on <model>|off]',
   'stats': 'stats [--days N]',
-  'savings': 'savings [--days N] [--all]',
+  'savings': 'savings [--days N] [--all] [--details]',
   'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--effort <level>]',
   'set': 'set <name> <value>',
   'help': 'help',
