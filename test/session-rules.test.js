@@ -114,6 +114,17 @@ test('scout limits Bash to bounded read-only graph queries and workers confirm h
   }
 });
 
+test('Explore replaces the built-in search agent on Haiku and stays read-only', () => {
+  const explore = fs.readFileSync(path.join(root, 'agents/Explore.md'), 'utf8');
+  assert.match(explore, /^name: Explore$/m);
+  assert.match(explore, /^model: haiku$/m);
+  assert.match(explore, /^tools: Read, Grep, Glob, Bash, mcp__codebase-memory__\*, mcp__serena__\*$/m);
+  assert.doesNotMatch(explore, /^tools: .*\b(Edit|Write)\b/m);
+  assert.match(explore, /managed-by: quota-boss/);
+  assert.ok(explore.includes('Bash is only for `node "{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" graph explain|affected|path ...`; run no other command.'));
+  assert.match(explore, /say clearly what you did not find or did not check/);
+});
+
 test('other skills and plugins keep their own workflow on every host and in terse mode', () => {
   for (const host of ['claude-code', 'codex', 'generic']) {
     for (const project of [{}, { terse: true }, { consensus: false }]) {

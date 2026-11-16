@@ -111,6 +111,7 @@ You ─► Claude Code (Opus = boss: plan, classify, delegate, verify)
         ├─► sonnet-worker ─► Sonnet, larger implementation
         ├─► haiku-worker  ─► Haiku, small edits, tests, docs
         ├─► scout         ─► Haiku, code search
+        ├─► Explore       ─► Haiku, replaces the built-in search agent
         ├─► reviewer      ─► Sonnet, reviews diffs
         ├─► cli-worker    ─► another official CLI: Copilot, Grok, Antigravity (Gemini), OpenCode
         ├─► self-worker   ─► the boss model in a separate context for large or parallel jobs

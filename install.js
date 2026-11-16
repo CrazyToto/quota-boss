@@ -244,7 +244,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
           if (!Array.isArray(entry?.hooks)) return [entry];
           const remaining = entry.hooks.filter(item => item?.command !== hook.command);
           if (remaining.length === entry.hooks.length) return [entry];
-          if (remaining.length || Object.keys(entry).some(key => key !== 'hooks' && !(key === 'matcher' && hook.event === 'PreToolUse' && entry.matcher === 'Agent|Task'))) return [{ ...entry, hooks: remaining }];
+          if (remaining.length || Object.keys(entry).some(key => key !== 'hooks' && !(key === 'matcher' && hook.event === 'PreToolUse' && [hosts.PRE_TOOL_MATCHER, ...hosts.LEGACY_PRE_TOOL_MATCHERS].includes(entry.matcher)))) return [{ ...entry, hooks: remaining }];
           return [];
         });
         if (settings.hooks[hook.event].length === 0 && hook.createdEvent) delete settings.hooks[hook.event];
@@ -454,11 +454,11 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
         // Upgrade legacy bare-node hooks as well as commands from an earlier Node installation.
         hook.command = hookCommand;
         // Only an entry that holds nothing but our hook gets our matcher; others keep theirs.
-        if (event === 'PreToolUse' && entry.hooks.length === 1) entry.matcher = 'Agent|Task';
+        if (event === 'PreToolUse' && entry.hooks.length === 1) entry.matcher = hosts.PRE_TOOL_MATCHER;
         found = true;
       }
     }
-    if (!found) entries.push({ ...(event === 'PreToolUse' ? { matcher: 'Agent|Task' } : {}), hooks: [{ type: 'command', command: hookCommand, timeout: event === 'PreToolUse' ? 5 : 10 }] });
+    if (!found) entries.push({ ...(event === 'PreToolUse' ? { matcher: hosts.PRE_TOOL_MATCHER } : {}), hooks: [{ type: 'command', command: hookCommand, timeout: event === 'PreToolUse' ? 5 : 10 }] });
     settings.hooks[event] = entries;
     if (!manifest.hooks.some(hook => hook.event === event && hook.command === hookCommand)) {
       const prior = manifest.hooks.find(hook => hook.event === event);

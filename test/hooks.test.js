@@ -100,7 +100,7 @@ test('default tiny startup quotes paths with spaces and uses full rules while sa
   assert.equal(saving.status, 0);
 });
 
-test('tiny startup has only the six boot lines, graph, warning and existing notes', t => {
+test('tiny startup has only the seven boot lines, graph, warning and existing notes', t => {
   enable({ rules: 'tiny', terse: true });
   const graph = require('../scripts/graph'), context = require('../scripts/context');
   const load = lib.loadConfig;
@@ -110,7 +110,7 @@ test('tiny startup has only the six boot lines, graph, warning and existing note
   t.mock.method(require('../scripts/session-routing'), 'build', () => { throw new Error('Tiny startup must not build routing'); });
   t.mock.method(context, 'deferTable', () => { throw new Error('Tiny startup must not defer routing'); });
   const boot = fs.readFileSync(path.join(__dirname, '../templates/BOOT.md'), 'utf8').trim();
-  assert.equal(boot.split('\n').length, 6);
+  assert.equal(boot.split('\n').length, 7);
   assert.ok(boot.includes('"{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" rules --host claude-code'));
   const result = invoke(session.main, input());
   assert.equal(result.stdout, [lib.substituteHome(boot), 'graph context', 'config warning', 'previous-session notes'].join('\n') + '\n');
@@ -207,6 +207,36 @@ test('worker gate denies absent or pre-compaction markers, and allows markers af
     denied(transcript([mark, boundary]));
     denied(transcript([{ ...boundary, content: hosts.RULES_LOADED }]));
     assert.equal(invoke(agent.main, agentInput(transcript([mark, boundary, mark]))).stdout, '');
+  }
+});
+
+test('read guard turns a whole read of a large saved output into a targeted one', () => {
+  const file = transcript([]);
+  const results = path.join(temporary, 'transcript', 'tool-results');
+  fs.mkdirSync(results, { recursive: true });
+  const big = path.join(results, 'big.txt'), small = path.join(results, 'small.txt'), other = path.join(temporary, 'big.txt');
+  // 1000 lines of 50 bytes: 50 000 bytes, above the 40 KB limit.
+  for (const name of [big, other]) fs.writeFileSync(name, ('x'.repeat(49) + String.fromCharCode(10)).repeat(1000));
+  fs.writeFileSync(small, 'x'.repeat(agent.SAVED_OUTPUT_BYTES - 1));
+  const read = (target, extra = {}, transcriptPath = file) => invoke(agent.main, JSON.stringify({ cwd: project, transcript_path: transcriptPath, tool_name: 'Read', tool_input: { file_path: target, ...extra } })).stdout;
+  for (const config of [{ rules: 'tiny' }, { rules: 'full' }]) {
+    enable(config);
+    const output = JSON.parse(read(big)).hookSpecificOutput;
+    assert.equal(output.permissionDecision, 'deny');
+    assert.match(output.permissionDecisionReason, /covers 49 KB of a saved command output.*Grep it.*offset and limit/);
+  }
+  // A range that still covers most of the file is no way around the guard; a real part passes.
+  for (const extra of [{ offset: 1 }, { offset: 0 }, { limit: 999999 }, { offset: 1, limit: 2000 }, { allow_large: true }]) assert.match(read(big, extra), /"deny"/, JSON.stringify(extra));
+  for (const extra of [{ offset: 1, limit: 200 }, { offset: 900 }, { offset: 200, limit: 500 }]) assert.equal(read(big, extra), '', JSON.stringify(extra));
+  if (process.platform === 'win32') assert.match(read(big.toUpperCase()), /"deny"/, 'Windows paths match without case');
+  assert.equal(read(small), '');
+  assert.equal(read(other), '');
+  assert.equal(read(path.join(results, 'missing.txt')), '');
+  assert.equal(read(big, {}, path.join(temporary, 'other.jsonl')), '');
+  assert.equal(read(big, {}, null), '');
+  for (const config of [{ enabled: false }, { host: 'codex' }, { host: 'generic' }]) {
+    enable(config);
+    assert.equal(read(big), '', JSON.stringify(config));
   }
 });
 

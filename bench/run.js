@@ -91,7 +91,9 @@ const started = Date.now();
 let run;
 if (host === 'claude') {
   const cli = ['-p', '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits',
-    '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent', '--max-budget-usd', '8'];
+    '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent',
+    // A scheduled wakeup keeps a -p run alive until the timeout after the answer is done.
+    '--disallowedTools', 'ScheduleWakeup', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
   run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '', QUOTA_BOSS_BENCH: runName, ...modeEnv } });
 } else {

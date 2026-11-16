@@ -208,3 +208,30 @@ boss never handed work down; they are left out. Runs between 03:41 and 03:49 UTC
 less clean; cost and hidden results are not affected. In one medium saving run the boss gave the Codex wrapper agent
 Sonnet instead of its Haiku default (+$0.04); the rules now say to leave the Agent model unset for CLI wrapper workers
 (1c61475). Two to five runs per arm show direction only.
+
+### Claude Code: reading guidance and the saved-output guard (2026-11-17)
+
+Same host and boss as above, tiny rules, quota to spare except for the large task (`--claude-mode save`). New in these
+runs: the start text asks for parallel independent reads but warns that dumping whole folders costs more than an extra
+turn; a Haiku `Explore` agent replaces the built-in search agent; and a PreToolUse guard turns a read of 40 KB or more
+of a saved tool output (Claude Code persists large command output to a file, which the model then often reads whole)
+into a hint to Grep it or read a smaller range. The research fixture asks nine questions over an 80 KB manual; readheavy
+is a code change that needs many files read.
+
+| Task | Arm | Runs | Hidden | Time (s), mean (runs) | Claude USD, mean (runs) |
+|---|---|---|---|---|---|
+| research | off | 3 | 9/9 all | 26 (21, 28, 29) | 0.427 (0.458, 0.347, 0.476) |
+| research | on | 4 | 9/9 all | 46 (43, 45, 45, 50) | 0.386 (0.396, 0.378, 0.395, 0.377) |
+| readheavy | off | 2 | 15/15 both | 62 (58, 65) | 0.388 (0.379, 0.396) |
+| readheavy | on | 3 | 15/15 all | 60 (55, 57, 67) | 0.380 (0.357, 0.354, 0.430) |
+| large | on, saving | 1 | 32/32 | 283 | 0.541 (+0.128 Codex) |
+
+On research every run dumped the whole manual with one shell command; boss off then read the saved 83 KB output whole.
+With boss on the guard denied that read in three runs (the fourth run did not try it) and the boss read the sections it
+needed instead: 10% less Claude and a narrower spread at the same answers, but about 20 s longer, because targeted
+reading takes more turns. The saving grows with the length of the session after the dump, since every later turn
+re-reads it; this fixture ends right after. Readheavy cost and time match boss off. The large saving run is within the
+earlier range (0.326 to 0.642 Claude, 272 to 341 s); its extra time against the previous round was in the Codex worker,
+not in the boss. A second large run finished its work in 268 s but scheduled a wakeup, which kept the `-p` process
+alive until the timeout; bench runs now disallow `ScheduleWakeup`. The bench did not call `Explore`. Two to four runs
+per arm show direction only.

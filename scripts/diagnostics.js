@@ -115,9 +115,9 @@ function doctor(probe = false, options = {}) {
     const hasHook = (event, name) => (Array.isArray(settings?.hooks?.[event]) ? settings.hooks[event] : []).some(entry => Array.isArray(entry?.hooks) && entry.hooks.some(hook => hasScript(hook?.command, name)));
     const settingsName = path.join(paths.claudeDir, 'settings.json');
     if (!hasHook('SessionStart', 'hook-session.js') || !hasHook('UserPromptSubmit', 'hook-prompt.js')) problem('Quota Boss hooks are missing from ' + settingsName, installFix);
-    if (!(Array.isArray(settings?.hooks?.PreToolUse) ? settings.hooks.PreToolUse : []).some(entry => entry?.matcher === 'Agent|Task' && Array.isArray(entry.hooks) && entry.hooks.some(hook => hasScript(hook?.command, 'hook-agent.js')))) lines.push('Info: Quota Boss PreToolUse hook is missing; reinstall to enforce on-demand rules.');
+    if (!(Array.isArray(settings?.hooks?.PreToolUse) ? settings.hooks.PreToolUse : []).some(entry => entry?.matcher === require('./hosts').PRE_TOOL_MATCHER && Array.isArray(entry.hooks) && entry.hooks.some(hook => hasScript(hook?.command, 'hook-agent.js')))) lines.push('Info: Quota Boss PreToolUse hook is missing; reinstall to enforce on-demand rules.');
     if (!hasScript(settings?.statusLine?.command, 'statusline.js')) problem('Quota Boss status line is missing from ' + settingsName, installFix);
-    const agents = ['opus-worker', 'sonnet-worker', 'haiku-worker', 'codex-worker', 'gpt-advisor', 'researcher', 'reviewer', 'claude-worker', 'cli-worker', 'consensus', 'scout', 'self-worker'];
+    const agents = ['opus-worker', 'sonnet-worker', 'haiku-worker', 'codex-worker', 'gpt-advisor', 'researcher', 'reviewer', 'claude-worker', 'cli-worker', 'consensus', 'scout', 'self-worker', 'Explore'];
     if (agents.some(name => !fs.existsSync(path.join(paths.claudeDir, 'agents', name + '.md')))) problem('Quota Boss agents are missing from ' + path.join(paths.claudeDir, 'agents'), installFix);
   } else if (host === 'codex') {
     if (!require('./codex-hooks').present()) lines.push('Info: Quota Boss SessionStart hook is missing from hooks.json; run quota-boss on --host codex.');

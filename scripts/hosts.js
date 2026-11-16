@@ -5,6 +5,9 @@ const lib = require('./lib');
 const START = '<!-- quota-boss:start -->';
 const END = '<!-- quota-boss:end -->';
 const RULES_LOADED = '[quota-boss] Boss rules loaded.';
+// PreToolUse: worker handover gate (Agent, Task) and the saved-output read guard (Read).
+const PRE_TOOL_MATCHER = 'Agent|Task|Read';
+const LEGACY_PRE_TOOL_MATCHERS = ['Agent|Task'];
 function boot() {
   return lib.substituteHome(lib.readBounded(path.join(__dirname, '..', 'templates', 'BOOT.md'), 65536).trim());
 }
@@ -111,4 +114,4 @@ function recommend(config, outcomes = [], now = Date.now()) {
   return describe(best) + '; architecture/review score (60/40), and within 0.5 of the best the cheapest wins.'
     + (other ? '\nBest on the other host: ' + describe(other) + '.' : '');
 }
-module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, agentsText, managedBlock, recommend, START, END };
+module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, PRE_TOOL_MATCHER, LEGACY_PRE_TOOL_MATCHERS, agentsText, managedBlock, recommend, START, END };
