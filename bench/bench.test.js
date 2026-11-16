@@ -71,8 +71,46 @@ test('fake runs repetitions and profile restoration', t => {
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0].runName, rows[1].runName);
   assert.equal(rows[0].arm, 'on:quality');
+  assert.equal(rows[0].claudeMode, null);
+  assert.equal(rows[0].label, 'claude-opus-on:quality');
   assert.equal(calls.filter(x => x[1].join(' ').includes('set profile frugal')).length, 2);
   assert.equal(calls.filter(x => x[0] === 'claude').length, 2);
+});
+
+test('Claude mode flag labels runs and reaches quota and host children', t => {
+  for (const host of ['claude', 'codex']) {
+    const d = path.join(temporary(t), host), calls = [];
+    const fake = (command, args, options) => {
+      calls.push({ command, args, env: options.env });
+      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
+      if (command === 'claude') return { status: 0, stdout: JSON.stringify({ total_cost_usd: 1 }) };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    main(['--host', host, '--arm', 'on', '--task', 'small', '--claude-mode', 'save', '--out', d], fake);
+    const row = JSON.parse(fs.readFileSync(path.join(d, 'results.jsonl'), 'utf8'));
+    assert.equal(row.claudeMode, 'save');
+    assert.equal(row.label, `${host}-${host === 'claude' ? 'opus' : 'gpt-6.1-sol'}-on-save`);
+    const children = calls.filter(c => c.command === host || (c.command === process.execPath && c.args[0].endsWith('quota-boss.js')));
+    assert.ok(children.length > 2);
+    for (const child of children) assert.equal(child.env.QUOTA_BOSS_CLAUDE_MODE, 'save');
+  }
+});
+
+test('invalid Claude mode flag exits with usage error', () => {
+  const exit = process.exit, error = console.error;
+  let message = '';
+  process.exit = code => { throw Object.assign(new Error('exit'), { code }); };
+  console.error = value => { message += value; };
+  try {
+    for (const value of ['', 'SAVE', 'automatic']) {
+      message = '';
+      assert.throws(() => main(['--host', 'claude', '--arm', 'on', '--task', 'small', '--claude-mode', value]), e => e.code === 2);
+      assert.match(message, /Usage: .*--claude-mode normal\|save\|emergency/);
+    }
+  } finally {
+    process.exit = exit;
+    console.error = error;
+  }
 });
 
 test('report known statistics and joins', t => {

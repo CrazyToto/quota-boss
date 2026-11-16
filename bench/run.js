@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 function parseArm(value) {
  if (!/^(off|on|on:(quality|balanced|frugal))$/.test(value || '')) throw new Error('Invalid arm: ' + value);
@@ -22,6 +22,9 @@ for (let i = 0; i < argv.length; i += 2) {
 }
 const host = args.host;
 const { arm, mode, profile } = parseArm(args.arm || args.mode);
+const claudeMode = args['claude-mode'] === undefined ? null : args['claude-mode'];
+if (claudeMode !== null && !['normal', 'save', 'emergency'].includes(claudeMode)) { console.error(USAGE); process.exit(2); }
+const modeEnv = claudeMode ? { QUOTA_BOSS_CLAUDE_MODE: claudeMode } : {};
 const reps = Number(args.reps || 1);
 if (!Number.isInteger(reps) || reps < 1) throw new Error('reps must be a positive integer');
 if (reps > 1) {
@@ -32,7 +35,7 @@ const task = args.task;
 if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
 const model = args.model || (host === 'claude' ? 'opus' : 'gpt-6.1-sol');
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
-const label = args.label || `${host}-${model}-${arm}`;
+const label = args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`;
 const n = args.n || '1';
 if (!Number.isInteger(Number(n)) || Number(n) < 1) throw new Error('n must be a positive integer');
 const out = path.resolve(args.out || path.join(os.tmpdir(), 'quota-boss-bench'));
@@ -55,7 +58,7 @@ git('-c', 'user.name=bench', '-c', 'user.email=bench@example.invalid', 'commit',
 
 const prompt = prompts[task] + ' Reply in one short sentence.';
 
-const quota = (...a) => execute(process.execPath, [qb, ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: host === 'codex' ? model : '' } });
+const quota = (...a) => execute(process.execPath, [qb, ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: host === 'codex' ? model : '', ...modeEnv } });
 let previousProfile;
 try {
 {
@@ -82,10 +85,10 @@ if (host === 'claude') {
   const cli = ['-p', '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits',
     '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
-  run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '' } });
+  run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '', ...modeEnv } });
 } else {
   run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
-    { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model } });
+    { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, ...modeEnv } });
 }
 const seconds = Math.round((Date.now() - started) / 1000);
 if (run.error) {
@@ -148,7 +151,7 @@ const count = name => { const m = String(own.stdout || '').match(new RegExp(`(?:
 const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
-  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
+  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
   ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');

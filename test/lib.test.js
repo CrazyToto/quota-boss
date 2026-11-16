@@ -18,11 +18,12 @@ test.beforeEach(() => {
   project = path.join(temporary, 'project');
   fs.mkdirSync(project);
   savedCwd = process.cwd();
-  savedEnv = Object.fromEntries(['QUOTA_BOSS_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QUOTA_BOSS_NO_CLIPBOARD'].map(key => [key, process.env[key]]));
+  savedEnv = Object.fromEntries(['QUOTA_BOSS_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QUOTA_BOSS_NO_CLIPBOARD', 'QUOTA_BOSS_CLAUDE_MODE'].map(key => [key, process.env[key]]));
   process.env.QUOTA_BOSS_HOME = path.join(temporary, 'quota-boss');
   process.env.CLAUDE_CONFIG_DIR = path.join(temporary, 'claude');
   process.env.CODEX_HOME = path.join(temporary, 'codex');
   process.env.QUOTA_BOSS_NO_CLIPBOARD = '1';
+  delete process.env.QUOTA_BOSS_CLAUDE_MODE;
   process.chdir(project);
 });
 
@@ -360,6 +361,21 @@ test('mode thresholds use each explicit weekly threshold and inclusive boundarie
   assert.equal(lib.computeModes(old, thresholds).codexStale, true);
   assert.match(lib.computeModes(old, thresholds).codexAge, /^\d+[hd]$/);
   assert.match(lib.formatLimits(old, 'balanced', thresholds), /codex numbers \d+[hd] old \(refresh on the next Codex run\)/);
+});
+
+test('benchmark Claude mode override wins and invalid values are ignored', () => {
+  for (const mode of ['normal', 'save', 'emergency']) {
+    process.env.QUOTA_BOSS_CLAUDE_MODE = mode;
+    for (const values of [[0, 0, 80, 0], [95, 99, 80, 0]]) {
+      const result = lib.computeModes(limits(...values));
+      assert.equal(result.claudeMode, mode);
+      assert.equal(result.codexMode, 'tight');
+      assert.equal(result.mode, mode === 'normal' ? 'codex-tight' : mode + '+codex-tight');
+    }
+  }
+  process.env.QUOTA_BOSS_CLAUDE_MODE = 'SAVE';
+  assert.equal(lib.computeModes(limits(95, 99)).claudeMode, 'emergency');
+  assert.equal(lib.computeModes(limits(0, 0)).claudeMode, 'normal');
 });
 
 test('Claude updates retain absent fields and reject non-numeric injected values', () => {

@@ -677,7 +677,9 @@ function computeModes(limits = {}, thresholds = {}, now = Date.now(), providers)
   const { c5h, cWeek, x5h, xWeek } = limitValues(limits, now);
   const threshold = (group, key, fallback) => number(thresholds[group]?.[key]) ?? fallback;
   const hit = (value, group, key, fallback) => value !== undefined && value >= threshold(group, key, fallback);
-  const claudeMode = hit(c5h, 'claude', 'emergency', 85) || hit(cWeek, 'claudeWeekly', 'emergency', 95) ? 'emergency'
+  // benchmark override, not a user setting.
+  const claudeMode = ['normal', 'save', 'emergency'].includes(process.env.QUOTA_BOSS_CLAUDE_MODE) ? process.env.QUOTA_BOSS_CLAUDE_MODE
+    : hit(c5h, 'claude', 'emergency', 85) || hit(cWeek, 'claudeWeekly', 'emergency', 95) ? 'emergency'
     : hit(c5h, 'claude', 'save', 60) || hit(cWeek, 'claudeWeekly', 'save', 80) ? 'save' : 'normal';
   const codexMode = hit(x5h, 'codex', 'exhausted', 95) || hit(xWeek, 'codexWeekly', 'exhausted', 97) ? 'exhausted'
     : hit(x5h, 'codex', 'tight', 80) || hit(xWeek, 'codexWeekly', 'tight', 85) ? 'tight' : 'normal';
