@@ -93,7 +93,7 @@ test.describe('providers', () => {
   test('caps rescale before prices and modes, exclude delegation and ladders, and retain self work', () => {
     const p = config({ grok: { weekly: 20 }, codex: { fiveHour: 50 } });
     const limits = { grok: { windows: { weekly: { used_percent: 15 } } }, codex: { primary: { used_percent: 40 } } };
-    const result = route({ models: registry, providers: p, limits, now, selfTests: { grokModel: { result: 'pass' } }, outcomes: Array.from({ length: 3 }, () => ({ t: now, model: 'grokModel', category: 'implementation', tier: 'normal', result: 'pass' })) });
+    const result = route({ models: registry, providers: p, limits, now, findExecutable: () => process.execPath, selfTests: { grokModel: { result: 'pass', cli: lib.cliFingerprint('grok', () => process.execPath) } }, outcomes: Array.from({ length: 3 }, () => ({ t: now, model: 'grokModel', category: 'implementation', tier: 'normal', result: 'pass' })) });
     const candidate = result.candidates.find(c => c.model === 'grokModel');
     assert.equal(candidate.price, 1 + 3 * 0.75 ** 2);
     assert.match(result.mode, /codex-tight/);
@@ -101,7 +101,7 @@ test.describe('providers', () => {
     assert.equal(candidate.via, 'cli-worker:grok');
     assert.match(formatTable({ rows: [candidate] }), /cli-worker:grok/);
     limits.grok.windows.weekly.used_percent = 20;
-    const capped = route({ models: registry, providers: p, limits, now, selfTests: { grokModel: { result: 'pass' } }, outcomes: Array.from({ length: 3 }, () => ({ t: now, model: 'grokModel', category: 'implementation', tier: 'normal', result: 'pass' })) });
+    const capped = route({ models: registry, providers: p, limits, now, findExecutable: () => process.execPath, selfTests: { grokModel: { result: 'pass', cli: lib.cliFingerprint('grok', () => process.execPath) } }, outcomes: Array.from({ length: 3 }, () => ({ t: now, model: 'grokModel', category: 'implementation', tier: 'normal', result: 'pass' })) });
     assert.match(capped.mode, /capped:grok/);
     assert.ok(capped.candidates.filter(c => c.pool === 'grok').every(c => c.price === Infinity && /capped:grok/.test(c.reason)));
     assert.ok(capped.rows.every(c => c.pool !== 'grok' && c.ladder.every(s => s.pool !== 'grok')));
@@ -138,7 +138,7 @@ test.describe('providers', () => {
   test('CLI lists providers, persists enable/disable, caps and append-only usage', () => {
     assert.match(cli.run(['providers']), /id \| kind \| enabled \| source \| used \| cap \| effective/);
     assert.match(cli.run(['providers']), /grok \| subscription \| no \| counter/);
-    cli.run(['use', 'grok', 'on']);
+    cli.run(['use', 'grok', 'on', '--no-test']);
     assert.deepEqual(lib.readJson(userFile()).providers.grok, { enabled: true });
     cli.run(['usage', 'grok', '30', 'calls']);
     const before = fs.readFileSync(lib.getPaths().usageFile, 'utf8');
@@ -171,7 +171,7 @@ test.describe('providers', () => {
   });
 
   test('bad CLI input and amounts fail before any writes', () => {
-    cli.run(['use', 'grok', 'on']);
+    cli.run(['use', 'grok', 'on', '--no-test']);
     const before = fs.readFileSync(userFile(), 'utf8');
     for (const args of [['use', 'grok'], ['use', 'missing', 'on'], ['use', '../x', 'on'],
       ['use', 'grok', 'off', 'extra'], ['cap', 'grok', 'yearly', '20'], ['cap', 'grok', 'weekly', '0'],
@@ -206,7 +206,7 @@ test.describe('providers', () => {
     ]) assert.throws(() => lib.mergeProviders(defaults, override), JSON.stringify(override));
     lib.atomicWrite(userFile(), '{broken');
     assert.throws(() => lib.loadProviders());
-    assert.throws(() => cli.run(['use', 'grok', 'on']));
+    assert.throws(() => cli.run(['use', 'grok', 'on', '--no-test']));
     assert.equal(fs.readFileSync(userFile(), 'utf8'), '{broken');
   });
 

@@ -57,7 +57,7 @@ test('every big provider offers several routes, each template takes a model and 
 
 test('a CLI that cannot take a level gets none, and the table names models for the other family', () => {
   const providers = { ...lib.BUILTIN_PROVIDERS, providers: { ...lib.BUILTIN_PROVIDERS.providers,
-    grok: { ...lib.BUILTIN_PROVIDERS.providers.grok, enabled: true, cli: { command: 'grok', args: ['-p', '{prompt}', '-m', '{model}'], defaultModel: 'x' } } } };
+    grok: { ...lib.BUILTIN_PROVIDERS.providers.grok, enabled: true, evidence: 'real', cli: { command: 'grok', args: ['-p', '{prompt}', '-m', '{model}'], defaultModel: 'x' } } } };
   const models = { categories: ['implementation'], models: { g: { pool: 'grok', label: 'G', cost: 1, cliModel: 'g-1', efforts: ['low', 'medium', 'high'], scores: { implementation: 9 } } } };
   const row = route({ models, providers, selfTests: { g: { result: 'pass' } } }).rows.find(r => r.tier === 'normal');
   assert.equal(row.effort, null);

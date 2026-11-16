@@ -1187,6 +1187,23 @@ function findExecutable(name, env = process.env, platform = process.platform, cw
   }
   return null;
 }
+function cliFingerprint(command, find = findExecutable) {
+  try {
+    const executable = find(command);
+    if (!executable) return null;
+    const stat = fs.statSync(executable);
+    if (!stat.isFile()) return null;
+    const result = { path: path.resolve(executable), size: stat.size, mtimeMs: stat.mtimeMs };
+    // An npm update can leave the .cmd/.ps1 shim untouched, so also bind the package it launches.
+    const match = /\.(?:cmd|ps1)$/i.test(executable)
+      && /(node_modules[\\/](?:@[^\\/"]+[\\/])?[^\\/"]+)[\\/]/i.exec(fs.readFileSync(executable, 'utf8').slice(0, 65536));
+    if (match) {
+      const manifest = fs.statSync(path.join(path.dirname(executable), match[1], 'package.json'));
+      result.package = { size: manifest.size, mtimeMs: manifest.mtimeMs };
+    }
+    return result;
+  } catch { return null; }
+}
 function systemCmd(env = process.env) {
   // An inherited SystemRoot must not be able to select another cmd.exe.
   const root = env.SystemRoot || env.SYSTEMROOT || '';
@@ -1262,7 +1279,7 @@ function askLine(question) {
   try { return buffer.toString('utf8', 0, fs.readSync(0, buffer, 0, buffer.length, null)).trim(); } catch { return ''; }
 }
 
-module.exports = { systemLink, normalizeUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, WORKERS, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { cliFingerprint, systemLink, normalizeUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, WORKERS, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

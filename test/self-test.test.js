@@ -28,7 +28,7 @@ test.describe('provider self-tests', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
   function options(result = { status: 0 }, write = true) {
-    return { config, platform: 'linux', env: { PATH: '/trusted' }, now: () => 123000, findExecutable: name => '/trusted/' + name,
+    return { config, now: () => 123000, findExecutable: () => process.execPath,
       spawnSync(file, args, opts) {
         if (args[0] === 'init') { directories.push(opts.cwd); return { status: 1 }; }
         calls.push({ file, args, opts });
@@ -59,7 +59,7 @@ test.describe('provider self-tests', () => {
   });
   test('pass records only self-test state and counter usage, with closed stdin and lowest effort', () => {
     assert.match(selfTest('trial', options()), /PASS tiny 0.0 s/);
-    assert.deepEqual(lib.readState().selfTests.tiny, { result: 'pass', at: 123000 });
+    assert.deepEqual(lib.readState().selfTests.tiny, { result: 'pass', at: 123000, cli: lib.cliFingerprint('trial', () => process.execPath) });
     assert.equal(lib.readUsage(123000).entries.length, 1);
     assert.equal(calls[0].args[3], 'low');
     assert.equal(fs.existsSync(lib.getPaths().outcomesFile), false);
@@ -174,9 +174,11 @@ test.describe('provider self-tests', () => {
     assert.ok(text.startsWith('Warning: Account risk.'));
     assert.ok(text.indexOf('Each test is a real call') > text.indexOf('Warning:'));
   });
-  for (const extension of ['cmd', 'ps1']) test('Windows ' + extension + ' shims preserve the isolated cwd and closed stdin', () => {
+  for (const extension of ['cmd', 'ps1']) test('Windows ' + extension + ' shims preserve the isolated cwd and closed stdin', t => {
     const opts = options(); opts.platform = 'win32';
-    opts.findExecutable = name => name === 'git' ? null : 'C:\\trusted\\trial.' + extension;
+    const executable = 'C:\\trusted\\trial.' + extension;
+    t.mock.method(lib, 'cliFingerprint', () => ({ path: executable, size: 1, mtimeMs: 1 }));
+    opts.findExecutable = name => name === 'git' ? null : executable;
     opts.spawnSync = (file, args, spawnOptions) => {
       directories.push(spawnOptions.cwd);
       assert.deepEqual(spawnOptions.stdio, ['ignore', 'pipe', 'pipe']);

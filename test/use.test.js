@@ -40,13 +40,13 @@ test.describe('use', () => {
   });
 
   test('global provider switches persist in provider storage', () => {
-    run('use', 'grok', 'on');
+    run('use', 'grok', 'on', '--no-test');
     assert.equal(provider('grok').enabled, true);
     assert.deepEqual(lib.readJson(userFile('providers')).providers.grok, { enabled: true });
     assert.equal(fs.existsSync(lib.useFile()), false);
     run('use', 'grok', 'off');
     assert.equal(provider('grok').enabled, false);
-    run('use', 'grok', 'on');
+    run('use', 'grok', 'on', '--no-test');
     run('use', 'grok', 'off');
     assert.equal(provider('grok').enabled, false);
     assert.throws(() => run('use', 'ollama', 'on'), /Local models have their own switch/);
@@ -69,7 +69,7 @@ test.describe('use', () => {
     assert.equal(provider('grok').enabled, false);
     assert.equal(lib.readJson(lib.useFile()).only, undefined);
     run('only', 'codex');
-    run('use', 'grok', 'on');
+    run('use', 'grok', 'on', '--no-test');
     assert.equal(provider('grok').enabled, false);
     run('only', 'off');
     assert.equal(provider('grok').enabled, true);

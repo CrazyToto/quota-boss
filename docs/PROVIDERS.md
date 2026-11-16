@@ -171,7 +171,11 @@ Example scores and training flags are conservative configuration declarations; c
 
 ## Untested providers
 
-Grok and Antigravity were built from vendor documentation and have not been run end to end by the maintainer. Before routing work, run `quota-boss providers test <id>` (a real call that spends quota). Each model also needs three verified task passes before receiving critical work.
+Grok and Antigravity were built from vendor documentation. Turning a docs-only provider on runs `quota-boss providers test <id>` (real calls that spend quota); `use <id> on --no-test` skips it. A pass is bound to that model and the CLI's resolved path, size and modification time. CLI changes require another test.
+
+Docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes. Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
+
+`route --needs image,pdf --context 100000` filters every option, including fallback models. Unknown capabilities fail the filter. Model `inputs` and worker support must both allow an input; `text` always works. CLI workers declare their handover support in `cli.inputs` (default: text only). Model `contextTokens` and `webSearch` are optional documented metadata; shipped context sizes and web search support remain unknown. `route --explain` lists the inputs each route can actually accept.
 
 ## Provider terms
 

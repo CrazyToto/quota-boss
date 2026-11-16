@@ -110,7 +110,7 @@ test.describe('hosts and diagnostics', () => {
     cli.run(['only', 'off']);
     cli.run(['use', 'claude', 'on']);
     cli.run(['only', 'claude', 'codex']); check(true, false);
-    cli.run(['use', 'grok', 'on']);
+    cli.run(['use', 'grok', 'on', '--no-test']);
     cli.run(['only', 'off']); check(true, true);
     cli.run(['use', 'claude', 'off', '--project']); check(false, true);
     cli.run(['only', 'codex', '--project']); check(false, false);
@@ -304,7 +304,8 @@ test.describe('hosts and diagnostics', () => {
     assert.match(formatTable(result), /claude-worker/);
     config.providers.providers.grok.enabled = true;
     config.models.models.grok = { pool: 'grok', label: 'Grok', cost: 1, scores: { implementation: 8 } };
-    const generic = route({ ...config, host: 'generic', selfTests: { grok: { result: 'pass' } } });
+    const generic = route({ ...config, host: 'generic', findExecutable: () => process.execPath,
+      selfTests: { grok: { result: 'pass', cli: lib.cliFingerprint('grok', () => process.execPath) } } });
     assert.ok(generic.rows.length); assert.ok(generic.rows.every(r => r.via === 'cli-worker:grok'));
     const saving = route({ ...config, limits: { claude: { five_hour: { used_percentage: 60 } } } });
     assert.ok(saving.rows.every(r => r.pool !== 'claude' || r.via === 'self'));

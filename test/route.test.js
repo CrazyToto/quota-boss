@@ -417,25 +417,26 @@ test('docs evidence requires a real self-test and verified probation passes', ()
   const providers = { providers: { trial: { label: 'Trial', kind: 'subscription', worker: 'cli-worker', evidence: 'docs', quota: { source: 'none' },
     cli: { command: 'trial', args: ['{prompt}'] } } } };
   const models = { categories: ['implementation'], models: { tiny: { label: 'Tiny', pool: 'trial', cost: 1, scores: { implementation: 10 } } } };
-  const input = { models, providers, host: 'generic', now: 100000 };
+  const input = { models, providers, host: 'generic', now: 100000, findExecutable: () => process.execPath };
   let result = route(input);
   assert.ok(result.candidates.every(c => c.reason === 'self-test needed: quota-boss providers test trial'));
   assert.equal(result.rows.length, 0);
-  input.selfTests = { tiny: { result: 'pass' } };
+  input.selfTests = { tiny: { result: 'pass', cli: lib.cliFingerprint('trial', input.findExecutable) } };
   result = route(input);
-  assert.ok(result.rows.some(c => c.tier === 'normal'));
-  assert.equal(result.candidates.find(c => c.tier === 'critical').reason, 'probation: 3 more verified passes needed');
+  assert.ok(result.rows.some(c => c.tier === 'trivial'));
+  assert.ok(result.rows.every(c => c.tier !== 'normal'));
+  assert.equal(result.candidates.find(c => c.tier === 'critical').reason, 'probation: 3 more verified normal passes needed for critical');
   input.outcomes = Array.from({ length: 2 }, () => ({ t: 99999, model: 'tiny', category: 'implementation', tier: 'normal', result: 'pass' }));
-  assert.equal(route(input).candidates.find(c => c.tier === 'critical').reason, 'probation: 1 more verified passes needed');
+  assert.equal(route(input).candidates.find(c => c.tier === 'critical').reason, 'probation: 1 more verified normal passes needed for critical');
   input.outcomes.push({ ...input.outcomes[0] });
   assert.ok(route(input).rows.some(c => c.tier === 'critical'));
   input.thresholds = { probationPasses: 4 };
-  assert.equal(route(input).candidates.find(c => c.tier === 'critical').reason, 'probation: 1 more verified passes needed');
+  assert.equal(route(input).candidates.find(c => c.tier === 'critical').reason, 'probation: 1 more verified normal passes needed for critical');
   delete providers.providers.trial.evidence; delete input.selfTests;
   input.outcomes = [];
-  assert.ok(route(input).rows.some(c => c.tier === 'critical'));
+  assert.ok(route(input).rows.every(c => c.tier !== 'critical'));
   providers.providers.trial.evidence = 'real';
-  assert.ok(route(input).rows.some(c => c.tier === 'critical'));
+  assert.ok(route(input).rows.every(c => c.tier !== 'critical'));
 });
 
 const { route, formatTable, projectWindow, successProbability, formatExplain } = require('../scripts/route');
@@ -540,7 +541,7 @@ test('thin evidence discounts estimated pools until verified passes across categ
   near(freeCandidate(thinRoute([], { thinEvidenceFactor: -1 })).utility, freeCandidate(plain).utility * 0.1);
   near(freeCandidate(thinRoute([], { thinEvidenceFactor: 5 })).utility, freeCandidate(plain).utility);
   near(freeCandidate(thinRoute()).utility, freeCandidate(plain).utility * 0.75);
-  assert.match(formatExplain(thinRoute()), /Free[^\n]* \| thin evidence(?:\n|$)/);
+  assert.match(formatExplain(thinRoute()), /Free[^\n]* \| thin evidence \| inputs=text/);
   assert.doesNotMatch(formatTable(thinRoute()), /thin evidence/);
   assert.equal(freeCandidate(thinRoute([freePass()], { probationPasses: 1 })).thinEvidence, false);
 });

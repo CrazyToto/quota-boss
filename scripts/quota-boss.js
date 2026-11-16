@@ -26,9 +26,9 @@ const USAGES = {
   'status': 'status',
   'settings': 'settings',
   'explain': 'explain <setting>',
-  'route': 'route [--explain] [--size small|medium|large] [category] [tier]',
+  'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio] [--context <tokens>] [category] [tier]',
   'models': 'models',
-  'use': 'use [<provider-id|model-id> on|off [--project]]',
+  'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
   'only': 'only <provider-id...>|off [--project]',
   'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
@@ -154,6 +154,8 @@ function useReport(active, config) {
 function useCommand(command, rest) {
   const active = lib.findProjectConfig(), config = lib.loadConfig(active);
   if (command === 'use' && !rest.length) return useReport(active, config);
+  const noTest = command === 'use' && rest.at(-1) === '--no-test';
+  if (noTest) rest = rest.slice(0, -1);
   const project = rest.at(-1) === '--project';
   if (project) rest = rest.slice(0, -1);
   if (rest.includes('--project') || !rest.length) throw new Error(usage(command));
@@ -169,6 +171,7 @@ function useCommand(command, rest) {
   if (command === 'use') {
     if (rest.length !== 2 || !['on', 'off'].includes(action)) throw new Error(usage(command));
     checkId(id);
+    if (noTest && (project || !provider || action !== 'on')) throw new Error(usage(command));
     if (provider && action === 'on' && !project && raw.providers[id].kind === 'local') throw new Error('Local models have their own switch: quota-boss local on <model>');
   } else if (!(rest.length === 1 && id === 'off')) {
     for (const value of rest) {
@@ -222,6 +225,18 @@ function useCommand(command, rest) {
   const changedOff = command === 'only' ? hostPool && id !== 'off' && !rest.includes(hostPool)
     : action === 'off' && (provider ? id === hostPool : id === boss);
   if (changedOff) output += '\nThe boss itself keeps running on its model; this only stops delegation to it.';
+  if (command === 'use' && provider && !project && action === 'on' && raw.providers[id].evidence === 'docs' && raw.providers[id].cli) {
+    const { selfTest, validSelfTest } = require('./self-test');
+    const enabled = lib.loadConfig({});
+    const models = Object.entries(enabled.models.models).filter(([, model]) => model.pool === id && model.enabled !== false);
+    const cli = lib.cliFingerprint(raw.providers[id].cli.command, lib.findExecutable);
+    const tests = lib.readState().selfTests;
+    if (noTest) output += '\nSelf-test skipped: run quota-boss providers test ' + id + ' before it gets work.';
+    else if (models.length && !models.every(([key]) => validSelfTest(tests?.[key], cli))) {
+      output += '\nRunning the self-test (real calls that count against the limit). Skip with --no-test.';
+      output += '\n' + selfTest(id, { config: enabled });
+    }
+  }
   return output + (command === 'use' && provider && !project ? '' : refreshCodexAgents());
 }
 function providerCommand(command, rest) {
@@ -455,7 +470,7 @@ function run(args = process.argv.slice(2)) {
     return 'Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + category + ' ' + tier + ' ' + result + (effort ? ' at ' + effort : '');
   } else if (['status', 'route', 'models'].includes(command)) {
     if (command !== 'route' && rest.length) throw new Error(usage(command));
-    let explain = false, size;
+    let explain = false, size, needs, contextTokens;
     const filters = [...rest];
     if (command === 'route') while (filters[0]?.startsWith('--')) {
       const flag = filters.shift();
@@ -463,6 +478,13 @@ function run(args = process.argv.slice(2)) {
       else if (flag === '--size' && size === undefined) {
         size = filters.shift();
         if (!['small', 'medium', 'large'].includes(size)) throw new Error(usage(command));
+      } else if (flag === '--needs' && needs === undefined) {
+        needs = (filters.shift() || '').split(',');
+        if (needs.some(input => !['text', 'image', 'pdf', 'video', 'audio'].includes(input))) throw new Error(usage(command));
+      } else if (flag === '--context' && contextTokens === undefined) {
+        const value = filters.shift();
+        contextTokens = Number(value);
+        if (!/^[1-9]\d*$/.test(value || '') || !Number.isSafeInteger(contextTokens)) throw new Error(usage(command));
       } else throw new Error(usage(command));
     }
     if (command === 'route' && (filters.length > 2 || filters.length > 0 && !lib.CATEGORIES.includes(filters[0])
@@ -477,7 +499,7 @@ function run(args = process.argv.slice(2)) {
     if (command === 'route') {
       const bossModel = lib.currentBossModel(active, state);
       const routing = size === undefined && !explain && active.host !== 'codex' ? routeTable : route;
-      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
+      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', needs, context: contextTokens, limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
       const match = row => (!filters[0] || row.category === filters[0]) && (!filters[1] || row.tier === filters[1]);
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
       return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));

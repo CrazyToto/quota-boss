@@ -106,7 +106,7 @@ test.describe('security review regressions', () => {
     const original = fs.openSync;
     fs.openSync = (name, ...args) => { if (name === file) opened = true; return original(name, ...args); };
     try {
-      linkedFile(file, () => assert.match(cli.run(['use', 'grok', 'on']), /Note: Skipped AGENTS.md refresh/));
+      linkedFile(file, () => assert.match(cli.run(['use', 'grok', 'on', '--no-test']), /Note: Skipped AGENTS.md refresh/));
     } finally { fs.openSync = original; }
     assert.equal(opened, false);
     assert.equal(fs.readFileSync(file, 'utf8'), 'private content');

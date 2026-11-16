@@ -73,7 +73,9 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       assert.ok(r.candidates.filter(c => c.model === 'train').every(c => /training provider blocked/.test(c.reason)));
     }
     const r = route({ models: registry, providers, allowTrainingProviders: true });
-    assert.ok(r.rows.every(row => row.model === 'train')); assert.equal(r.options.length, 3);
+    assert.ok(r.rows.filter(row => row.tier !== 'critical').every(row => row.model === 'train'));
+    assert.equal(r.rows.find(row => row.tier === 'critical').model, 'safe');
+    assert.equal(r.options.length, 3);
     assert.equal(lib.normalizeProject({}).allowTrainingProviders, false);
     const p = { label: 'Custom', kind: 'local', worker: 'cli-worker', quota: { source: 'none' } };
     assert.equal(lib.mergeProviders(defaults, { providers: { custom: p } }).providers.custom.trainsOnData, false);

@@ -8,6 +8,12 @@ const { PROVIDER_HELP } = require('./provider-help');
 const EFFORTS = ['low', 'medium', 'high', 'xhigh'];
 const RESULT_FILE = 'quota-boss-self-test.txt';
 
+function validSelfTest(test, cli) {
+  return Boolean(test?.result === 'pass' && cli && test.cli
+    && test.cli.path === cli.path && test.cli.size === cli.size && test.cli.mtimeMs === cli.mtimeMs
+    && test.cli.package?.size === cli.package?.size && test.cli.package?.mtimeMs === cli.package?.mtimeMs);
+}
+
 function evidenceStatus(id, models = {}, selfTests = {}) {
   const ids = Object.entries(models.models || {}).filter(([, m]) => m.pool === id && m.enabled !== false).map(([key]) => key);
   const passed = ids.filter(key => selfTests?.[key]?.result === 'pass').length;
@@ -41,6 +47,8 @@ function selfTest(id, options = {}) {
   const platform = options.platform || process.platform, env = options.env || process.env;
   const run = options.spawnSync || require('node:child_process').spawnSync;
   const find = options.findExecutable || (name => lib.findExecutable(name, env, platform));
+  const executable = find(provider.cli.command);
+  const cli = lib.cliFingerprint(provider.cli.command, () => executable);
   const now = typeof options.now === 'function' ? options.now : () => options.now ?? Date.now();
   const lines = [];
   if (PROVIDER_HELP[id]?.warning) lines.push('Warning: ' + PROVIDER_HELP[id].warning);
@@ -57,9 +65,8 @@ function selfTest(id, options = {}) {
     let reason;
     try {
       try { lib.runExecutable(find('git'), ['init', '-q'], { platform, env, spawnSync: run, workingDirectory: directory, stdio: 'ignore', timeout: 5000 }); } catch {}
-      const executable = find(provider.cli.command);
       let result;
-      if (!executable) result = { status: null, error: Object.assign(new Error('Not installed'), { code: 'ENOENT' }) };
+      if (!cli) result = { status: null, error: Object.assign(new Error('Not installed'), { code: 'ENOENT' }) };
       else {
         try { result = lib.runExecutable(executable, args, { platform, env, spawnSync: run, workingDirectory: directory,
           stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: options.timeout ?? 180000, maxBuffer: 1024 * 1024 }); }
@@ -79,7 +86,7 @@ function selfTest(id, options = {}) {
       if (!reason || !['not installed', 'timed out', 'rate limited'].includes(reason)) {
         lib.updateState(state => {
           const selfTests = { ...state.selfTests };
-          if (!reason) selfTests[key] = { result: 'pass', at: now() }; else delete selfTests[key];
+          if (!reason) selfTests[key] = { result: 'pass', at: now(), cli }; else delete selfTests[key];
           return { selfTests };
         });
       }
@@ -90,4 +97,4 @@ function selfTest(id, options = {}) {
   if (failed) process.exitCode = 1;
   return lines.join('\n');
 }
-module.exports = { selfTest, evidenceStatus };
+module.exports = { selfTest, evidenceStatus, validSelfTest };

@@ -27,7 +27,13 @@
         "review": 10,
         "research": 9,
         "mechanical": 9
-      }
+      },
+      "inputs": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "capabilitySource": "Claude Code Read tool: images and PDFs"
     },
     "claude-opus-5-5": {
       "pool": "claude",
@@ -47,7 +53,13 @@
         "review": 10,
         "research": 8,
         "mechanical": 9
-      }
+      },
+      "inputs": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "capabilitySource": "Claude Code Read tool: images and PDFs"
     },
     "claude-sonnet-5-5": {
       "pool": "claude",
@@ -67,7 +79,13 @@
         "review": 8,
         "research": 7,
         "mechanical": 9
-      }
+      },
+      "inputs": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "capabilitySource": "Claude Code Read tool: images and PDFs"
     },
     "claude-haiku-5-5": {
       "pool": "claude",
@@ -87,7 +105,13 @@
         "review": 5,
         "research": 6,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "capabilitySource": "Claude Code Read tool: images and PDFs"
     },
     "gpt-6-astra": {
       "pool": "codex",
@@ -106,7 +130,12 @@
         "review": 9,
         "research": 8,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-6.1-sol": {
       "pool": "codex",
@@ -125,7 +154,12 @@
         "review": 8,
         "research": 8,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-6.1-terra": {
       "pool": "codex",
@@ -144,7 +178,12 @@
         "review": 6,
         "research": 6,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-6-sol": {
       "pool": "codex",
@@ -163,7 +202,12 @@
         "review": 7,
         "research": 7,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-6-luna": {
       "pool": "codex",
@@ -183,7 +227,12 @@
         "review": 4,
         "research": 5,
         "mechanical": 8
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-5.6-sol": {
       "pool": "codex",
@@ -202,7 +251,12 @@
         "review": 6,
         "research": 6,
         "mechanical": 7
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-5.6-terra": {
       "pool": "codex",
@@ -221,7 +275,12 @@
         "review": 5,
         "research": 5,
         "mechanical": 7
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "gpt-5.6-luna": {
       "pool": "codex",
@@ -240,7 +299,12 @@
         "review": 3,
         "research": 4,
         "mechanical": 7
-      }
+      },
+      "inputs": [
+        "text",
+        "image"
+      ],
+      "capabilitySource": "codex exec --image"
     },
     "perplexity-manual": {
       "pool": "perplexity",

@@ -3,6 +3,9 @@
 const { CATEGORIES, TIERS, EFFORT_ORDER, sanitizeLabel, normalizeProject, computeModes, historySettings,
   recentOutcomes, unavailableModels, rateLimitedModels, providerContext, QUOTA_WINDOWS, validProviderId, validCliModel, cliArgsForModel, BUILTIN_PROVIDERS, tightenCaps, bossScore, pickBoss } = require('./lib');
 const { medianSeconds, speedFactor } = require('./latency');
+const lib = require('./lib');
+const { validSelfTest } = require('./self-test');
+const INPUTS = ['text', 'image', 'pdf', 'video', 'audio'];
 const DIFFICULTY = { critical: 8.5, normal: 6.5, trivial: 4.5 };
 const MIN_P = { critical: 0.75, normal: 0.55, trivial: 0.4 };
 const ALPHA = { critical: { quality: 8, balanced: 6, frugal: 4 },
@@ -80,6 +83,14 @@ function via(model, category, provider, host, boss) {
 
 const usesRelay = (method, host) => host === 'claude-code'
   && (method === 'codex-worker' || method === 'gpt-advisor' || Boolean(method?.startsWith('cli-worker:')));
+
+function supportedInputs(model, method, provider) {
+  const worker = method?.startsWith('cli-worker:') ? provider.cli?.inputs
+    : method === 'self' || model.pool === 'claude' && method ? ['image', 'pdf']
+      : ['codex-worker', 'gpt-advisor', 'codex-subagent'].includes(method) ? ['image'] : [];
+  return INPUTS.filter(input => input === 'text' || Array.isArray(model.inputs) && model.inputs.includes(input)
+    && Array.isArray(worker) && worker.includes(input));
+}
 
 /** A failure at a lower level says little about a higher one; a pass at a higher level says little about a lower one. */
 function effortWeight(outcome, effort) {
@@ -197,7 +208,7 @@ function probabilityOrder(a, b, previousPool) {
 
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
 function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}, workers,
-  host = 'claude-code', allowTrainingProviders = false, consensus = true, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null } = {}) {
+  host = 'claude-code', allowTrainingProviders = false, consensus = true, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable } = {}) {
   if (!['small', 'medium', 'large'].includes(size)) size = null;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(bossEffort)) bossEffort = null;
   if (caps) providers = { ...providers, caps: tightenCaps(providers.caps ?? {}, caps) };
@@ -210,13 +221,19 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
   const bossPool = settings.host === 'codex' ? 'codex' : settings.host === 'claude-code' ? 'claude' : null;
   const hostSaving = bossPool === 'claude' ? modes.claudeMode !== 'normal' : bossPool === 'codex' && modes.codexMode !== 'normal';
   const learned = recentOutcomes(outcomes, now, thresholds);
+  const fingerprints = new Map();
+  const fingerprint = pool => {
+    if (!fingerprints.has(pool)) fingerprints.set(pool, lib.cliFingerprint(providers.providers[pool].cli?.command, findExecutable));
+    return fingerprints.get(pool);
+  };
   const unavailable = unavailableModels(learned, now, thresholds);
   const rateLimited = rateLimitedModels(learned, now, thresholds);
   const categories = CATEGORIES.filter(c => !Array.isArray(models.categories) || models.categories.includes(c));
   const registry = Object.entries(models.models || {}).filter(([, m]) => m && Object.hasOwn(providers.providers, m.pool) && providers.providers[m.pool].enabled !== false
     && m.enabled !== false && typeof m.cost === 'number' && Number.isFinite(m.cost) && m.cost >= 0
     && (m.cliModel === undefined || validCliModel(m.cliModel)))
-    .map(([id, model]) => ({ ...model, id, passes: learned.filter(e => e.model === id && e.result === 'pass').length }));
+    .map(([id, model]) => ({ ...model, id, passes: learned.filter(e => e.model === id && e.result === 'pass').length,
+      normalPasses: learned.filter(e => e.model === id && e.result === 'pass' && ['normal', 'critical'].includes(e.tier)).length }));
   const boss = bossModelId(bossModel, registry, bossPool);
   const rows = [];
   const options = [];
@@ -240,10 +257,19 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           self ? { ...modes, [bossPool === 'codex' ? 'codexMode' : 'claudeMode']: bossPool === 'codex' ? rawModes.codexMode : rawModes.claudeMode } : modes)
           * (settings.host === 'claude-code' && model.pool === 'claude' && method !== 'self' ? positive(thresholds.bossFactor, 1.2) : 1);
         const manual = model.manual === true || provider.kind === 'manual';
+        const inputs = supportedInputs(model, method, provider);
+        const missing = needs.find(input => !inputs.includes(input));
+        const capabilityReason = missing ? 'lacks ' + missing
+          : contextTokens !== null && (!Number.isInteger(model.contextTokens) || model.contextTokens < contextTokens)
+            ? 'context unknown or too small' : '';
+        const probation = positive(thresholds.probationPasses, 3);
+        const rated = CATEGORIES.some(category => Number.isFinite(model.scores?.[category]));
         let reason = '';
-        if (provider.evidence === 'docs' && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
-        else if (provider.evidence === 'docs' && tier === 'critical' && model.passes < positive(thresholds.probationPasses, 3))
-          reason = 'probation: ' + (positive(thresholds.probationPasses, 3) - model.passes) + ' more verified passes needed';
+        if (capabilityReason) reason = capabilityReason;
+        else if (provider.evidence === 'docs' && !fingerprint(model.pool)) reason = 'CLI not installed';
+        else if (provider.evidence === 'docs' && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
+        else if (provider.evidence === 'docs' && !validSelfTest(selfTests?.[model.id], fingerprint(model.pool)))
+          reason = 'self-test needed (CLI changed): quota-boss providers test ' + model.pool;
         else if (provider.trainsOnData === true && !settings.allowTrainingProviders) reason = 'training provider blocked (allowTrainingProviders is off)';
         else if (unavailable.has(model.id)) reason = 'unavailable (24h exclusion)';
         else if (rateLimited.has(model.id)) reason = 'rate limited (paused for 15 minutes)';
@@ -256,7 +282,14 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           catch { reason = 'worker unavailable'; }
         }
         if (!reason) {
+          // Manual suggestions never receive routed work.
           if (manual) reason = 'manual option only';
+          else if (tier === 'critical' && (provider.evidence === 'docs' || !['claude', 'codex'].includes(model.pool)) && !rated)
+            reason = 'probation: unrated, no public evidence for critical';
+          else if (tier === 'critical' && (provider.evidence === 'docs' || !['claude', 'codex'].includes(model.pool)) && model.normalPasses < probation)
+            reason = 'probation: ' + (probation - model.normalPasses) + ' more verified normal passes needed for critical';
+          else if (provider.evidence === 'docs' && tier === 'normal' && model.passes < probation)
+            reason = 'probation: ' + (probation - model.passes) + ' more verified trivial+ passes needed for normal';
           else if (provider.tos === 'avoid') reason = 'provider tos avoid';
           else if (model.pool === bossPool && !self && hostSaving) reason = 'host pool saving';
           else if (!Number.isFinite(price)) reason = model.pool === 'claude' ? 'pool emergency' : 'pool exhausted';
@@ -265,7 +298,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const seconds = medianSeconds(runs, model.id, category, tier);
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
-          effort, ...(self ? { chargedEffort: bossEffort } : {}), P, price, thinEvidence, jobCost,
+          inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, price, thinEvidence, jobCost,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
           seconds,
@@ -364,12 +397,17 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         if (next) ladder.push(step(next));
         const advisor = tier === 'critical' && category === 'architecture' && settings.consensus
           ? evaluated.filter(c => c.pool === 'codex' && (settings.workers.codex || settings.workers.gpt)
+            && !c.capabilityReason
             && !context.usage.codex?.capped && modes.codexMode !== 'exhausted'
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)
             && settings.host !== 'generic').sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
         rows.push({ ...winner, belowThreshold, ladder, options: advisor ? ['consensus'] : [],
           ...(advisor ? { consensus: { model: advisor.model, label: advisor.label, effort: 'high' } } : {}) });
+      } else if (needs.length || contextTokens !== null) {
+        const requirement = needs.length ? 'takes ' + needs.join(',') + (contextTokens !== null ? ' with context ' + contextTokens : '')
+          : 'has context ' + contextTokens;
+        rows.push({ tier, category, model: null, reason: 'no enabled route ' + requirement });
       }
       candidates.push(...evaluated);
     }
@@ -385,7 +423,7 @@ function routeTable(params = {}) {
   for (const row of result.rows) {
     if (row.via !== 'self') continue;
     const alternative = large.rows.find(item => item.tier === row.tier && item.category === row.category);
-    if (alternative && alternative.via !== row.via) row.large = alternative;
+    if (alternative?.model && alternative.via !== row.via) row.large = alternative;
   }
   return result;
 }
@@ -408,9 +446,11 @@ function formatTable(result, { ladder: withLadder = true } = {}) {
       + (item.tier === 'critical' && item.category === 'architecture' && item.options?.includes('consensus') && item.consensus
         ? '[option:consensus=' + sanitizeLabel(item.consensus.label) + ',high]' : '') + (item.belowThreshold ? '[below threshold]' : '');
   };
-  const row = item => item.category + '=' + format(item) + (valid(item.large) ? '[large:' + format(item.large, false) + ']' : '');
+  const empty = item => item && item.model === null && TIERS.includes(item.tier) && CATEGORIES.includes(item.category) && typeof item.reason === 'string';
+  const row = item => item.category + '=' + (empty(item) ? 'none (' + sanitizeLabel(item.reason) + ')'
+    : format(item) + (valid(item.large) ? '[large:' + format(item.large, false) + ']' : ''));
   for (const tier of TIERS) {
-    const primary = (result.rows || []).filter(item => item.tier === tier && valid(item));
+    const primary = (result.rows || []).filter(item => item.tier === tier && (valid(item) || empty(item)));
     if (primary.length) lines.push(tier + ': ' + primary.map(row).join(' '));
     const optional = (result.options || []).filter(item => item.tier === tier && valid(item));
     if (optional.length) lines.push(tier + ' options: ' + optional.map(row).join(' '));
@@ -422,6 +462,7 @@ function formatExplain(result) {
   const metric = value => Number.isFinite(value) ? value.toFixed(6) : 'Infinity';
   return (result.note ? result.note + '\n' : '') + result.candidates.map(c => c.tier + ' ' + c.category + ' ' + sanitizeLabel(c.label)
     + ' P=' + metric(c.P) + ' price=' + metric(c.price) + ' utility=' + metric(c.utility) + ' | latency=' + (c.seconds === null ? '?' : c.seconds + 's') + ' | ' + c.reason + (c.thinEvidence ? ' | thin evidence' : '')
+    + ' | inputs=' + c.inputs.join(',')
     + (c.chargedEffort ? ' | boss effort ' + c.chargedEffort : '')
     + (c.gate ? ' | gate ' + c.gate.size + ': ' + (c.via === 'self' ? 'self=' + c.gate.selfCost.toFixed(3)
       : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's') : '')).join('\n');
