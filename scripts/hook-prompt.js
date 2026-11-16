@@ -13,7 +13,7 @@ function main() {
     if (!project.enabled || project.host !== 'claude-code') return;
     const now = Date.now();
     if (lib.normalizeProject(project).contextSuggest !== false && context.validSession(input?.session_id)
-      && !(typeof input.prompt === 'string' && input.prompt.trim().startsWith('/'))) {
+      && !(typeof input.prompt === 'string' && input.prompt.trim().startsWith('/')) && !context.automatedPrompt(input.prompt)) {
       // Read without the lock: the state is written only in the rare case that the prompt is stopped.
       const current = lib.readState();
       const entry = Object.hasOwn(current.contexts || {}, input.session_id) ? current.contexts[input.session_id] : undefined;

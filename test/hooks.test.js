@@ -514,6 +514,8 @@ test('cold cache blocks only once with only decision JSON, and a new assistant t
   fs.writeFileSync(file, assistant(stamp));
   const data = extra => JSON.stringify({ cwd: project, session_id: 'cold', transcript_path: file, prompt: 'Continue', ...extra });
   const send = extra => invoke(prompt.main, data(extra));
+  // A background task result must pass: nobody may be there to send it again.
+  assert.doesNotMatch(send({ prompt: '<task-notification>' + String.fromCharCode(10) + '<task-id>b1</task-id>' }).stdout, /"block"/);
   const first = send(), parsed = JSON.parse(first.stdout);
   assert.deepEqual(Object.keys(parsed), ['decision', 'reason']);
   assert.equal(parsed.decision, 'block');

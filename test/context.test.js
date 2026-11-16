@@ -133,6 +133,13 @@ test('the first reading of a session is kept as its start size', () => {
 });
 
 
+test('a background task result is never stopped by the cold cache guard', () => {
+  assert.equal(context.automatedPrompt('<task-notification>\n<task-id>b1</task-id>'), true);
+  assert.equal(context.automatedPrompt('  <task-notification>'), true);
+  assert.equal(context.automatedPrompt('please read <task-notification> later'), false);
+  assert.equal(context.automatedPrompt(undefined), false);
+});
+
 test('cold cache guard uses the last main assistant usage and the exact hour boundary', t => {
   const box = sandbox(t), file = path.join(box.project, 'history.jsonl');
   const stamp = Date.parse('2026-01-01T00:00:00.000Z');

@@ -86,6 +86,10 @@ function hasScheduledJobs(fd, size) {
   return false;
 }
 
+// A background task's result arrives as a prompt while nobody may be watching; stopping it ends the autonomous run.
+const AUTOMATED = /^\s*<task-notification>/;
+function automatedPrompt(prompt) { return typeof prompt === 'string' && AUTOMATED.test(prompt); }
+
 /** Read only the tail: long sessions must not make the prompt hook slow. */
 function coldStart(transcriptPath, entry, warnedAt, now = Date.now()) {
   let fd;
@@ -260,4 +264,4 @@ function report(project) {
     'Change with: quota-boss set context <tokens>|off'].join('\n');
 }
 
-module.exports = { coldStart, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, report, HOOK_BUDGET };
+module.exports = { coldStart, automatedPrompt, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, report, HOOK_BUDGET };
