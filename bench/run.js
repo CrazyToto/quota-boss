@@ -69,6 +69,13 @@ try {
 // The boss may log feedback during the run. Keep it in the result, not in the owner's outcome log.
 const outcomes = path.join(os.homedir(), '.claude', 'quota-boss', 'outcomes.jsonl');
 const outcomesSize = fs.existsSync(outcomes) ? fs.statSync(outcomes).size : 0;
+// Subscription windows per pool before and after the run (percent used, as `quota-boss status` reports them).
+// Other sessions running at the same time are included, so run benchmarks alone.
+const pools = () => {
+  const m = /Claude 5h (\d+)% wk (\d+)%.*?Codex 5h (\d+)% wk (\d+)%/.exec(quota('status').stdout || '');
+  return m ? { claude5h: +m[1], claudeWeek: +m[2], codex5h: +m[3], codexWeek: +m[4] } : null;
+};
+const poolsBefore = pools();
 const started = Date.now();
 let run;
 if (host === 'claude') {
@@ -142,7 +149,7 @@ const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
   date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
-  ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback,
+  ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');
 console.log(`done ${runName} ${seconds}s hidden=${hidden} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);

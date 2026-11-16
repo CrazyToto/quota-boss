@@ -52,6 +52,9 @@ function report(out) {
       codexUsd: codex,
       totalUsd: claude + codex,
       seconds: r.seconds,
+      // Percentage points of each 5-hour window the run used (NA when a window reset or no snapshot exists).
+      claude5h: poolDelta(r, 'claude5h'),
+      codex5h: poolDelta(r, 'codex5h'),
       hiddenPassRate: hidden && +hidden[2] ? +hidden[1] / +hidden[2] : NaN,
       ownTestCount: Number.isFinite(r.ownPass) && Number.isFinite(r.ownFail) ? r.ownPass + r.ownFail : NaN,
       reviewScore: scores.get(runName(r)),
@@ -71,6 +74,11 @@ function report(out) {
       totalUsdRatioToOff: off ? ratio(g.values.map(v => v.totalUsd).filter(Number.isFinite), off.values.map(v => v.totalUsd).filter(Number.isFinite)) : null,
     };
   });
+}
+
+function poolDelta(r, key) {
+  const a = r.poolsBefore?.[key], b = r.poolsAfter?.[key];
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : NaN;
 }
 
 function markdown(groups) {

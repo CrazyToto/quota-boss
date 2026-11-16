@@ -57,8 +57,53 @@ function medium() {
   }
 }
 
+const throwsType = (fn, type) => { try { fn(); } catch (e) { if (!type || e instanceof type) return e; throw new Error('wrong error ' + (e && e.name)); } throw new Error('no throw'); };
+function large() {
+  // A missing or broken module fails its own checks instead of the whole run.
+  const optional = file => { try { return load(file); } catch { return {}; } };
+  const csv = optional('src/csv.js'), { createInventory } = optional('src/inventory.js'), { quote } = optional('src/pricing.js'), report = optional('src/report.js');
+  check('csv basic', () => eq(csv.parseCsv('a,b\n1,2\n'), [{ a: '1', b: '2' }]));
+  check('csv crlf and empty lines', () => eq(csv.parseCsv('a,b\r\n\r\n1,2\r\n3,4'), [{ a: '1', b: '2' }, { a: '3', b: '4' }]));
+  check('csv quotes', () => eq(csv.parseCsv('a,b\n"x, y","say ""hi"""\n"two\nlines",z'), [{ a: 'x, y', b: 'say "hi"' }, { a: 'two\nlines', b: 'z' }]));
+  check('csv bad line', () => { const e = throwsType(() => csv.parseCsv('a,b\n1,2\n1,2,3'), Error); if (!/line 3\b/.test(e.message)) throw new Error(e.message); });
+  check('csv stringify', () => eq(csv.stringifyCsv([{ a: 'x,y', b: 'q"t' }, { a: 'plain', b: 2 }], ['a', 'b']), 'a,b\n"x,y","q""t"\nplain,2'));
+  check('csv round trip', () => { const rows = [{ a: 'one\ntwo', b: '"' }]; eq(csv.parseCsv(csv.stringifyCsv(rows, ['a', 'b'])), rows); });
+  const item = { sku: 'ABC-001', name: 'Bolt', price: 250, qty: 40 };
+  check('inventory add/get/list', () => { const inv = createInventory(); inv.addItem({ ...item, sku: 'ZZZ-009' }); inv.addItem(item); eq(inv.get('ABC-001'), item); eq(inv.list().map(i => i.sku), ['ABC-001', 'ZZZ-009']); eq(inv.get('NOP-000'), undefined); });
+  check('inventory validation', () => { const inv = createInventory(); for (const bad of [{ ...item, sku: 'abc-001' }, { ...item, name: '' }, { ...item, price: 0 }, { ...item, price: 2.5 }, { ...item, qty: -1 }, { ...item, qty: 1.5 }]) throwsType(() => inv.addItem(bad), TypeError); eq(inv.list().length, 0); });
+  check('inventory duplicate', () => { const inv = createInventory([item]); const e = throwsType(() => inv.addItem(item), Error); if (e instanceof TypeError) throw new Error('TypeError for duplicate'); });
+  check('inventory adjust', () => { const inv = createInventory([item]); eq(inv.adjust('ABC-001', -15), 25); throwsType(() => inv.adjust('ABC-001', -26), RangeError); eq(inv.get('ABC-001').qty, 25); throwsType(() => inv.adjust('NOP-000', 1), Error); });
+  check('inventory toJSON', () => eq(JSON.parse(JSON.stringify(createInventory([item]).toJSON())), [item]));
+  check('inventory import', () => { const inv = createInventory(); const r = inv.importCsv('sku,name,price,qty\nABC-001,Bolt,250,40\nbad,Nut,10,1\nDEF-002,"Nut, small",10,3\nABC-001,Dup,1,1'); eq(r.added, 2); eq(r.errors.map(e => e.line), [3, 5]); if (!r.errors.every(e => typeof e.message === 'string' && e.message)) throw new Error('no message'); eq(inv.get('DEF-002'), { sku: 'DEF-002', name: 'Nut, small', price: 10, qty: 3 }); });
+  const stock = () => createInventory([item, { sku: 'DEF-002', name: 'Nut', price: 999, qty: 5 }]);
+  check('quote plain', () => eq(quote(stock(), [{ sku: 'DEF-002', qty: 2 }]), { lines: [{ sku: 'DEF-002', qty: 2, unit: 999, total: 1998 }], subtotal: 1998, discount: 0, tax: 160, total: 2158 }));
+  check('quote bulk discount', () => { const q = quote(stock(), [{ sku: 'ABC-001', qty: 10 }]); eq(q.lines[0].total, 2250); eq(q.subtotal, 2250); eq(q.tax, 180); eq(q.total, 2430); });
+  check('quote bulk rounding', () => eq(quote(createInventory([{ ...item, price: 333 }]), [{ sku: 'ABC-001', qty: 11 }]).lines[0].total, 3297));
+  check('quote SAVE5', () => { const q = quote(stock(), [{ sku: 'DEF-002', qty: 2 }], { coupon: 'SAVE5' }); eq([q.discount, q.tax, q.total], [500, 120, 1618]); });
+  check('quote SAVE5 floor', () => { const q = quote(createInventory([{ ...item, price: 300 }]), [{ sku: 'ABC-001', qty: 1 }], { coupon: 'SAVE5' }); eq([q.discount, q.tax, q.total], [300, 0, 0]); });
+  check('quote HALF', () => { const q = quote(stock(), [{ sku: 'DEF-002', qty: 1 }], { coupon: 'HALF' }); eq([q.discount, q.tax, q.total], [500, 40, 539]); });
+  check('quote errors', () => { const inv = stock(); throwsType(() => quote(inv, [{ sku: 'DEF-002', qty: 1 }], { coupon: 'NOPE' }), Error); throwsType(() => quote(inv, [{ sku: 'XYZ-123', qty: 1 }]), Error); throwsType(() => quote(inv, [{ sku: 'DEF-002', qty: 6 }]), RangeError); throwsType(() => quote(inv, [{ sku: 'DEF-002', qty: 0 }]), TypeError); throwsType(() => quote(inv, [{ sku: 'DEF-002', qty: 1.5 }]), TypeError); });
+  check('quote keeps stock', () => { const inv = stock(); quote(inv, [{ sku: 'DEF-002', qty: 5 }]); eq(inv.get('DEF-002').qty, 5); });
+  check('formatCents', () => eq([0, 5, 1234, 99999, -5].map(c => report.formatCents(c)), ['$0.00', '$0.05', '$12.34', '$999.99', '-$0.05']));
+  check('stockReport', () => { eq(report.stockReport([item, { sku: 'DEF-002', name: 'Nut', price: 999, qty: 5 }, { sku: 'AAA-000', name: 'X', price: 1, qty: 0 }]), { items: 3, units: 45, value: 14995, low: ['AAA-000'] }); eq(report.stockReport([], 5), { items: 0, units: 0, value: 0, low: [] }); eq(report.stockReport([item], 50).low, ['ABC-001']); });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-bench-'));
+  try {
+    const db = path.join(tmp, 'db.json'), file = path.join(tmp, 'in.csv');
+    fs.writeFileSync(file, 'sku,name,price,qty\nABC-001,Bolt,250,40\nDEF-002,Nut,999,3\nnope,Bad,1,1\n');
+    const cli = (...args) => spawnSync(process.execPath, [path.join(dir, 'src/cli.js'), db, ...args], { encoding: 'utf8', timeout: 30000 });
+    check('cli import', () => { const r = cli('import', file); eq(r.status, 0); const lines = r.stdout.trim().split(/\r?\n/); eq(lines[0], 'added=2 errors=1'); if (!/^line 4: \S/.test(lines[1] || '')) throw new Error(r.stdout); });
+    check('cli list', () => { const r = cli('list'); eq(r.stdout.trim().split(/\r?\n/), ['ABC-001 40 $2.50 Bolt', 'DEF-002 3 $9.99 Nut']); });
+    check('cli quote', () => { const r = cli('quote', 'ABC-001:10', 'DEF-002:1', '--coupon', 'SAVE5'); eq(r.status, 0); eq(r.stdout.trim(), 'total=$29.69'); });
+    check('cli report', () => eq(cli('report').stdout.trim(), 'items=2 units=43 value=$129.97 low=DEF-002'));
+    check('cli errors', () => { for (const args of [['frobnicate'], ['quote', 'DEF-002:9'], ['quote', 'XYZ-999:1'], ['quote', 'ABC-001']]) { const r = cli(...args); eq(r.status, 1); if (!r.stderr.trim()) throw new Error('no stderr for ' + args.join(' ')); } });
+    check('cli empty db', () => { const r = spawnSync(process.execPath, [path.join(dir, 'src/cli.js'), path.join(tmp, 'none.json'), 'report'], { encoding: 'utf8', timeout: 30000 }); eq(r.stdout.trim(), 'items=0 units=0 value=$0.00 low=-'); });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // The trivial parts of the mixed task.
-function trivial() {
+function trivial(description = 'Small task tracker', bin = 'tasks', commands = ['add', 'list', 'complete', 'remove', 'report']) {
   check('rename alignRight', () => {
     const format = load('src/format.js');
     eq(format.alignRight('7', 3), '  7');
@@ -71,21 +116,22 @@ function trivial() {
   });
   check('package.json fields', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    eq(pkg.description, 'Small task tracker');
-    eq(String(pkg.bin && pkg.bin.tasks).replace(/^\.\//, ''), 'src/cli.js');
+    eq(pkg.description, description);
+    eq(String(pkg.bin && pkg.bin[bin]).replace(/^\.\//, ''), 'src/cli.js');
     eq(pkg.scripts && pkg.scripts.test, 'node --test');
   });
   check('README usage', () => {
     const text = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
     const usage = text.split(/^## Usage\s*$/m)[1];
     if (!usage) throw new Error('no "## Usage" heading');
-    for (const command of ['add', 'list', 'complete', 'remove', 'report']) if (!new RegExp('node src/cli\\.js \\S+ ' + command + '\\b').test(usage)) throw new Error('no example for ' + command);
+    for (const command of commands) if (!new RegExp('node src/cli\\.js \\S+ ' + command + '\\b').test(usage)) throw new Error('no example for ' + command);
   });
 }
 
 if (task === 'small') small();
 else if (task === 'medium') medium();
 else if (task === 'mixed') { medium(); trivial(); }
+else if (task === 'large') { large(); trivial('Small inventory tool', 'inventory', ['import', 'list', 'quote', 'report']); }
 else if (['bugfix','refactor','docs'].includes(task)) additions();
 else { console.error('Usage: node bench/hidden-check.js <small|medium|mixed> <run folder>'); process.exit(2); }
 console.log(passed + '/' + total);

@@ -183,3 +183,16 @@ test('legacy mode alias and default balanced profile use fakes', t => {
     else assert.ok(!calls.some(x => x[1][1] === 'on'));
   }
 });
+
+test('large hidden checks: empty fixture fails, the reference solution passes all', t => {
+  const d = temporary(t);
+  setup(d, 'large');
+  const check = () => spawnSync(process.execPath, [path.join(__dirname, 'hidden-check.js'), 'large', d], { encoding: 'utf8' });
+  let r = check();
+  const [before, total] = r.stdout.trim().split('/').map(Number);
+  assert.ok(total >= 30 && before <= 2, r.stdout);
+  fs.cpSync(path.join(__dirname, 'reference', 'large'), d, { recursive: true });
+  r = check();
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout.trim(), total + '/' + total);
+});

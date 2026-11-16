@@ -1,0 +1,1 @@
+{ "name": "bench-fixture", "version": "1.0.0", "description": "Small inventory tool", "bin": {"inventory": "src/cli.js"}, "private": true, "scripts": { "test": "node --test" } }
