@@ -289,7 +289,10 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const fixed = Math.max(0, finite(h?.fixed, defaults[settings.host].fixed));
         const perSize = Math.max(0, finite(h?.perSize, defaults[settings.host].perSize));
         const reread = Math.max(0, finite(gate.reread, 0.3));
-        const workSeconds = positive(gate.workSeconds, 150);
+        // The boss's own speed per medium job. Measured 2026-11-16: an Opus boss did a 3-unit job in about 150 s.
+        // A worker without measured latency is assumed as fast as the boss unless workSeconds says otherwise.
+        const bossSeconds = positive(gate.bossSeconds?.[settings.host], { 'claude-code': 50, codex: 150, generic: 150 }[settings.host]);
+        const workSeconds = positive(gate.workSeconds, bossSeconds);
         const handoverSeconds = Math.max(0, finite(gate.handoverSeconds?.[settings.host], { 'claude-code': 50, codex: 90, generic: 60 }[settings.host]));
         // With quota to spare, speed wins; while the boss pool is saving, a slower worker may still be worth its wait.
         const maxExtraSeconds = Math.max(0, finite((hostSaving ? gate.maxExtraSecondsSaving : gate.maxExtraSeconds)?.[size],
@@ -304,7 +307,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           const bossSide = (fixed + perSize * s) * B + rework
             + (usesRelay(c.via, settings.host) ? relayCost : 0) + (c.pool === bossPool ? worker : 0);
           const total = bossSide + (c.pool === bossPool ? 0 : worker);
-          const extraSeconds = handoverSeconds + s * (c.seconds ?? workSeconds) - s * (own.seconds ?? workSeconds);
+          const extraSeconds = handoverSeconds + s * (c.seconds ?? workSeconds) - s * (own.seconds ?? bossSeconds);
           c.gate = { size, bossSide, total, selfCost, extraSeconds };
           if (bossSide > margin * selfCost || total > (c.pool === bossPool ? margin : maxTotalRatio) * selfCost)
             c.reason = 'lost: handover costs more than it saves (' + size + ')';

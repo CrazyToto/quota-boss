@@ -174,7 +174,11 @@
       }
     },
     "reread": 0.3,
-    "workSeconds": 150,
+    "bossSeconds": {
+      "claude-code": 50,
+      "codex": 150,
+      "generic": 150
+    },
     "handoverSeconds": {
       "claude-code": 50,
       "codex": 90,

@@ -87,7 +87,7 @@ Defaults are `margin = 0.8`, `maxTotalRatio = 1.3`, and `reread = 0.3` medium wo
 Handover `(fixed, perSize)` in medium boss jobs is Claude Code `(0.2, 0.35)`, Codex `(1.5, 0.4)`, generic `(0.5, 0.35)`.
 
 Time must also pass: `extraSeconds = handoverSeconds + s * workerSeconds - s * ownSeconds`.
-Missing latency uses `workSeconds = 150`; handover seconds are Claude Code `50`, Codex `90`, generic `60`.
+Missing worker latency uses `workSeconds` (default: the boss speed, so an unmeasured worker is assumed as fast as the boss); the boss's own time per medium job is `bossSeconds` (Claude Code `50`, measured with an Opus boss on the large bench task; Codex and generic `150`); handover seconds are Claude Code `50`, Codex `90`, generic `60`.
 The maximum extra seconds are small `60`, medium `180`, large `600`. Cost failures take precedence over time failures.
 All defaults are overridable in `thresholds.gate` (`size` holds the size units). `route --explain` prints the costs and extra time.
 The handover estimates come from one benchmark sample per host (see [BENCHMARKS.md](BENCHMARKS.md)); logged runs will later teach them.

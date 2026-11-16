@@ -77,7 +77,8 @@ test('slow worker fails time only after passing costs', () => {
   const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 1000 }));
   const c = worker(run({ runs }));
   assert.equal(c.reason, 'lost: handover too slow (medium)');
-  assert.equal(c.gate.extraSeconds, 900);
+  // handover 50 + worker 1000 - boss 50 (Claude Code boss speed)
+  assert.equal(c.gate.extraSeconds, 1000);
   const costly = worker(run({ runs, size: 'small' }));
   assert.equal(costly.reason, 'lost: handover costs more than it saves (small)');
 });
@@ -90,7 +91,7 @@ test('below-minimum or unusable boss gives no gate', () => {
 });
 
 test('gate overrides affect size, costs, time and limits', () => {
-  const gate = { size: { medium: 2 }, margin: 1, maxTotalRatio: 2, handover: { 'claude-code': { fixed: 0.1, perSize: 0.2 } }, reread: 0.5, workSeconds: 200, handoverSeconds: { 'claude-code': 77 }, maxExtraSeconds: { medium: 76 } };
+  const gate = { size: { medium: 2 }, margin: 1, maxTotalRatio: 2, handover: { 'claude-code': { fixed: 0.1, perSize: 0.2 } }, reread: 0.5, workSeconds: 200, bossSeconds: { 'claude-code': 200 }, handoverSeconds: { 'claude-code': 77 }, maxExtraSeconds: { medium: 76 } };
   const result = run({ thresholds: { ...thresholds, gate } });
   const c = worker(result);
   close(c.gate.selfCost, 2 * 13 * (2 - own(result).P));
@@ -216,14 +217,32 @@ test.describe('boss effort sources and CLI', () => {
 });
 
 test('time limit is tight with quota to spare and loose while the boss pool saves', () => {
-  const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 250 }));
+  const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 150 }));
   const spare = worker(run({ runs }));
   assert.equal(spare.gate.extraSeconds, 150);
   assert.equal(spare.reason, 'lost: handover too slow (medium)');
   const saving = worker(run({ runs, limits: { claude: { five_hour: { used_percentage: 70 } } } }));
   assert.equal(saving.gate.extraSeconds, 150);
   assert.doesNotMatch(String(saving.reason), /lost/);
-  const large = worker(run({ runs: runs.map(r => ({ ...r, seconds: 200 })), size: 'large' }));
-  assert.equal(large.gate.extraSeconds, 200);
+  const large = worker(run({ runs: runs.map(r => ({ ...r, seconds: 110 })), size: 'large' }));
+  // 50 handover + 3 * 110 worker - 3 * 50 boss
+  assert.equal(large.gate.extraSeconds, 230);
   assert.doesNotMatch(String(large.reason), /lost/);
+});
+
+test('an unmeasured worker is assumed as fast as the boss, and bossSeconds sets the boss speed', () => {
+  // Without latency data only the handover time is extra, so cheap unmeasured workers are not ruled out by time.
+  assert.equal(worker(run()).gate.extraSeconds, 50);
+  const runs = Array.from({ length: 3 }, () => ({ model: 'worker', category: 'implementation', tier: 'normal', seconds: 120 }));
+  assert.equal(worker(run({ runs })).gate.extraSeconds, 120);
+  const slowBoss = worker(run({ runs, thresholds: { ...thresholds, gate: { bossSeconds: { 'claude-code': 150 } } } }));
+  assert.equal(slowBoss.gate.extraSeconds, 20);
+});
+
+test('workSeconds and bossSeconds act on their own side, and a measured boss wins over bossSeconds', () => {
+  const gate = { workSeconds: 300, bossSeconds: { 'claude-code': 100 } };
+  // 50 handover + 300 unmeasured worker - 100 boss
+  assert.equal(worker(run({ thresholds: { ...thresholds, gate } })).gate.extraSeconds, 250);
+  const bossRuns = Array.from({ length: 3 }, () => ({ model: 'boss', category: 'implementation', tier: 'normal', seconds: 40 }));
+  assert.equal(worker(run({ runs: bossRuns, thresholds: { ...thresholds, gate } })).gate.extraSeconds, 310);
 });

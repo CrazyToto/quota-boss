@@ -109,3 +109,23 @@ which this benchmark does not cover.
 
 Sonnet as the boss: Sonnet boss on cost 0.21 against 0.33 for Opus boss off (37% less) with the same hidden results, but wrote
 fewer of its own tests (7 to 11 against 14). One small task cannot carry the decision; see the open item in section A.
+
+### Benchmark with a large task (2026-11-16)
+
+Task `large`: an inventory tool in five modules (CSV parser, inventory with CSV import, pricing, report, CLI) plus four
+chores, 32 hidden checks. Claude Code host, Opus 5.5 boss at default effort, profile balanced, quota to spare.
+USD are list-price estimates per run (`claude -p` result and Codex session tokens).
+
+| Arm | Runs | Hidden | Time (s) | Claude USD | Codex USD | Own tests |
+|---|---|---|---|---|---|---|
+| off | 3 | 32/32 each | 143, 172, 135 (mean 150) | 0.56, 0.78, 0.66 (mean 0.67) | 0 | 23-25 |
+| on, delegated the whole build to one GPT-6-Sol worker | 2 | 32/32 each | 263, 313 (mean 288) | 0.49, 0.56 (mean 0.52) | 0.18, 0.20 | 13-15 |
+| on, the boss kept it | 1 | 32/32 | 146 | 0.73 | 0 | 29 |
+
+Delegating used about 22% less Claude at the same hidden result, but took about twice as long: the worker alone needed
+about 185 s, while Opus built everything in about 150 s. The cause was the delegation gate: it priced the boss at 150 s
+per medium job (450 s for this large job), about three times the measured speed. The gate now has `bossSeconds`
+(Claude Code 50 s per medium job), and a worker without timing data is assumed as fast as the boss. With quota to spare
+a normal job now stays with an Opus boss unless a worker is about as fast; while the Claude pool is saving, the looser
+time limit still lets large jobs go to Codex. A second opinion from GPT-6.1 Sol agreed and advised against splitting
+work into parallel workers as a blanket rule until it is measured. Three runs per arm show direction only.
