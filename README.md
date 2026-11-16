@@ -14,7 +14,7 @@ do it,<br>across the subscriptions you already pay for and the free AI offers yo
 [![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Documentation](#documentation)
+[Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Documentation](#documentation) · [Website](https://quota-boss.neocities.org)
 
 ![A real Claude Code session: boss mode on, one feature task, the Opus boss hands the code to GPT-6.1-Sol through Codex, re-runs the tests and says who did what (waiting parts sped up)](docs/assets/demo.gif)
 
@@ -26,6 +26,8 @@ to a cheaper model on one of your subscriptions (**Claude**, **ChatGPT / Codex**
 **Google Antigravity / Gemini**), to **Perplexity** for research, or to a free offer or local model you have switched
 on.
 
+- **It saves Claude where it counts.** On a large benchmark task with the Claude 5-hour limit 75% used, the boss used
+  about a third less Claude for the same hidden test results ([numbers](#does-it-pay-off)).
 - **It picks the model for each job.** Every pick weighs how important the task is, how good each model is at that
   kind of work, and how much quota you have left.
 - **It knows your limits live.** The 5-hour and weekly limits of Claude and Codex are on screen with every prompt, and
@@ -140,13 +142,15 @@ would cost more than it saves. The numbers so far:
 
 | Measurement | Result |
 |---|---|
-| Real work in this repository over 7 days (`quota-boss savings`) | Workers did 19% of the work. Had the Opus boss done all of it, the estimate is **35% more cost**. |
-| Benchmark, one medium task handed to Codex (earlier rule version) | **35% less Claude usage** than without boss mode, with the same hidden test results. |
-| Benchmark, small jobs in a fresh session (today's rules) | The boss keeps the work. Overhead: 3% with Opus as the boss, 12% with GPT-6.1 Sol, same results. |
+| Benchmark, large task with the Claude 5-hour limit 75% used (Opus boss) | **About a third less Claude usage** than without boss mode, with the same hidden test results. Codex did the build; the run took about twice as long. |
+| Benchmark, medium task with the Claude 5-hour limit 75% used | Handing it to Codex saved no Claude, so the boss now keeps jobs of this size. |
+| Benchmark, small to large tasks with quota to spare (Opus boss) | The boss keeps the work: about the same cost as without boss mode (-2% to +3%), same results. |
+| Benchmark, Codex as the boss, small to large tasks | No extra cost at any size, same results. |
+| Real work in this repository over 9 days (`quota-boss savings`) | Workers did 14% of the work. Estimate: **29% less Claude usage** than Opus doing everything, about 1.4 times the work per Claude limit. |
 
-The bigger the job and the longer the session, the more there is to hand down. The benchmark is small: one run per
-row, in short sessions. All numbers and the method are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md), the harness is in
-[bench/](bench/README.md), and `quota-boss savings` shows the numbers for your own work.
+Most is handed down when a job is large and your Claude limit runs low. The benchmarks are small: two to five runs
+per row, in short sessions. All numbers and the method are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md), the harness is
+in [bench/](bench/README.md), and `quota-boss savings` shows the numbers for your own work.
 
 ## Providers and free offers
 
@@ -187,8 +191,10 @@ No. Each tool runs through its own official CLI as you, on your machine. Quota B
 decides who does what.
 
 **What does the boss cost?**
-The rules and the routing table cost about 3,000 to 4,000 tokens once per session, and the status line about 40
-tokens per prompt. That is paid back as soon as work goes to cheaper models; see [Does it pay off?](#does-it-pay-off)
+A session starts with about 300 tokens of short rules. The full rules and the routing table, roughly 2,000 to 3,000
+tokens, load the first time the boss delegates or reviews, and right at the start while your Claude limit runs low.
+The status line costs about 40 tokens per prompt. In the benchmarks a boss session that kept the work cost about the
+same as no boss mode; see [Does it pay off?](#does-it-pay-off)
 
 **Does it work in the VS Code extension and the desktop app?**
 Yes. Hooks, agents and commands live in `~/.claude`. The status line is a terminal feature; `/boss status` shows the
