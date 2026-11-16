@@ -163,14 +163,17 @@ test('cold cache guard uses the last main assistant usage and the exact hour bou
   assert.equal(context.coldStart(file, {}, undefined, stamp + context.COLD_AFTER_MS), reason);
   write('x'.repeat(300000) + '\n' + line() + '\n{broken\n');
   const original = fs.readSync;
-  let reads = 0;
+  const reads = [];
   fs.readSync = (fd, buffer, offset, length, position) => {
-    reads++; assert.ok(length <= 256 * 1024); assert.ok(position > 0);
+    reads.push([length, position]);
     return original(fd, buffer, offset, length, position);
   };
   try { assert.equal(context.coldStart(file, {}, undefined, stamp + context.COLD_AFTER_MS), reason); }
   finally { fs.readSync = original; }
-  assert.equal(reads, 1);
+  // The usage check reads only the tail. Only a prompt about to be stopped scans the whole file once
+  // (one 1 MB chunk here) for scheduled jobs.
+  assert.ok(reads[0][0] <= 256 * 1024 && reads[0][1] > 0);
+  assert.deepEqual(reads.slice(1), [[fs.statSync(file).size, 0]]);
   write(line() + '\n' + line({ timestamp: new Date(stamp + context.COLD_AFTER_MS).toISOString() }));
   assert.equal(context.coldStart(file, {}, undefined, stamp + context.COLD_AFTER_MS), '');
   write(line() + '\n' + line({ message: { usage: {} } }));
@@ -193,4 +196,21 @@ test('cold warning maps validate session keys and retain the newest fifty', () =
   assert.equal(Object.keys(warnings).length, 50);
   assert.equal(warnings.s9, undefined);
   assert.equal(warnings.s59, 59);
+});
+
+test('cold cache guard never stops a session that scheduled jobs, so their prompts are not dropped', t => {
+  const box = sandbox(t), file = path.join(box.project, 'scheduled.jsonl');
+  const stamp = Date.parse('2026-01-01T00:00:00.000Z');
+  const assistant = JSON.stringify({ type: 'assistant', timestamp: new Date(stamp).toISOString(), message: { usage: { input_tokens: 12000, cache_read_input_tokens: 190000, cache_creation_input_tokens: 10000 } } });
+  const later = stamp + 3 * context.COLD_AFTER_MS;
+  // Merely listing the tool (deferred tool record) is not a scheduled job.
+  const listed = JSON.stringify({ type: 'attachment', attachment: { type: 'deferred_tools_record', entries: [{ name: 'CronCreate', description: 'x' }] } });
+  fs.writeFileSync(file, [listed, assistant].join('\n') + '\n');
+  assert.ok(context.coldStart(file, {}, undefined, later));
+  const cron = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_1', name: 'CronCreate', input: { cron: '7 * * * *', prompt: 'check' } }] } });
+  // The call sits far before the tail that the guard reads for usage, and across a chunk boundary.
+  fs.writeFileSync(file, [cron, 'x'.repeat(1024 * 1024 - 30), listed, assistant].join('\n') + '\n');
+  assert.equal(context.coldStart(file, {}, undefined, later), '');
+  fs.writeFileSync(file, [JSON.stringify({ type: 'user', message: { content: '<command-name>/loop</command-name>' } }), assistant].join('\n') + '\n');
+  assert.equal(context.coldStart(file, {}, undefined, later), '');
 });

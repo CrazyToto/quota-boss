@@ -70,6 +70,22 @@ const thousands = tokens => Math.round(tokens / 1000) + 'k';
 const COLD_AFTER_MS = 60 * 60 * 1000;
 const TRANSCRIPT_TAIL = 256 * 1024;
 
+// Only a real tool call counts, not the tool list that merely names CronCreate.
+const SCHEDULED = /"type":"tool_use","id":"[^"]{0,100}","name":"CronCreate"|<command-name>\/loop<\/command-name>/;
+const SCAN_CHUNK = 1024 * 1024, SCAN_LIMIT = 64 * 1024 * 1024, SCAN_OVERLAP = 200;
+/** Scan the whole transcript once, only when a prompt would be stopped (rare), in bounded chunks. */
+function hasScheduledJobs(fd, size) {
+  const bytes = Buffer.alloc(SCAN_CHUNK + SCAN_OVERLAP);
+  let carry = '';
+  for (let offset = Math.max(0, size - SCAN_LIMIT); offset < size; offset += SCAN_CHUNK) {
+    const count = fs.readSync(fd, bytes, 0, Math.min(SCAN_CHUNK, size - offset), offset);
+    const text = carry + bytes.subarray(0, count).toString('utf8');
+    if (SCHEDULED.test(text)) return true;
+    carry = text.slice(-SCAN_OVERLAP);
+  }
+  return false;
+}
+
 /** Read only the tail: long sessions must not make the prompt hook slow. */
 function coldStart(transcriptPath, entry, warnedAt, now = Date.now()) {
   let fd;
@@ -94,6 +110,8 @@ function coldStart(transcriptPath, entry, warnedAt, now = Date.now()) {
       const idle = now - stamp, usage = line.message.usage;
       const tokens = ['input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].reduce((sum, key) => sum + Math.max(0, finite(usage[key]) ?? 0), 0);
       if (idle < COLD_AFTER_MS || finite(warnedAt) > stamp || tokens - (finite(entry?.start) ?? 45000) < 40000) return '';
+      // A scheduled job (CronCreate, /loop) arrives as a prompt after a pause; stopping it would drop the job's run.
+      if (hasScheduledJobs(fd, size)) return '';
       const days = idle >= 48 * COLD_AFTER_MS;
       const duration = Math.round(idle / (days ? 24 * COLD_AFTER_MS : COLD_AFTER_MS));
       return '[quota-boss] Nothing was sent yet. This session paused for about ' + duration + (days ? ' days' : duration === 1 ? ' hour' : ' hours')

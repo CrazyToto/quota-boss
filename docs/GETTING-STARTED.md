@@ -132,7 +132,7 @@ From 100,000 tokens, or 60% of a smaller window, Quota Boss asks Claude to finis
 Claude Code does not let tools run `/compact` or `/clear`, so that step stays yours. There is no official number for this threshold, so adjust it to taste:
 `quota-boss set context 100000`, or `quota-boss set context off` to stop the suggestion.
 
-After a pause of an hour or more in a large Claude Code session, Quota Boss stops your next message once, before anything reaches the model or pays for the expired cache. Type `/clear` for a new topic, or `/compact` to read the session once and continue small on the same task. Send your message again to continue as it is. `quota-boss set context off` turns off this check and the size suggestion.
+After a pause of an hour or more in a large Claude Code session, Quota Boss stops your next message once, before anything reaches the model or pays for the expired cache. Type `/clear` for a new topic, or `/compact` to read the session once and continue small on the same task. Send your message again to continue as it is. A session that scheduled jobs (CronCreate or `/loop`) is never stopped, because a job that fires after a pause would lose its run. Such jobs live only in their session: `/handoff` lists them so the next session sets them up again, and for jobs that must survive a restart use cloud routines (`/schedule`). `quota-boss set context off` turns off this check and the size suggestion.
 
 Handoffs are stored per project in the Quota Boss folder, not in your project, and each one names the file with the
 full history of that session. `quota-boss handoff list` and `quota-boss handoff show` find them again. A brand new
