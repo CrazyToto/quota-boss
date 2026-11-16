@@ -193,8 +193,9 @@ test('empty report, stable ordering, compact totals, boss estimate and no sensit
   f.codex(rollout(f.root, 'exec'));
   const output = savings.savings(f.options);
   assert.equal(output, savings.savings(f.options));
-  assert.match(output, /About 0% cheaper than doing everything with opus\n/);
-  assert.match(output, /actual {6}10\.0 units\n  opus alone {2}10\.0 units \(estimate, same tokens assumed\)/);
+  assert.match(output, /^Quota Boss savings - since 2026-11-10 \(1 day\), project Project\n/);
+  assert.match(output, /About 0% less Claude usage than doing everything with opus\n/);
+  assert.match(output, /Claude used {2}10\.0 units\n  opus alone {3}10\.0 units \(estimate, same tokens assumed\)\n  Codex used {3}0\.002 units\n  all pools {4}10\.0 units, 0% cheaper in total/);
   assert.match(output, /More: savings --details$/);
   const detailed = savings.savings({ ...f.options, details: true });
   assert.match(detailed, /claude: .*1.0M\/10/);
@@ -321,4 +322,34 @@ test('codex-auto-review is priced as GPT-6.1-Sol and not listed as unknown', () 
   assert.equal(savings.price('codex-auto-review', { models: { models: {} } }), 1);
   assert.equal(savings.price('codex-auto-review', { models: { models: { 'codex-auto-review': { cost: 2 }, 'gpt-6.1-sol': { cost: 5 } } } }), 2);
   assert.equal(savings.price('other-unlisted', { models }), 1);
+});
+
+test('headline leads with the boss pool, shows work per limit and the all-pools total', t => {
+  const f = fixture(t);
+  f.claude([assistant('boss', 'opus', 1000000)]);
+  // A large Codex worker job that Opus would have done at five times the price.
+  f.codex(rollout(f.root, 'exec').map(e => e.type === 'event_msg'
+    ? token(Date.parse(e.timestamp) / 1000 - now / 1000, 10, 42, { input_tokens: 5000000, cached_input_tokens: 0, output_tokens: 0 }) : e));
+  const output = savings.savings(f.options);
+  // Claude: 10 actual vs 10 + 5M * 10 / 1M = 60 estimate -> 83% less Claude, 6.0x per Claude limit.
+  assert.match(output, /About 83% less Claude usage than doing everything with opus\n  = about 6\.0x the work per Claude limit\n/);
+  assert.match(output, /Codex used {3}10\.0 units\n  all pools {4}20\.0 units, 67% cheaper in total/);
+});
+
+test('a Codex boss leads with Codex usage', t => {
+  const f = fixture(t);
+  f.codex(rollout(f.root, 'cli').map(e => e.type === 'event_msg'
+    ? token(Date.parse(e.timestamp) / 1000 - now / 1000, 10, 42, { input_tokens: 1000000, cached_input_tokens: 0, output_tokens: 0 }) : e));
+  f.claude([assistant('w', 'haiku', 1000000)], 'session/subagents/agent-1.jsonl');
+  const output = savings.savings(f.options);
+  assert.match(output, /% less Codex usage than doing everything with gpt\n/);
+  assert.match(output, /Codex used .*\n  gpt alone .*\n  Claude used /);
+});
+
+test('the header keeps "last N days" when data covers the whole window', t => {
+  const f = fixture(t);
+  f.claude([assistant('old', 'opus', 100, -29.5 * 86400), assistant('new', 'opus')]);
+  assert.match(savings.savings(f.options), /^Quota Boss savings - last 30 days, project Project\n/);
+  // With a 7-day window the old entry falls out, so the real start shows again.
+  assert.match(savings.savings({ ...f.options, days: 7 }), /^Quota Boss savings - since 2026-11-10 \(1 day\)/);
 });

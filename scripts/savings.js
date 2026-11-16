@@ -99,8 +99,10 @@ function claudeJob(entries, role, options) {
     messages.set(typeof message.id === 'string' && message.id ? message.id : Symbol(), entry);
   }
   const models = new Map();
+  let start = Infinity;
   for (const entry of messages.values()) {
     if (!inWindow(timestamp(entry), options.now, options.days)) continue;
+    start = Math.min(start, timestamp(entry));
     const { model, usage } = entry.message;
     const tokens = models.get(model) || { input: 0, cache_creation: 0, cache_read: 0, output: 0 };
     tokens.input += number(usage.input_tokens);
@@ -110,7 +112,7 @@ function claudeJob(entries, role, options) {
     models.set(model, tokens);
   }
   return [...models].map(([model, tokens]) => ({ pool: 'claude', role, model, tokens,
-    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries) }));
+    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries), start }));
 }
 function windowDelta(first, last) {
   if (!first || !last || first.resets_at === undefined || last.resets_at === undefined
@@ -268,11 +270,21 @@ function table(rows) {
   return rows.map(r => ('  ' + r.map((cell, i) => i ? cell.padStart(widths[i]) : cell.padEnd(widths[i])).join('  ')).trimEnd());
 }
 const share = (part, total) => (total ? 100 * part / total : 0).toFixed(0) + '%';
+const POOLS = { claude: 'Claude', codex: 'Codex' };
+// "last 30 days" overstates the evidence when the data starts later, so name the real start.
+function span(jobs, options) {
+  const starts = jobs.map(j => j.start).filter(Number.isFinite);
+  const first = starts.length ? Math.min(...starts) : NaN;
+  if (!Number.isFinite(options.now) || !Number.isFinite(first) || first < options.now - (options.days - 1) * 86400000) return 'last ' + options.days + ' days';
+  const days = Math.max(1, Math.ceil((options.now - first) / 86400000));
+  return 'since ' + new Date(first).toISOString().slice(0, 10) + ' (' + days + (days === 1 ? ' day' : ' days') + ')';
+}
 const byUnits = groups => groups.sort((a, b) => sum(b[1], 'units') - sum(a[1], 'units') || a[0].localeCompare(b[0]));
 function formatReport(data, options) {
   const { jobs, usage, runs } = data;
   const config = options.config || {};
-  const lines = ['Quota Boss savings - last ' + options.days + ' days, ' + (options.all ? 'all projects' : 'project ' + lib.sanitizeLabel(path.basename(options.root)))];
+  const scope = options.all ? 'all projects' : 'project ' + lib.sanitizeLabel(path.basename(options.root));
+  const lines = ['Quota Boss savings - ' + span(jobs, options) + ', ' + scope];
   const footer = 'Units are relative model prices from local transcripts, not a bill.';
   if (!jobs.length && !usage.length && !runs.length) return [...lines, 'No sessions found in this window.', footer].join('\n');
   const total = sum(jobs, 'units'), bosses = jobs.filter(j => j.role === 'boss'), workers = jobs.filter(j => j.role !== 'boss');
@@ -281,13 +293,21 @@ function formatReport(data, options) {
   if (!bossModels.length) lines.push('No boss sessions found, so there is nothing to compare.');
   else {
     const model = bossModels[0][0], label = modelLabel(model, config);
+    const pool = bossModels[0][1][0].pool, poolName = POOLS[pool] || pool;
     const estimate = sum(bosses, 'units') + sum(workers, 'weighted') / 1e6 * price(model, config);
-    const saved = estimate ? 100 * (estimate - total) / estimate : 0;
+    const poolActual = sum(jobs.filter(j => j.pool === pool), 'units');
     if (!workers.length) lines.push('No worker jobs yet: the boss (' + label + ') did everything.');
     else {
-      lines.push('About ' + Math.abs(saved).toFixed(0) + '% ' + (saved >= 0 ? 'cheaper' : 'more expensive') + ' than doing everything with ' + label);
-      const width = Math.max(6, label.length + 6);
-      lines.push('  ' + 'actual'.padEnd(width) + '  ' + units(total) + ' units', '  ' + (label + ' alone').padEnd(width) + '  ' + units(estimate) + ' units (estimate, same tokens assumed)');
+      // Lead with the pool the boss draws from: its limit is the one that runs out first.
+      const poolSaved = estimate ? 100 * (estimate - poolActual) / estimate : 0;
+      const saved = estimate ? 100 * (estimate - total) / estimate : 0;
+      lines.push('About ' + Math.abs(poolSaved).toFixed(0) + '% ' + (poolSaved >= 0 ? 'less' : 'more') + ' ' + poolName + ' usage than doing everything with ' + label);
+      if (poolSaved > 0 && poolActual > 0) lines.push('  = about ' + (estimate / poolActual).toFixed(1) + 'x the work per ' + poolName + ' limit');
+      const rows = [[poolName + ' used', units(poolActual) + ' units'], [label + ' alone', units(estimate) + ' units (estimate, same tokens assumed)']];
+      for (const [other, group] of grouped(jobs.filter(j => j.pool !== pool), j => j.pool)) rows.push([(POOLS[other] || other) + ' used', units(sum(group, 'units')) + ' units']);
+      rows.push(['all pools', units(total) + ' units, ' + Math.abs(saved).toFixed(0) + '% ' + (saved >= 0 ? 'cheaper' : 'more expensive') + ' in total']);
+      const width = Math.max(...rows.map(r => r[0].length));
+      lines.push(...rows.map(([name, value]) => '  ' + name.padEnd(width) + '  ' + value));
     }
   }
   const bossLabel = bossModels.length ? ' (' + bossModels.slice(0, 2).map(([m]) => modelLabel(m, config)).join(', ') + ')' : '';
