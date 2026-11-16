@@ -235,3 +235,8 @@ earlier range (0.326 to 0.642 Claude, 272 to 341 s); its extra time against the 
 not in the boss. A second large run finished its work in 268 s but scheduled a wakeup, which kept the `-p` process
 alive until the timeout; bench runs now disallow `ScheduleWakeup`. The bench did not call `Explore`. Two to four runs
 per arm show direction only.
+
+With the same start text, small and medium (boss on, tiny, quota to spare, 3 runs each) stayed at the earlier tiny
+level: small 5/5 in all runs, 22 s (21, 22, 24), 0.181 and 0.185 in two runs; the first run cost 0.275 because it
+started on a cold prompt cache (28k cache-write tokens against 16k) with the same five boss calls. Medium 18/18 in all
+runs, 47 s (45, 47, 48), 0.281 (0.277, 0.280, 0.286), against 0.284 and 46 s before.
