@@ -64,7 +64,7 @@ test.describe('headless host fixes', () => {
   for (const home of ['C:/Users/x/.claude/quota-boss', 'C:/Users/with space/boss', 'C:/Users/x+(test)/boss']) test('rules quote paths correctly for ' + home, () => {
     process.env.QUOTA_BOSS_HOME = home;
     const original = lib.substituteHome(fs.readFileSync(path.join(__dirname, '..', 'templates', 'RULES.md'), 'utf8').trim());
-    assert.equal(hosts.rules('claude-code', { rules: 'full' }), original.split('\n').filter(line => !line.startsWith('   - Codex host:')).join('\n'));
+    assert.equal(hosts.rules('claude-code', { rules: 'full' }), original.split('\n').filter(line => !line.startsWith('   - Codex host:') && !line.includes('Split a large job only when')).join('\n'));
     assert.ok(!hosts.rules('codex').includes('- Claude Code host:') && hosts.rules('codex').includes('- Codex host:'));
     for (const host of ['codex', 'generic']) {
       const text = hosts.rules(host);

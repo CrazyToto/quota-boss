@@ -8,7 +8,7 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const validName = name => NAME.test(name || '') && !RESERVED.test(name);
 const GIT_ENV = /^(GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_COMMON_DIR|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_CEILING_DIRECTORIES|GIT_PREFIX)$/i;
-const USAGE = 'Usage: quota-boss worktree add|list|merge|remove|clean [<name>] [--force]';
+const USAGE = 'Usage: quota-boss worktree add <name> [--scope <p1,p2,...>] [--plan <file>] | merge <name> [<name>...] | list | remove <name> [--force] | clean [--force]';
 const clean = value => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, '');
 const same = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 const fail = (message, code = 1) => Object.assign(new Error(message), { exitCode: code });
@@ -39,7 +39,45 @@ function repository(cwd, deps) {
   const common = fs.realpathSync.native(path.resolve(cwd, git(['rev-parse', '--git-common-dir']).stdout.trimEnd()));
   const local = fs.realpathSync.native(path.resolve(cwd, git(['rev-parse', '--git-dir']).stdout.trimEnd()));
   if (!same(common, local)) throw fail('Run worktree commands from the main worktree.');
-  return { git, root, folder: path.join(path.dirname(root), path.basename(root) + '.qb-worktrees') };
+  return { git, root, common, folder: path.join(path.dirname(root), path.basename(root) + '.qb-worktrees') };
+}
+
+function parseScope(value) {
+  return value.split(',').map(entry => {
+    const normalized = entry.replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+    if (!normalized || /[\x00-\x1f\x7f]/.test(normalized) || normalized.startsWith('/')
+      || /(^|\/)[a-z]:/i.test(normalized) || normalized.split('/').includes('..')) {
+      throw fail('Invalid scope path: ' + clean(entry) + '.', 2);
+    }
+    const result = path.posix.normalize(normalized);
+    if (result === '.' || result === './' || same(result.replace(/\/$/, ''), '.qb-plan.md')) {
+      throw fail('Invalid scope path: ' + clean(entry) + '.', 2);
+    }
+    return result;
+  });
+}
+
+function scopeFile(repo, name) {
+  return path.join(repo.common, 'qb-scope', name);
+}
+
+function readScope(repo, name) {
+  try { return parseScope(fs.readFileSync(scopeFile(repo, name), 'utf8').replace(/\n$/, '').split('\n').join(',')); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+
+function removeScope(repo, name) {
+  fs.rmSync(scopeFile(repo, name), { force: true });
+}
+
+function excludePlan(repo) {
+  const file = path.join(repo.common, 'info', 'exclude');
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (text.split(/\r?\n/).includes('.qb-plan.md')) return;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, (text && !text.endsWith('\n') ? '\n' : '') + '.qb-plan.md\n');
 }
 
 function copies(repo) {
@@ -105,6 +143,7 @@ function removeCopy(repo, name, force) {
   try { repo.git(['worktree', 'remove', ...(force ? ['--force'] : []), target], repo.root); }
   catch (error) { throw Object.assign(fail('Could not remove worker copy ' + name + ' (' + error.message
     + '); kept branch qb/' + name + '.'), { cause: error }); }
+  removeScope(repo, name);
   // rmdir cannot remove contents; never recursively delete a worker folder ourselves.
   try { if (fs.existsSync(repo.folder) && fs.readdirSync(repo.folder).length === 0) fs.rmdirSync(repo.folder); }
   catch { /* An empty sibling container can be left in place. */ }
@@ -120,6 +159,7 @@ function removeBranch(repo, name, force, removedCopy = false) {
   }
   try { repo.git(['branch', '-D', 'qb/' + name], repo.root); }
   catch (error) { throw fail(prefix + 'delete branch qb/' + name + ' (' + error.message + ').'); }
+  removeScope(repo, name);
   return '';
 }
 
@@ -128,9 +168,7 @@ function remove(repo, name, force) {
   return removeBranch(repo, name, force, true);
 }
 
-function merge(repo, name) {
-  const target = registered(repo, name);
-  if (dirty(repo, repo.root, true)) throw fail('Commit or stash your changes in the main folder first, then merge again.');
+function commitCopy(repo, name, target) {
   if (dirty(repo, target)) {
     repo.git(['add', '-A'], target);
     const email = repo.git(['config', 'user.email'], target, [1]).stdout.trim();
@@ -138,6 +176,55 @@ function merge(repo, name) {
     const identity = email && user ? [] : ['-c', 'user.name=quota-boss', '-c', 'user.email=quota-boss@localhost'];
     repo.git([...identity, '-c', 'commit.gpgsign=false', 'commit', '-m', 'quota-boss worker copy ' + name], target);
   }
+}
+
+function merge(repo, names) {
+  const entries = names.map(name => ({ name, target: registered(repo, name), scope: readScope(repo, name) }));
+  if (dirty(repo, repo.root, true)) throw fail('Commit or stash your changes in the main folder first, then merge again.');
+  const owners = new Map();
+  for (const entry of entries) {
+    const { name, target, scope } = entry;
+    commitCopy(repo, name, target);
+    const base = repo.git(['merge-base', 'HEAD', 'qb/' + name], repo.root).stdout.trim();
+    const fields = repo.git(['diff', '--name-status', '--no-renames', '-z', base, 'qb/' + name], repo.root).stdout.split('\0');
+    const files = fields.filter((field, index) => index % 2 === 1);
+    const outside = files.filter(file => same(file, '.qb-plan.md') || scope && !scope.some(allowed => {
+      const candidate = process.platform === 'win32' ? file.toLowerCase() : file;
+      const rule = process.platform === 'win32' ? allowed.toLowerCase() : allowed;
+      return rule.endsWith('/') ? candidate.startsWith(rule) : candidate === rule;
+    }));
+    if (outside.length) throw fail('Worker copy ' + name + ' changes forbidden or out-of-scope paths:\n' + outside.slice(0, 20).map(clean).join('\n'));
+    const overlap = files.filter(file => owners.has(process.platform === 'win32' ? file.toLowerCase() : file));
+    if (overlap.length) throw fail('Worker copy ' + name + ' overlaps another named copy ('
+      + [...new Set(overlap.map(file => owners.get(process.platform === 'win32' ? file.toLowerCase() : file)))].join(', ')
+      + '):\n' + overlap.slice(0, 20).map(clean).join('\n'));
+    for (const file of files) owners.set(process.platform === 'win32' ? file.toLowerCase() : file, name);
+  }
+  if (entries.length === 1 && !entries[0].scope) return mergeSingle(repo, entries[0].name);
+  const completed = [];
+  let staged = [];
+  for (const { name } of entries) {
+    // Diverged merges require a clean index, even when the files are disjoint.
+    if (staged.length) repo.git(['--literal-pathspecs', 'reset', '--quiet', 'HEAD', '--', ...staged], repo.root);
+    try {
+      try { repo.git(['merge', '--squash', 'qb/' + name], repo.root); }
+      finally {
+        if (staged.length) repo.git(['--literal-pathspecs', 'add', '-f', '-A', '--', ...staged], repo.root);
+      }
+    }
+    catch (error) {
+      const conflicts = repo.git(['diff', '--name-only', '--diff-filter=U', '-z'], repo.root).stdout.split('\0').filter(Boolean);
+      throw fail(error.message + '\nMerged copies: ' + (completed.join(', ') || 'none') + '.\nConflicted copy: ' + name
+        + '.\nConflicted files:\n' + (conflicts.slice(0, 20).map(clean).join('\n') || 'none')
+        + '\ngit reset --merge undoes the whole merge.');
+    }
+    completed.push(name);
+    staged = repo.git(['diff', '--cached', '--name-only', '-z'], repo.root).stdout.split('\0').filter(Boolean);
+  }
+  return 'Merged ' + names.join(', ') + ' into the main folder as uncommitted changes. Run the full check once and read the diff. A failed package: send the error to its worker (same WORKDIR), then `git reset --merge` and merge again. When done: commit, then quota-boss worktree clean.';
+}
+
+function mergeSingle(repo, name) {
   if (!ahead(repo, name)) {
     remove(repo, name, false);
     return 'Nothing to merge from ' + name + '.';
@@ -161,8 +248,20 @@ function run(argv, cwd = process.cwd(), deps = {}) {
   if (!['add', 'list', 'merge', 'remove', 'clean'].includes(action)
     || action === 'list' && argv.length !== 1
     || action === 'clean' && (argv.length > 2 || name !== undefined && name !== '--force')
-    || ['add', 'merge', 'remove'].includes(action) && (!validName(name)
-      || argv.length > (action === 'remove' ? 3 : 2) || flag !== undefined && flag !== '--force')) throw fail(USAGE, 2);
+    || action === 'add' && !validName(name)
+    || action === 'merge' && (argv.length < 2 || !argv.slice(1).every(validName) || new Set(argv.slice(1)).size !== argv.length - 1)
+    || action === 'remove' && (!validName(name) || argv.length > 3 || flag !== undefined && flag !== '--force')) throw fail(USAGE, 2);
+  let scope, plan;
+  if (action === 'add') {
+    const options = new Set();
+    for (let index = 2; index < argv.length; index += 2) {
+      const option = argv[index], value = argv[index + 1];
+      if (!['--scope', '--plan'].includes(option) || options.has(option) || !value || value.startsWith('--')) throw fail(USAGE, 2);
+      options.add(option);
+      if (option === '--scope') scope = parseScope(value);
+      else plan = fs.readFileSync(path.resolve(cwd, value));
+    }
+  }
   const repo = repository(cwd, deps);
   if (action === 'list') {
     const entries = copies(repo);
@@ -178,12 +277,20 @@ function run(argv, cwd = process.cwd(), deps = {}) {
     if (branches(repo).includes('qb/' + name)) throw fail('Branch qb/' + name + ' already exists: run quota-boss worktree list or clean, or pick another name.');
     if (fs.existsSync(target)) throw fail('Worker copy path already exists: ' + name + '.');
     const changed = dirty(repo, repo.root, true);
+    if (plan !== undefined) excludePlan(repo);
     repo.git(['worktree', 'add', '-b', 'qb/' + name, target, 'HEAD'], repo.root);
+    if (scope) {
+      fs.mkdirSync(path.dirname(scopeFile(repo, name)), { recursive: true });
+      fs.writeFileSync(scopeFile(repo, name), scope.join('\n') + '\n');
+    }
+    if (plan !== undefined) fs.writeFileSync(path.join(target, '.qb-plan.md'), plan);
     return clean(target) + '\nPass it as WORKDIR: in the handover. Uncommitted changes in the main folder are not in the copy.'
       + '\nWhen the worker is done: quota-boss worktree merge ' + name + ', resolve any conflict, run the check once, commit. At task end: quota-boss worktree clean.'
-      + (changed ? '\nWarning: the main folder has uncommitted tracked changes.' : '');
+      + (changed ? '\nWarning: the main folder has uncommitted tracked changes.' : '')
+      + (scope ? '\nSCOPE: ' + scope.map(clean).join(',') : '')
+      + (plan !== undefined ? '\nPLAN: .qb-plan.md (read it first)' : '');
   }
-  if (action === 'merge') return merge(repo, name);
+  if (action === 'merge') return merge(repo, argv.slice(1));
   if (action === 'remove') {
     const kept = remove(repo, name, flag === '--force');
     return 'Removed ' + name + '.' + (kept ? '\n' + kept : '');
@@ -205,6 +312,10 @@ function run(argv, cwd = process.cwd(), deps = {}) {
   catch (error) { throw fail('Could not prune missing worker registrations (' + error.message + ').\nRemoved: '
     + (removed.join(', ') || 'none') + '.\nKept: ' + (kept.join(', ') || 'none') + '.'); }
   const remaining = copies(repo);
+  const scopeDirectory = path.join(repo.common, 'qb-scope');
+  if (fs.existsSync(scopeDirectory)) for (const scopeName of fs.readdirSync(scopeDirectory)) {
+    if (validName(scopeName) && !remaining.some(entry => entry.name === scopeName)) removeScope(repo, scopeName);
+  }
   for (const branch of branches(repo)) {
     const branchName = branch.slice(3);
     if (remaining.some(entry => entry.branch === 'refs/heads/' + branch)

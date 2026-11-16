@@ -185,7 +185,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.match(text, /set profile <quality\|balanced\|frugal>/);
     assert.match(cli.run(['explain', 'short-answers']), /quota: saves/);
     const entries = settings.entries(lib.findProjectConfig(), lib.loadConfig());
-    assert.equal(entries.length, 12);
+    assert.equal(entries.length, 13);
     const listed = Object.keys(defaults.providers).filter(id => defaults.providers[id].kind !== 'local');
     for (const id of listed) assert.match(text, new RegExp('^  ' + id + ' +(on|off) ', 'm'));
     assert.equal(text.split('\n').filter(l => /^  \S+ +(on|off) /.test(l)).length, listed.length);

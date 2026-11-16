@@ -58,7 +58,8 @@ function medium() {
 }
 
 const throwsType = (fn, type) => { try { fn(); } catch (e) { if (!type || e instanceof type) return e; throw new Error('wrong error ' + (e && e.name)); } throw new Error('no throw'); };
-function large() {
+function large(withOrders = false) {
+  const suffix = withOrders ? ' orders=0' : '';
   // A missing or broken module fails its own checks instead of the whole run.
   const optional = file => { try { return load(file); } catch { return {}; } };
   const csv = optional('src/csv.js'), { createInventory } = optional('src/inventory.js'), { quote } = optional('src/pricing.js'), report = optional('src/report.js');
@@ -94,9 +95,9 @@ function large() {
     check('cli import', () => { const r = cli('import', file); eq(r.status, 0); const lines = r.stdout.trim().split(/\r?\n/); eq(lines[0], 'added=2 errors=1'); if (!/^line 4: \S/.test(lines[1] || '')) throw new Error(r.stdout); });
     check('cli list', () => { const r = cli('list'); eq(r.stdout.trim().split(/\r?\n/), ['ABC-001 40 $2.50 Bolt', 'DEF-002 3 $9.99 Nut']); });
     check('cli quote', () => { const r = cli('quote', 'ABC-001:10', 'DEF-002:1', '--coupon', 'SAVE5'); eq(r.status, 0); eq(r.stdout.trim(), 'total=$29.69'); });
-    check('cli report', () => eq(cli('report').stdout.trim(), 'items=2 units=43 value=$129.97 low=DEF-002'));
+    check('cli report', () => eq(cli('report').stdout.trim(), 'items=2 units=43 value=$129.97 low=DEF-002' + suffix));
     check('cli errors', () => { for (const args of [['frobnicate'], ['quote', 'DEF-002:9'], ['quote', 'XYZ-999:1'], ['quote', 'ABC-001']]) { const r = cli(...args); eq(r.status, 1); if (!r.stderr.trim()) throw new Error('no stderr for ' + args.join(' ')); } });
-    check('cli empty db', () => { const r = spawnSync(process.execPath, [path.join(dir, 'src/cli.js'), path.join(tmp, 'none.json'), 'report'], { encoding: 'utf8', timeout: 30000 }); eq(r.stdout.trim(), 'items=0 units=0 value=$0.00 low=-'); });
+    check('cli empty db', () => { const r = spawnSync(process.execPath, [path.join(dir, 'src/cli.js'), path.join(tmp, 'none.json'), 'report'], { encoding: 'utf8', timeout: 30000 }); eq(r.stdout.trim(), 'items=0 units=0 value=$0.00 low=-' + suffix); });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -131,6 +132,7 @@ function trivial(description = 'Small task tracker', bin = 'tasks', commands = [
 if (task === 'small') small();
 else if (task === 'medium') medium();
 else if (task === 'mixed') { medium(); trivial(); }
+else if (task === 'xlarge') { large(true); xlarge(); trivial('Small inventory tool with orders', 'inventory', ['import', 'list', 'quote', 'report', 'order', 'cancel']); }
 else if (task === 'large') { large(); trivial('Small inventory tool', 'inventory', ['import', 'list', 'quote', 'report']); }
 else if (['bugfix','refactor','docs'].includes(task)) additions();
 else if (fs.existsSync(path.join(__dirname, 'fixtures', task + '.check.js'))) require(path.join(__dirname, 'fixtures', task + '.check.js'))(dir, { check, eq, throwsType, load });
@@ -156,4 +158,31 @@ function additions() {
   check('examples run', () => { const blocks = [...readme.matchAll(/```(?:js|javascript)\s*\n([^]*?)```/g)].map(x=>x[1]); if (!blocks.length || !blocks.join('').includes('greet(') || !blocks.join('').includes('repeat(')) throw new Error('missing examples'); for (const input of blocks) { const r=spawnSync(process.execPath,['-e',input],{cwd:dir,encoding:'utf8',timeout:5000}); if(r.status!==0) throw new Error(r.stderr); } });
   check('behavior', () => { const m=load('src/greetings.js'); eq(m.greet('Ada'),'Hello, Ada!'); eq(m.repeat('ab',2),'abab'); });
  }
+}
+
+function xlarge() {
+  const item = { sku: 'ABC-001', name: 'Bolt', price: 250, qty: 40 };
+  const fresh = (saved = []) => {
+    const inv = load('src/inventory.js').createInventory([item]);
+    return { inv, orders: load('src/orders.js').createOrders(inv, saved) };
+  };
+  const lines = [{ sku: item.sku, qty: 2 }];
+  check('orders place shape and stock', () => { const {inv, orders} = fresh(); const order = orders.place(lines); eq(order, {id:'ORD-0001', lines:[{sku:item.sku,qty:2,unit:250,total:500}],subtotal:500,discount:0,tax:40,total:540,status:'open'}); eq(inv.get(item.sku).qty,38); eq(orders.get(order.id),order); eq(orders.get('missing'),undefined); });
+  check('orders coupon', () => { const {orders} = fresh(); eq(orders.place(lines,{coupon:'HALF'}).total,270); });
+  check('orders saved ids and sorted list', () => { const {orders} = fresh([{id:'ORD-0012',lines:[],status:'cancelled'},{id:'ORD-0003',lines:[],status:'open'}]); eq(orders.place(lines).id,'ORD-0013'); eq(orders.list().map(o=>o.id),['ORD-0003','ORD-0012','ORD-0013']); });
+  check('orders failed place keeps stock', () => { const {inv,orders} = fresh(); for (const [bad,options,type] of [[[{sku:item.sku,qty:1},{sku:'XYZ-999',qty:1}],{},Error],[[{sku:item.sku,qty:41}],{},RangeError],[[{sku:item.sku,qty:0}],{},TypeError],[lines,{coupon:'BAD'},Error],[[{sku:item.sku,qty:25},{sku:item.sku,qty:25}],{},RangeError]]) { throwsType(()=>orders.place(bad,options),type); eq(inv.get(item.sku).qty,40); eq(orders.list(),[]); } eq(orders.place(lines).id,'ORD-0001'); });
+  check('orders cancel restores stock', () => { const {inv,orders} = fresh(); const order=orders.place(lines); eq(orders.cancel(order.id).status,'cancelled'); eq(inv.get(item.sku).qty,40); });
+  check('orders cancel twice unchanged', () => { const {inv,orders} = fresh(); const order=orders.place(lines); orders.cancel(order.id); throwsType(()=>orders.cancel(order.id),Error); eq(inv.get(item.sku).qty,40); eq(orders.get(order.id).status,'cancelled'); });
+  check('orders unknown cancel unchanged', () => { const {inv,orders} = fresh(); throwsType(()=>orders.cancel('missing'),Error); eq(inv.get(item.sku).qty,40); eq(orders.list(),[]); });
+  check('orders JSON round trip', () => { const {orders} = fresh(); orders.place(lines); const saved=JSON.parse(JSON.stringify(orders.toJSON())); const again=fresh(saved).orders; eq(again.list(),saved); eq(again.place(lines).id,'ORD-0002'); });
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'qb-orders-'));
+  try {
+    const db=path.join(tmp,'db.json');
+    const cli=(...args)=>spawnSync(process.execPath,[path.join(dir,'src/cli.js'),db,...args],{encoding:'utf8',timeout:30000});
+    const seed=()=>fs.writeFileSync(db,JSON.stringify([item]));
+    check('orders CLI array compatibility',()=>{ seed(); const r=cli('list'); eq(r.status,0); eq(r.stdout.trim(),'ABC-001 40 $2.50 Bolt'); });
+    check('orders CLI place and save',()=>{ seed(); const r=cli('order','ABC-001:2','--coupon','HALF'); eq(r.status,0); eq(r.stdout.trim(),'order=ORD-0001 total=$2.70'); const saved=JSON.parse(fs.readFileSync(db)); eq(saved.items[0].qty,38); eq(saved.orders[0].status,'open'); eq(cli('report').stdout.trim(),'items=1 units=38 value=$95.00 low=- orders=1'); eq(cli('order','ABC-001:1').stdout.trim(),'order=ORD-0002 total=$2.70'); });
+    check('orders CLI cancel and save',()=>{ seed(); cli('order','ABC-001:2'); const r=cli('cancel','ORD-0001'); eq(r.status,0); eq(r.stdout.trim(),'cancelled=ORD-0001'); const saved=JSON.parse(fs.readFileSync(db)); eq(saved.items[0].qty,40); eq(saved.orders[0].status,'cancelled'); eq(cli('report').stdout.trim(),'items=1 units=40 value=$100.00 low=- orders=0'); });
+    check('orders CLI errors preserve database',()=>{ seed(); cli('order','ABC-001:2'); cli('cancel','ORD-0001'); for(const args of [['cancel','ORD-0001'],['cancel','ORD-9999'],['order','ABC-001:41']]) { const before=fs.readFileSync(db,'utf8'); const r=cli(...args); eq(r.status,1); if(!r.stderr.trim()) throw new Error('no stderr'); eq(fs.readFileSync(db,'utf8'),before); } });
+  } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 }

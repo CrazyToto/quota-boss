@@ -7,7 +7,7 @@ const path = require('node:path');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 
-const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', training: 'on',
+const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', split: 'on', training: 'on',
   'codex-tasks': 'off', 'gpt-reviews': 'off', perplexity: 'off', statusline: 'always', context: '100000' };
 test.describe('set and public command help', () => {
   let root, cwd, env;
@@ -64,6 +64,20 @@ test.describe('set and public command help', () => {
     assert.match(cli.run(['context']), /Change with: quota-boss set context/);
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
     assert.equal(fs.existsSync(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'providers.json')), false);
+  });
+  test('split defaults off, normalizes strictly, and persists both switches with their effects', () => {
+    for (const value of [undefined, null, false, 1, 'true', 'on']) assert.equal(lib.normalizeProject({ split: value }).split, false);
+    assert.equal(lib.normalizeProject({ split: true }).split, true);
+    assert.match(cli.run(['settings']), /^split\s*\| off\s*\| set split <on\|off>/m);
+    for (const [value, message] of [['on', 'Large jobs with disjoint parts may be split across two scoped worker copies; applies from the next session.'],
+      ['off', 'Large jobs go to one worker; applies from the next session.']]) {
+      assert.ok(cli.run(['set', 'split', value]).includes(message));
+      assert.equal(lib.findProjectConfig().split, value === 'on');
+      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].split, value === 'on');
+      assert.match(cli.run(['settings']), new RegExp('^split\\s*\\| ' + value + '\\s*\\|', 'm'));
+    }
+    assert.throws(() => cli.run(['split', 'on']));
+    assert.match(cli.run(['help']), /set split on\|off/);
   });
   test('help groups public commands and hides worker commands; unknown and empty commands fail with help', () => {
     const help = cli.run(['help']);

@@ -8,6 +8,28 @@ const hosts = require('../scripts/hosts');
 const root = path.join(__dirname, '..');
 const consensus = 'use `consensus` before deciding';
 
+test('split switches between large-job and independent-job rules, defaulting off on every host', () => {
+  const split = 'Split a large job only when', independent = 'Independent jobs run at the same time:';
+  const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
+  assert.match(template, /   Independent jobs run at the same time:.*\n   Split a large job only when/);
+  for (const host of ['claude-code', 'codex', 'generic']) {
+    for (const terse of [false, true]) {
+      const baseline = hosts.rules(host, { rules: 'full', terse });
+      assert.ok(baseline.includes(independent));
+      assert.ok(!baseline.includes(split));
+      for (const value of [undefined, null, false, 'true', 1]) {
+        assert.equal(hosts.rules(host, { rules: 'full', terse, split: value }), baseline);
+      }
+      const enabled = hosts.rules(host, { rules: 'full', terse, split: true });
+      assert.ok(enabled.includes(split));
+      assert.ok(!enabled.includes(independent));
+      assert.equal(enabled.split('\n').filter(line => !line.includes(split)).join('\n'),
+        baseline.split('\n').filter(line => !line.includes(independent)).join('\n'));
+      for (const phrase of ['worktree add <name> --scope <paths> --plan <file>', 'worktree merge <name1> <name2>', 'test doubles for the other package']) assert.ok(enabled.includes(phrase));
+    }
+  }
+});
+
 // Full start text: the tiny default adds the on-demand routing table on Claude Code.
 test('consensus false removes only its line for every host', () => {
   for (const host of ['claude-code', 'codex', 'generic']) {

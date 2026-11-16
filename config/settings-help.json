@@ -95,6 +95,14 @@
     "when": "Keep it on for important trade-offs; it uses an extra GPT answer and never edits files.",
     "advanced": true
   },
+  "split": {
+    "title": "Split large jobs",
+    "what": "Let a large job with disjoint files and a fixed interface run as two scoped worker copies at the same time.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Turn it on to finish large delegated jobs sooner; applies from the next session.",
+    "advanced": true
+  },
   "statusline": {
     "title": "Status line visibility",
     "what": "Show quota numbers everywhere or only with boss mode.",

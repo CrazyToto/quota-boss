@@ -32,7 +32,7 @@ function snapshot(project = lib.findProjectConfig()) {
 function entries(project, config) {
   const values = { enabled: project.enabled, profile: project.profile, host: project.host,
     'codex-tasks': project.workers.codex, 'gpt-reviews': project.workers.gpt, perplexity: project.workers.perplexity,
-    training: project.allowTrainingProviders, 'short-answers': project.terse, rules: lib.normalizeProject(project).rules, consensus: project.consensus,
+    training: project.allowTrainingProviders, 'short-answers': project.terse, rules: lib.normalizeProject(project).rules, consensus: project.consensus, split: lib.normalizeProject(project).split,
     statusline: lib.showsWithoutBoss() ? 'always' : 'boss', context: project.contextSuggest === false ? 'off' : project.contextSuggest };
   return Object.entries(values).map(([key, value]) => ({ key, value, help: helpFor(key) }));
 }
@@ -101,6 +101,7 @@ function effect(command, args, before, after) {
     text = project.allowTrainingProviders ? training + ' enabled training providers may now receive this project’s tasks.' : 'All training providers are blocked for this project.';
   } else if (command === 'terse') text = project.terse ? 'Replies now use the 4-part short format to save output tokens.' : 'Replies can include fuller explanations; no short-answer rule is added.';
   else if (command === 'consensus') text = project.consensus ? 'Independent critical advice is available in ' + after.result.rows.filter(r => r.options.includes('consensus')).length + ' route rows; each use costs an extra Codex answer.' : 'The consensus option is off: it is hidden from the route table and removed from the session rules. Critical changes still get the counter-review from templates/RULES.md.';
+  else if (command === 'split') text = project.split ? 'Large jobs with disjoint parts may be split across two scoped worker copies; applies from the next session.' : 'Large jobs go to one worker; applies from the next session.';
   else if (command === 'on' || command === 'off') text = project.enabled ? 'Routing is on for ' + project.host + ' with the ' + project.profile + ' profile; it applies on the next message/session.' : 'Routing hooks are off and the managed Codex rules block is removed for this project.';
   else if (command === 'rules') text = 'Claude Code sessions use ' + project.rules + ' rules at startup; tiny rules load the full rules before delegation, review or CRITICAL work.';
   else if (command === 'context') text = project.contextSuggest === false ? 'A fresh session is no longer suggested.' : 'A fresh session is suggested from ' + project.contextSuggest + ' tokens of context; a smaller context costs less on every step.';

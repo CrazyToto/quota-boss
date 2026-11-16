@@ -315,3 +315,62 @@ test('bench feedback is tagged and never teaches the router', () => {
   assert.strictEqual(line.bench, 'run-1');
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test('xlarge hidden checks: empty fixture fails, the reference solution passes all', t => {
+  const d = temporary(t);
+  setup(d, 'xlarge');
+  const base = path.join(temporary(t), 'large');
+  setup(base, 'large');
+  for (const file of ['package.json', 'src/math.js', 'src/format.js', 'test/math.test.js']) assert.equal(fs.readFileSync(path.join(d,file),'utf8'), fs.readFileSync(path.join(base,file),'utf8'));
+  const check = () => spawnSync(process.execPath, [path.join(__dirname, 'hidden-check.js'), 'xlarge', d], { encoding: 'utf8' });
+  let r = check();
+  const [before, total] = r.stdout.trim().split('/').map(Number);
+  assert.ok(total >= 44 && before <= 2, r.stdout);
+  fs.cpSync(path.join(__dirname, 'reference', 'xlarge'), d, { recursive: true });
+  r = check();
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout.trim(), total + '/' + total);
+});
+
+test('split flag labels and records runs and configures after rules', t => {
+  for (const split of ['on', 'off', null]) {
+    const d = temporary(t), calls = [];
+    const fake = (command, args) => {
+      calls.push(args);
+      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    main(['--host','claude','--arm','on:quality','--task','small','--rules','tiny','--out',d,...(split ? ['--split',split] : [])],fake);
+    const row=JSON.parse(fs.readFileSync(path.join(d,'results.jsonl'),'utf8'));
+    assert.equal(row.split,split);
+    assert.equal(row.label,'claude-opus-on:quality-tiny'+(split === null ? '' : split === 'on' ? '-split' : '-nosplit'));
+    const index=calls.findIndex(a=>a.slice(1).join(' ')===`set split ${split}`);
+    if(split) { assert.ok(index>0); assert.equal(calls[index-1].slice(1).join(' '),'set rules tiny'); }
+    else assert.equal(index,-1);
+  }
+});
+
+test('invalid split flags and off arm exit 2 before executing', () => {
+  const exit=process.exit, error=console.error;
+  process.exit=code=>{throw Object.assign(new Error('exit'),{code});};
+  console.error=()=>{};
+  try {
+    for(const [arm,split] of [['off','on'],['off','off'],['on',''],['on','ON'],['on','bad'],['on',undefined]]) {
+      assert.throws(()=>main(['--host','claude','--arm',arm,'--task','small','--split',...(split === undefined ? [] : [split])],()=>{throw new Error('must not execute');}),e=>e.code===2);
+    }
+  } finally { process.exit=exit; console.error=error; }
+});
+
+test('failed split setup restores profile and does not run host', t => {
+  const d=temporary(t), calls=[];
+  const fake=(command,args)=>{
+    calls.push(args);
+    assert.notEqual(command,'claude');
+    if(args.includes('settings')) return {status:0,stdout:'profile | quality | change'};
+    if(args.slice(1).join(' ')==='set split on') return {status:1,stdout:'',stderr:'failed split'};
+    return {status:0,stdout:'',stderr:''};
+  };
+  assert.throws(()=>main(['--host','claude','--arm','on','--task','small','--split','on','--out',d],fake),/split setup failed/);
+  assert.ok(calls.some(a=>a.slice(1).join(' ')==='set profile quality'));
+  assert.ok(!fs.existsSync(path.join(d,'results.jsonl')));
+});
