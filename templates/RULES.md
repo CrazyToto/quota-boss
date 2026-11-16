@@ -6,7 +6,7 @@
    Do a job yourself only when it takes two tool turns or fewer (about 30 changed lines) or the spec would be as long as the work. Delegate if it needs six or more turns, many edits or many unread files and the row names a worker; on a `self` row keep it (on Claude Code, `self-worker` can take a large one to keep your context small). In between, prefer a cheap worker when a clear check exists. Bundle related edits into one worker.
 3. Delegate to the worker the row names. Always pass the effort the table shows (on Claude Code, the Agent tool's `effort` parameter).
    - Codex host: `codex-subagent` -> spawn a Codex subagent and name the exact model and reasoning effort from the table; `claude-worker` -> official Claude CLI. Generic host: `cli-worker` -> configured official CLI.
-   - Claude Code host: give `codex-worker` the model from the row.
+   - Claude Code host: name the row's model in the `codex-worker` prompt. Leave the Agent tool's `model` unset for `codex-worker`, `cli-worker` and `gpt-advisor`: an outside CLI does the work, so a bigger Claude model there only adds cost.
    - `cli-worker:<provider>`: pass the provider id, model, effort, category and tier. `gpt-advisor`: read-only second opinion or research from GPT. `scout`: find code, report locations. `reviewer`: review a diff. `researcher`: web research.
    Two workers on the same files each need a copy: `worktree add <name>` (same script) prints its `WORKDIR:` and next steps.
    Independent jobs run at the same time: when parts touch separate files against fixed interfaces, start their workers together in the background (at most two) and do your own part or the integration meanwhile. Keep dependent work in order.
