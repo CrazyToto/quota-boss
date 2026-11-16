@@ -25,12 +25,14 @@ function fixture(t) {
     'scripts/statusline.js': "'use strict';\n",
     'scripts/hook-session.js': "'use strict';\n",
     'scripts/hook-prompt.js': "'use strict';\n",
+    'scripts/hook-agent.js': "'use strict';\n",
     'scripts/nested/helper.js': 'module.exports = 42;\n',
     'config/models.json': '{"models":{}}\n',
     'config/thresholds.json': '{"save":75}\n',
     'agents/worker.md': `${MARKER}\nWorker\n`,
     'commands/boss.md': `${MARKER}\nCommand\n`,
     'templates/RULES.md': 'Quota Boss rules\n',
+    'templates/BOOT.md': 'Tiny boss rules\n',
   })) write(path.join(repo, ...file.split('/')), data);
   const settings = path.join(claude, 'settings.json');
   const logs = [];
@@ -61,6 +63,7 @@ test('copies runtime sources, uses all path overrides, and writes settings and m
   f.run();
   assert.equal(fs.readFileSync(path.join(f.home, 'scripts/nested/helper.js'), 'utf8'), 'module.exports = 42;\n');
   assert.equal(fs.readFileSync(path.join(f.home, 'templates/RULES.md'), 'utf8'), 'Quota Boss rules\n');
+  assert.equal(fs.readFileSync(path.join(f.home, 'templates/BOOT.md'), 'utf8'), 'Tiny boss rules\n');
   assert.ok(fs.existsSync(path.join(f.claude, 'agents/worker.md')));
   assert.ok(fs.existsSync(path.join(f.claude, 'commands/boss.md')));
   assert.equal(fs.existsSync(f.codex), false);
@@ -72,9 +75,26 @@ test('copies runtime sources, uses all path overrides, and writes settings and m
   for (const [event, script] of [['SessionStart', 'hook-session.js'], ['UserPromptSubmit', 'hook-prompt.js']]) {
     assert.deepEqual(settings.hooks[event], [{ hooks: [{ type: 'command', command: `"${process.execPath.replace(/\\/g, '/')}" "${normalizedHome}/scripts/${script}"`, timeout: 10 }] }]);
   }
+  assert.deepEqual(settings.hooks.PreToolUse, [{ matcher: 'Agent|Task', hooks: [{ type: 'command', command: `"${process.execPath.replace(/\\/g, '/')}" "${normalizedHome}/scripts/hook-agent.js"`, timeout: 5 }] }]);
+  assert.ok(f.manifest().hooks.some(hook => hook.event === 'PreToolUse'));
   assert.equal(f.manifest().mcpAdded, false);
   assert.ok(f.manifest().files.some(file => file.path === path.join(f.home, 'config/models.json')));
   assert.equal(Object.keys(snapshot(f.temporary)).some(file => file.includes('.tmp-')), false);
+});
+
+test('PreToolUse hook is added to older installs, stays unique and uninstall preserves foreign hooks', t => {
+  const f = fixture(t);
+  write(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'foreign' }] }] } }));
+  f.run();
+  f.run();
+  const entries = readJSON(f.settings).hooks.PreToolUse;
+  assert.equal(entries.length, 2);
+  assert.equal(entries[1].matcher, 'Agent|Task');
+  assert.match(entries[1].hooks[0].command, /hook-agent\.js/);
+  assert.ok(fs.existsSync(path.join(f.home, 'scripts/hook-agent.js')));
+  f.run(['--uninstall']);
+  assert.deepEqual(readJSON(f.settings).hooks, { PreToolUse: [entries[0]] });
+  assert.equal(fs.existsSync(path.join(f.home, 'scripts/hook-agent.js')), false);
 });
 
 test('upgrade removes legacy rules and tracks the new template through uninstall', t => {

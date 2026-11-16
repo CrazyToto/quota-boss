@@ -55,6 +55,14 @@
     "when": "Leave it off unless you accept those providers using the project prompts and code for training.",
     "advanced": false
   },
+  "rules": {
+    "title": "Session rules",
+    "what": "Claude Code starts with full rules (default) or tiny text that loads full rules and fresh routing on demand.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Use tiny to compare startup tokens; full rules must load before delegation, review or CRITICAL work.",
+    "advanced": false
+  },
   "short-answers": {
     "title": "Shorter answers",
     "what": "Ask the boss for a brief verdict, changed files, verification, and open issues.",

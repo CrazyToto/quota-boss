@@ -4,6 +4,10 @@ const fs = require('node:fs');
 const lib = require('./lib');
 const START = '<!-- quota-boss:start -->';
 const END = '<!-- quota-boss:end -->';
+const RULES_LOADED = '[quota-boss] Boss rules loaded.';
+function boot() {
+  return lib.substituteHome(lib.readBounded(path.join(__dirname, '..', 'templates', 'BOOT.md'), 65536).trim());
+}
 function checkHost(host) {
   if (!lib.HOSTS.includes(host)) throw new Error('Host must be claude-code, codex, or generic.');
   return host;
@@ -39,6 +43,11 @@ function rules(host, project = {}) {
     }
     for (const worker of workers) text += '\n' + lib.readBounded(path.join(__dirname, '..', 'agents', worker + '.md'), 65536).split('{{QUOTA_BOSS_HOME}}').join(home);
     if (/^[A-Za-z0-9_:\/.\-]+$/.test(home)) text = text.replace(/"([^"\r\n]+)"/g, (quoted, file) => file.startsWith(home + '/scripts/') && !file.slice(home.length + 9).includes('/') ? file : quoted);
+  }
+  if (host === 'claude-code' && lib.normalizeProject(project).rules === 'tiny') {
+    const config = lib.loadConfig(project, { tolerant: true });
+    const routing = require('./session-routing').build(project, config);
+    text = [RULES_LOADED, text, routing.table, routing.limits].filter(Boolean).join('\n');
   }
   return text;
 }
@@ -102,4 +111,4 @@ function recommend(config, outcomes = [], now = Date.now()) {
   return describe(best) + '; architecture/review score (60/40), and within 0.5 of the best the cheapest wins.'
     + (other ? '\nBest on the other host: ' + describe(other) + '.' : '');
 }
-module.exports = { writeAgents, scanAgents, checkHost, rules, agentsText, managedBlock, recommend, START, END };
+module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, agentsText, managedBlock, recommend, START, END };

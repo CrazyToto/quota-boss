@@ -12,6 +12,7 @@ const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 const RATE_LIMIT_MINUTES = 15;
 const PROFILES = ['quality', 'balanced', 'frugal'];
 const HOSTS = ['claude-code', 'codex', 'generic'];
+const DEFAULT_RULES = 'full';
 const WORKERS = ['codex', 'gpt', 'perplexity'];
 const CONTEXT_SUGGEST_DEFAULT = 100000, CONTEXT_SUGGEST_MIN = 20000, CONTEXT_SUGGEST_MAX = 2000000;
 
@@ -341,6 +342,7 @@ function normalizeProject(value) {
   return { enabled: config.enabled === true,
     host: HOSTS.includes(config.host) ? config.host : 'claude-code',
     terse: config.terse === true,
+    rules: ['tiny', 'full'].includes(config.rules) ? config.rules : DEFAULT_RULES,
     allowTrainingProviders: config.allowTrainingProviders === true,
     consensus: config.consensus !== false,
     contextSuggest: config.contextSuggest === false || Number.isInteger(config.contextSuggest) && config.contextSuggest >= CONTEXT_SUGGEST_MIN && config.contextSuggest <= CONTEXT_SUGGEST_MAX ? config.contextSuggest : CONTEXT_SUGGEST_DEFAULT,

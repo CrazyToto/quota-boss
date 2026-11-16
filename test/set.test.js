@@ -7,7 +7,7 @@ const path = require('node:path');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 
-const choices = { profile: 'frugal', 'short-answers': 'on', consensus: 'off', training: 'on',
+const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', training: 'on',
   'codex-tasks': 'off', 'gpt-reviews': 'off', perplexity: 'off', statusline: 'always', context: '100000' };
 test.describe('set and public command help', () => {
   let root, cwd, env;
@@ -32,7 +32,7 @@ test.describe('set and public command help', () => {
       const project = lib.findProjectConfig();
       if (name === 'statusline') { assert.equal(lib.showsWithoutBoss(), true); assert.equal(fs.existsSync(lib.getPaths().projectsFile), false); }
       else if (name === 'context') assert.equal(project.contextSuggest, 100000);
-      else if (name === 'profile') assert.equal(project.profile, value);
+      else if (name === 'profile' || name === 'rules') assert.equal(project[name], value);
       else {
         const worker = { 'codex-tasks': 'codex', 'gpt-reviews': 'gpt', perplexity: 'perplexity' }[name];
         assert.equal(worker ? project.workers[worker] : project[{ 'short-answers': 'terse', training: 'allowTrainingProviders' }[name] || name], value === 'on');
@@ -45,6 +45,16 @@ test.describe('set and public command help', () => {
       assert.throws(() => cli.run(args), error => Object.keys(choices).every(name => error.message.includes(name)));
     }
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
+  });
+  test('rules default to full, normalize invalid values, and persist either choice', () => {
+    for (const value of [undefined, null, 'bad', 'TINY', true]) assert.equal(lib.normalizeProject({ rules: value }).rules, 'full');
+    assert.match(cli.run(['settings']), /^rules\s*\| full\s*\| set rules <tiny\|full>/m);
+    for (const value of ['tiny', 'full']) {
+      assert.match(cli.run(['set', 'rules', value]), /Effect: Claude Code sessions use/);
+      assert.equal(lib.findProjectConfig().rules, value);
+      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].rules, value);
+      assert.match(cli.run(['settings']), new RegExp('^rules\\s*\\| ' + value + '\\s*\\|', 'm'));
+    }
   });
   test('all removed forms fail without writes, and context still reports', () => {
     const removed = [['profile', 'frugal'], ['terse', 'on'], ['consensus', 'on'], ['allow-training', 'on'],

@@ -72,9 +72,48 @@ test('fake runs repetitions and profile restoration', t => {
   assert.notEqual(rows[0].runName, rows[1].runName);
   assert.equal(rows[0].arm, 'on:quality');
   assert.equal(rows[0].claudeMode, null);
+  assert.equal(rows[0].rules, null);
   assert.equal(rows[0].label, 'claude-opus-on:quality');
   assert.equal(calls.filter(x => x[1].join(' ').includes('set profile frugal')).length, 2);
   assert.equal(calls.filter(x => x[0] === 'claude').length, 2);
+});
+
+test('rules flag records and labels fake runs, setting rules only for the on arm', t => {
+  for (const rules of ['tiny', 'full']) for (const arm of ['on', 'off']) {
+    const d = temporary(t), calls = [];
+    const fake = (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
+      return { status: 0, stdout: '{}', stderr: '' };
+    };
+    main(['--host', 'claude', '--arm', arm, '--task', 'small', '--rules', rules, '--out', d], fake);
+    const row = JSON.parse(fs.readFileSync(path.join(d, 'results.jsonl'), 'utf8'));
+    assert.equal(row.rules, rules);
+    assert.equal(row.label, `claude-opus-${arm}-${rules}`);
+    const setters = calls.filter(c => c.args.slice(1).join(' ') === `set rules ${rules}`);
+    assert.equal(setters.length, arm === 'on' ? 1 : 0);
+    if (arm === 'on') {
+      const index = calls.indexOf(setters[0]);
+      assert.equal(calls[index - 1].args[1], 'on');
+      assert.equal(setters[0].cwd, path.join(d, 'runs', row.runName));
+    }
+    assert.ok(!Object.hasOwn(row, 'rulesLoads'));
+  }
+});
+
+test('invalid rules flags exit 2 before executing anything', () => {
+  const exit = process.exit, error = console.error;
+  let message = '';
+  process.exit = code => { throw Object.assign(new Error('exit'), { code }); };
+  console.error = value => { message += value; };
+  try {
+    for (const value of ['', 'TINY', 'bad', undefined]) {
+      message = '';
+      const args = ['--host', 'claude', '--arm', 'on', '--task', 'small', '--rules', ...(value === undefined ? [] : [value])];
+      assert.throws(() => main(args, () => { throw new Error('must not execute'); }), e => e.code === 2);
+      assert.match(message, /Usage: .*--rules tiny\|full/);
+    }
+  } finally { process.exit = exit; console.error = error; }
 });
 
 test('Claude mode flag labels runs and reaches quota and host children', t => {

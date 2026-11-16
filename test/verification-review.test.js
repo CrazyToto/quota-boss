@@ -180,7 +180,7 @@ test.describe('verification review regressions', () => {
     };
     try{installer();}finally{lib.withLock=original;}
     assert.ok(interleaved);
-    assert.equal(lib.readJson(manifestFile()).hooks.length,2);assert.ok(lib.readJson(manifestFile()).statusLine);
+    assert.equal(lib.readJson(manifestFile()).hooks.length,3);assert.ok(lib.readJson(manifestFile()).statusLine);
     installer(['--uninstall']);assert.deepEqual(lib.readJson(settingsFile()),{});
   });
 

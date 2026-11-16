@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task small|medium|mixed|bugfix|refactor|docs [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 function parseArm(value) {
  if (!/^(off|on|on:(quality|balanced|frugal))$/.test(value || '')) throw new Error('Invalid arm: ' + value);
@@ -24,6 +24,8 @@ const host = args.host;
 const { arm, mode, profile } = parseArm(args.arm || args.mode);
 const claudeMode = args['claude-mode'] === undefined ? null : args['claude-mode'];
 if (claudeMode !== null && !['normal', 'save', 'emergency'].includes(claudeMode)) { console.error(USAGE); process.exit(2); }
+const rules = args.rules === undefined ? null : args.rules;
+if (rules !== null && !['tiny', 'full'].includes(rules)) { console.error(USAGE); process.exit(2); }
 const modeEnv = claudeMode ? { QUOTA_BOSS_CLAUDE_MODE: claudeMode } : {};
 const reps = Number(args.reps || 1);
 if (!Number.isInteger(reps) || reps < 1) throw new Error('reps must be a positive integer');
@@ -35,7 +37,7 @@ const task = args.task;
 if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
 const model = args.model || (host === 'claude' ? 'opus' : 'gpt-6.1-sol');
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
-const label = args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`;
+const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`) + (rules ? '-' + rules : '');
 const n = args.n || '1';
 if (!Number.isInteger(Number(n)) || Number(n) < 1) throw new Error('n must be a positive integer');
 const out = path.resolve(args.out || path.join(os.tmpdir(), 'quota-boss-bench'));
@@ -67,6 +69,10 @@ try {
   if (!previousProfile) throw new Error('Could not determine previous profile');
   const on = mode === 'off' ? quota('off') : quota('on', '--host', host === 'codex' ? 'codex' : 'claude-code', profile);
   if (on.status !== 0) throw new Error('quota-boss setup failed: ' + (on.stdout + on.stderr).slice(0, 300));
+  if (mode === 'on' && rules) {
+    const set = quota('set', 'rules', rules);
+    if (set.status !== 0) throw new Error('quota-boss rules setup failed: ' + (set.stdout + set.stderr).slice(0, 300));
+  }
 }
 
 // The boss may log feedback during the run. Keep it in the result, not in the owner's outcome log.
@@ -151,7 +157,7 @@ const count = name => { const m = String(own.stdout || '').match(new RegExp(`(?:
 const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
-  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
+  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, rules, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
   ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');

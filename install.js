@@ -120,7 +120,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
   };
   const validateSettings = value => {
     if (value.hooks !== undefined && !object(value.hooks)) throw new Error('settings.hooks must be an object.');
-    for (const event of ['SessionStart', 'UserPromptSubmit']) if (value.hooks?.[event] !== undefined && !Array.isArray(value.hooks[event])) throw new Error('settings.hooks.' + event + ' must be an array.');
+    for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse']) if (value.hooks?.[event] !== undefined && !Array.isArray(value.hooks[event])) throw new Error('settings.hooks.' + event + ' must be an array.');
   };
   const settingsSnapshot = () => {
     const before = lib.regularStat(dirs.settings, true);
@@ -244,7 +244,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
           if (!Array.isArray(entry?.hooks)) return [entry];
           const remaining = entry.hooks.filter(item => item?.command !== hook.command);
           if (remaining.length === entry.hooks.length) return [entry];
-          if (remaining.length || Object.keys(entry).some(key => key !== 'hooks')) return [{ ...entry, hooks: remaining }];
+          if (remaining.length || Object.keys(entry).some(key => key !== 'hooks' && !(key === 'matcher' && hook.event === 'PreToolUse' && entry.matcher === 'Agent|Task'))) return [{ ...entry, hooks: remaining }];
           return [];
         });
         if (settings.hooks[hook.event].length === 0 && hook.createdEvent) delete settings.hooks[hook.event];
@@ -286,7 +286,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
 
   // Validate settings before copying anything; malformed user data must not be replaced.
   if (settings.hooks !== undefined && !object(settings.hooks)) throw new Error('settings.hooks must be an object.');
-  for (const event of ['SessionStart', 'UserPromptSubmit']) {
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse']) {
     if (settings.hooks?.[event] !== undefined && !Array.isArray(settings.hooks[event])) {
       throw new Error(`settings.hooks.${event} must be an array.`);
     }
@@ -406,6 +406,11 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
     remove(legacy);
     manifest.files = manifest.files.filter(entry => entry.path !== legacy);
   } else say(`Skip missing source ${rules}`);
+  const boot = path.join(repo, 'templates', 'BOOT.md');
+  if (exists(boot)) {
+    const target = path.join(dirs.home, 'templates', 'BOOT.md');
+    write(target, lib.substituteHome(lib.readBounded(boot, 65536), dirs.home)); remember(target, 'rules');
+  } else say(`Skip missing source ${boot}`);
   for (const [directory, kind] of [['agents', 'agent'], ['commands', 'command']]) {
     const source = path.join(repo, directory);
     if (!exists(source)) continue;
@@ -439,19 +444,21 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
     settings.statusLine = { type: 'command', command: statusCommand, refreshInterval: 30 };
   }
   if (!settings.hooks) { settings.hooks = {}; manifest.createdHooks = true; }
-  for (const [event, script] of [['SessionStart', 'hook-session.js'], ['UserPromptSubmit', 'hook-prompt.js']]) {
+  for (const [event, script] of [['SessionStart', 'hook-session.js'], ['UserPromptSubmit', 'hook-prompt.js'], ['PreToolUse', 'hook-agent.js']]) {
     const hookCommand = command(script);
     const createdEvent = settings.hooks[event] === undefined;
     const entries = settings.hooks[event] || [];
     let found = false;
     for (const entry of entries) for (const hook of (Array.isArray(entry?.hooks) ? entry.hooks : [])) {
-      if (hook?.command === hookCommand || normalized(hook?.command).includes(normalized(path.join(dirs.home, 'scripts', script))) || ['quota-boss/scripts/hook-', 'harness/scripts/hook-'].some(part => normalized(hook?.command).includes(part))) {
+      if (hook?.command === hookCommand || normalized(hook?.command).includes(normalized(path.join(dirs.home, 'scripts', script))) || event !== 'PreToolUse' && ['quota-boss/scripts/hook-', 'harness/scripts/hook-'].some(part => normalized(hook?.command).includes(part))) {
         // Upgrade legacy bare-node hooks as well as commands from an earlier Node installation.
         hook.command = hookCommand;
+        // Only an entry that holds nothing but our hook gets our matcher; others keep theirs.
+        if (event === 'PreToolUse' && entry.hooks.length === 1) entry.matcher = 'Agent|Task';
         found = true;
       }
     }
-    if (!found) entries.push({ hooks: [{ type: 'command', command: hookCommand, timeout: 10 }] });
+    if (!found) entries.push({ ...(event === 'PreToolUse' ? { matcher: 'Agent|Task' } : {}), hooks: [{ type: 'command', command: hookCommand, timeout: event === 'PreToolUse' ? 5 : 10 }] });
     settings.hooks[event] = entries;
     if (!manifest.hooks.some(hook => hook.event === event && hook.command === hookCommand)) {
       const prior = manifest.hooks.find(hook => hook.event === event);

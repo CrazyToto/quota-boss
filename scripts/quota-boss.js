@@ -45,13 +45,13 @@ const USAGES = {
   'stats': 'stats [--days N]',
   'savings': 'savings [--days N] [--all] [--details]',
   'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--effort <level>]',
-  'set': 'set <name> <value>',
+  'set': 'set <name> <value> (rules: tiny|full)',
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
 const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor                           check the installation\n\nSettings:\n  settings                         every setting with the command that changes it\n  set <name> <value>               change one setting, e.g. set profile frugal\n  explain <setting>                what a setting does and when to choose it\n\nProviders and models:\n  use                              list subscriptions, free offers and models\n  use <id> on|off                  switch one provider or model\n  only <id...>|off                 allow only these providers\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  free-models <files>              check free offers against models.dev/OpenRouter lists\n  local on <model>|off             use a local model through Ollama\n  providers, models, tools         details on providers, rated models and CLIs\n  worktree add|merge|clean <name>  separate copies for parallel workers\n\nReports:\n  route                            which model gets which kind of job right now\n  savings                          what delegation saved\n  stats                            jobs and results per model\n  context                          size of this session\n  boss                             which model suits you as boss\n\nAdd --project to use, only and cap to change this project only.';
 const WORKER_NAMES = { codex: 'codex-tasks', gpt: 'gpt-reviews', perplexity: 'perplexity' };
-const SET_NAMES = { profile: 'profile', 'short-answers': 'terse', consensus: 'consensus', training: 'allow-training', 'codex-tasks': 'workers', 'gpt-reviews': 'workers', perplexity: 'workers', statusline: 'statusline', context: 'context' };
+const SET_NAMES = { profile: 'profile', 'short-answers': 'terse', rules: 'rules', consensus: 'consensus', training: 'allow-training', 'codex-tasks': 'workers', 'gpt-reviews': 'workers', perplexity: 'workers', statusline: 'statusline', context: 'context' };
 
 function checkProfile(profile) {
   if (!lib.PROFILES.includes(profile)) throw new Error('Profile must be quality, balanced, or frugal.');
@@ -359,7 +359,7 @@ function run(args = process.argv.slice(2)) {
   const setting = command === 'set' ? rest[0] : null;
   if (setting !== null) {
     if (!Object.hasOwn(SET_NAMES, setting)) throw new Error('Valid settings: ' + Object.keys(SET_NAMES).join(', '));
-    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
+    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'rules' ? ['tiny', 'full'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
     if (rest.length !== 2 || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
     command = SET_NAMES[setting]; rest = rest.slice(1);
     if (command === 'workers') rest = [({ 'codex-tasks': 'codex', 'gpt-reviews': 'gpt', perplexity: 'perplexity' }[setting]) + '=' + rest[0]];
@@ -384,7 +384,7 @@ function run(args = process.argv.slice(2)) {
     const config = lib.loadConfig();
     return hosts.recommend({ ...config, ...lib.findProjectConfig() }, lib.readOutcomes(Date.now(), config.thresholds));
   }
-  if (command === 'rules') {
+  if (command === 'rules' && setting === null) {
     if (rest.length !== 2 || rest[0] !== '--host') throw new Error(usage(command));
     return hosts.rules(hosts.checkHost(rest[1]), lib.findProjectConfig());
   }
@@ -434,6 +434,8 @@ function run(args = process.argv.slice(2)) {
     if (rest.length !== 1) throw new Error(usage(command));
     checkProfile(rest[0]);
     project.profile = rest[0];
+  } else if (command === 'rules') {
+    project.rules = rest[0];
   } else if (command === 'workers') {
     if (rest.length !== 1 || !/^(codex|gpt|perplexity)=(on|off)$/.test(rest[0])) throw new Error(usage(command));
     const [worker, enabled] = rest[0].split('=');

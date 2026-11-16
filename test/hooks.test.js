@@ -80,6 +80,154 @@ function invoke(main, input = '', args = []) {
 
 const session = require('../scripts/hook-session');
 const prompt = require('../scripts/hook-prompt');
+const agent = require('../scripts/hook-agent');
+const hosts = require('../scripts/hosts');
+
+test('tiny startup has only the six boot lines, graph, warning and existing notes', t => {
+  enable({ rules: 'tiny', terse: true });
+  const graph = require('../scripts/graph'), context = require('../scripts/context');
+  const load = lib.loadConfig;
+  t.mock.method(graph, 'sessionText', () => 'graph context');
+  t.mock.method(lib, 'loadConfig', (...args) => ({ ...load(...args), warning: 'config warning' }));
+  t.mock.method(context, 'sessionStartText', () => 'previous-session notes');
+  t.mock.method(require('../scripts/session-routing'), 'build', () => { throw new Error('Tiny startup must not build routing'); });
+  t.mock.method(context, 'deferTable', () => { throw new Error('Tiny startup must not defer routing'); });
+  const boot = fs.readFileSync(path.join(__dirname, '../templates/BOOT.md'), 'utf8').trim();
+  assert.equal(boot.split('\n').length, 6);
+  assert.ok(boot.includes('"{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" rules --host claude-code'));
+  const result = invoke(session.main, input());
+  assert.equal(result.stdout, [lib.substituteHome(boot), 'graph context', 'config warning', 'previous-session notes'].join('\n') + '\n');
+  assert.doesNotMatch(result.stdout, /critical: architecture=|Claude 5h|Boss rules loaded|Keep answers terse/);
+  assert.equal(result.status, 0);
+});
+
+test('default and explicit full startup preserve the original output byte for byte', t => {
+  const context = require('../scripts/context'), graph = require('../scripts/graph');
+  const { route, formatTable } = require('../scripts/route');
+  const now = 1800000000000;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(graph, 'sessionText', () => 'graph context');
+  t.mock.method(context, 'sessionStartText', () => 'previous-session notes');
+  t.mock.method(context, 'deferTable', (_p, _cwd, late) => late);
+  for (const rules of [undefined, 'full']) for (const large of [false, true]) {
+    enable({ rules, terse: true, consensus: false });
+    const original = lib.formatLimits;
+    if (large) lib.formatLimits = () => 'limits '.repeat(2000);
+    try {
+      const p = lib.findProjectConfig(), config = lib.loadConfig(p, { tolerant: true });
+      const codex = lib.readCodexLimits(now, config.thresholds), state = lib.readState();
+      const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
+      const bossModel = lib.currentBossModel(p, state);
+      let table = formatTable(route({ ...config, ...p, bossModel, bossEffort: lib.currentBossEffort(p, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }), { ladder: false });
+      const fixed = [hosts.rules('claude-code', p), graph.sessionText(p.directory), [lib.formatLimits(limits, p.profile, config.thresholds, now, config.providers), config.warning].filter(Boolean).join('\n')];
+      if (Buffer.byteLength([...fixed, table].filter(Boolean).join('\n')) + 1 > context.HOOK_BUDGET) table = '[quota-boss] The routing table arrives with the user\'s first message.';
+      assert.equal(invoke(session.main, input()).stdout, [fixed[0], fixed[1], 'previous-session notes', table, fixed[2]].filter(Boolean).join('\n') + '\n');
+    } finally { lib.formatLimits = original; }
+  }
+});
+
+test('tiny rules command starts with marker then full rules, fresh session routing and limits', t => {
+  t.mock.method(Date, 'now', () => 1800000000000);
+  enable({ rules: 'tiny', terse: true });
+  const p = lib.findProjectConfig(), config = lib.loadConfig(p, { tolerant: true });
+  const routing = require('../scripts/session-routing').build(p, config);
+  const full = hosts.rules('claude-code', { ...p, rules: 'full' });
+  const result = require('../scripts/quota-boss').run(['rules', '--host', 'claude-code']);
+  assert.equal(result, [hosts.RULES_LOADED, full, routing.table, routing.limits].join('\n'));
+  assert.match(result, /critical: architecture=/);
+  assert.match(result, /Claude 5h/);
+  assert.equal(require('../scripts/quota-boss').run(['rules', '--host', 'codex']), hosts.rules('codex', { ...p, rules: 'full' }));
+  assert.equal(require('../scripts/quota-boss').run(['rules', '--host', 'generic']), hosts.rules('generic', { ...p, rules: 'full' }));
+  enable({ rules: 'full' });
+  assert.equal(require('../scripts/quota-boss').run(['rules', '--host', 'claude-code']), hosts.rules('claude-code', lib.findProjectConfig()));
+});
+
+function agentInput(file, type = 'sonnet-worker') {
+  return JSON.stringify({ cwd: project, transcript_path: file, tool_input: { subagent_type: type } });
+}
+function transcript(lines) {
+  const file = path.join(temporary, 'transcript.jsonl');
+  fs.writeFileSync(file, lines.map(line => JSON.stringify(line)).join('\n') + '\n');
+  return file;
+}
+function denied(file) {
+  const result = invoke(agent.main, agentInput(file));
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+  const expected = hosts.rules('claude-code', lib.findProjectConfig()) + '\nSend this job again in the handover form from these rules.';
+  assert.deepEqual(JSON.parse(result.stdout), { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: expected } });
+}
+test('worker gate denies absent or pre-compaction markers, and allows markers after either boundary', t => {
+  t.mock.method(Date, 'now', () => 1800000000000);
+  enable({ rules: 'tiny' });
+  const mark = { type: 'user', message: { content: hosts.RULES_LOADED } };
+  denied(transcript([]));
+  denied(transcript([{ type: 'assistant', message: {} }]));
+  assert.equal(invoke(agent.main, agentInput(transcript([mark]))).stdout, '');
+  const raw = transcript([]);
+  fs.writeFileSync(raw, hosts.RULES_LOADED + '\n');
+  assert.equal(invoke(agent.main, agentInput(raw)).stdout, '');
+  for (const boundary of [{ subtype: 'compact_boundary' }, { isCompactSummary: true }]) {
+    denied(transcript([mark, boundary]));
+    denied(transcript([{ ...boundary, content: hosts.RULES_LOADED }]));
+    assert.equal(invoke(agent.main, agentInput(transcript([mark, boundary, mark]))).stdout, '');
+  }
+});
+
+test('worker gate ignores other agents, disabled boss, full rules and other hosts', () => {
+  const file = transcript([]);
+  enable({ rules: 'tiny' });
+  for (const type of ['general-purpose', 'custom-agent', '../sonnet-worker', undefined]) {
+    assert.equal(invoke(agent.main, JSON.stringify({ cwd: project, transcript_path: file, tool_input: { subagent_type: type } })).stdout, '');
+  }
+  for (const config of [{ enabled: false, rules: 'tiny' }, { rules: 'full' }, {}, { host: 'codex', rules: 'tiny' }, { host: 'generic', rules: 'tiny' }]) {
+    enable(config);
+    assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
+  }
+});
+
+test('worker gate recognizes every worker shipped by this install and fails open at its time budget', t => {
+  enable({ rules: 'tiny' });
+  const file = transcript([{ content: 'no rules loaded' }]);
+  t.mock.method(hosts, 'rules', () => hosts.RULES_LOADED + '\nrules');
+  for (const name of fs.readdirSync(path.join(__dirname, '../agents')).filter(name => name.endsWith('.md'))) {
+    assert.equal(JSON.parse(invoke(agent.main, agentInput(file, name.slice(0, -3))).stdout).hookSpecificOutput.permissionDecision, 'deny', name);
+  }
+  let now = 0;
+  t.mock.method(Date, 'now', () => now += 4000);
+  assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
+});
+
+test('worker gate fails open on malformed input, unreadable transcript and read or rules errors', t => {
+  enable({ rules: 'tiny' });
+  for (const data of ['{bad', 'null', 'x'.repeat(1024 * 1024 + 1), agentInput(), agentInput(path.join(temporary, 'missing')), agentInput(temporary)]) {
+    assert.equal(invoke(agent.main, data).stdout, '');
+  }
+  const file = transcript([]);
+  t.mock.method(hosts, 'rules', () => { throw new Error('rules unavailable'); });
+  assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
+  t.mock.method(lib, 'readInput', () => { throw new Error('stdin unavailable'); });
+  assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
+});
+
+test('worker gate reads only the last 8 MB of huge transcripts and discards a partial first line', t => {
+  enable({ rules: 'tiny' });
+  const file = transcript([{ content: hosts.RULES_LOADED }]);
+  fs.appendFileSync(file, 'x'.repeat(agent.TAIL_BYTES + 100) + '\n');
+  const original = fs.readSync, stat = fs.statSync(file), reads = [];
+  const fd = lib.openRegular;
+  let transcriptFd;
+  t.mock.method(lib, 'openRegular', name => { const value = fd(name); if (name === file) transcriptFd = value; return value; });
+  t.mock.method(fs, 'readSync', (handle, bytes, start, length, offset) => {
+    if (handle === transcriptFd && offset !== null) reads.push({ length, offset });
+    return original(handle, bytes, start, length, offset);
+  });
+  const result = invoke(agent.main, agentInput(file));
+  assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
+  assert.deepEqual(reads, [{ length: agent.TAIL_BYTES, offset: stat.size - agent.TAIL_BYTES }]);
+  fs.appendFileSync(file, JSON.stringify({ content: hosts.RULES_LOADED }) + '\n');
+  assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
+});
 
 /** The session start, plus the first prompt when the table had to wait for it (a long test path fills the budget). */
 function start(data) {
