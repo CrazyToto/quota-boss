@@ -24,7 +24,9 @@ jobs:
       - name: Check syntax
         shell: bash
         run: for f in bin/*.js install.js scripts/*.js tools/*.js test/*.js; do node --check "$f" || exit 1; done
-      - run: node --test
+      - name: Tests
+        shell: bash
+        run: node --test bench/*.test.js test/*.test.js
       - name: Packed install lifecycle
         shell: bash
         run: |

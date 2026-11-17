@@ -306,7 +306,7 @@ test.describe('capability CLI and enabling self-tests', () => {
   });
 });
 
-test('an npm update behind an unchanged Windows shim invalidates the self-test', t => {
+test('an npm update behind an unchanged Windows shim invalidates the self-test', { skip: process.platform !== 'win32' && 'Windows shims only' }, t => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const lib = require('../scripts/lib');
   const { validSelfTest } = require('../scripts/self-test');
