@@ -4,6 +4,12 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-17
+
+### Fixed
+
+- 0.2.0 was tagged but never published because two tests failed in CI (a Windows-only test on Linux and a test fixture picked up by node --test); 0.2.1 is the first published 0.2 release and contains everything listed under 0.2.0.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
