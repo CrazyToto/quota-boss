@@ -51,6 +51,14 @@ the vendor's own runs; harness, effort and metric differ between rows, so compar
 | research | BrowseComp, HLE with tools, WANDR (vendor) | GPT-6 Astra 91.5% and GPT-5.6 Sol/Terra/Luna 90.4/87.5/83.3% on BrowseComp; Fable 5.2 82.1% and Opus 5.5 72.3% on WANDR. No public research numbers for GPT-6.1 Sol, Terra, GPT-6 Sol, Luna, Grok or Gemini. |
 | mechanical | IFEval subset (Measured Lab), 2026-10-22 | GPT-6 Sol 100%, Opus 5.5 98%, Gemini 3.8 Flash 98%, Sonnet 5.5 92%, Haiku 5.5 82%. Small subset, and it tests instruction following, not exact edits. |
 
+Specialist task types, checked on 2026-11-17 (no own routing row, because the leader matches the implementation pick):
+
+| Task type | Best public signal | What it shows |
+|---|---|---|
+| frontend | [Arena WebDev](https://arena.ai/leaderboard/code/webdev) (2026-11-13), [DesignArena](https://www.designarena.ai/leaderboard?board=webapps&section=website) | WebDev: Fable 5.2 1826, Opus 5.5 1816, Sonnet 5.5 1772, GPT-6.1 Sol 1742, GPT-6.1 Terra 1681, Gemini 4 Argon 1679. DesignArena frontend agentic: Opus 5.5 1321, Gemini 4 Argon 1306, Sonnet 5.5 1292, GPT-6.1 Sol 1268. |
+| writing | [Arena creative writing](https://arena.ai/leaderboard/chat/text/creative-writing) (2026-11-11), [EQ-Bench longform](https://eqbench.com/creative_writing_longform) | Arena: Gemini 4 Argon 1523, Opus 5.5 1517, Sonnet 5.5 1464, GPT-6.1 Sol 1449. EQ longform (LLM judge): Opus 5.5 84.6, Grok 4.7 83.0, GPT-6 Sol 82.8. Neither measures technical docs. |
+| vision | [Arena image-to-webdev](https://arena.ai/leaderboard/code/image-to-webdev) (2026-11-13), [Chartography](https://surgehq.ai/benchmarks/chartography), [MMMU-Pro](https://artificialanalysis.ai/evaluations/mmmu-pro) | Screenshot to code: Opus 5.5 1756, Sonnet 5.5 1745, GPT-6.1 Sol 1694. Charts: Gemini 4 Argon 71.6%, Opus 5.5 66.3%, GPT-6 Sol 53.6%. MMMU-Pro: Argon and Opus 5.5 both 88%. |
+
 No public data: Fable 5.2 for debugging and mechanical work, GPT-6.1 Terra for architecture, Grok Build apart from Grok 4.7,
 and most models for mechanical work.
 
