@@ -240,3 +240,23 @@ With the same start text, small and medium (boss on, tiny, quota to spare, 3 run
 level: small 5/5 in all runs, 22 s (21, 22, 24), 0.181 and 0.185 in two runs; the first run cost 0.275 because it
 started on a cold prompt cache (28k cache-write tokens against 16k) with the same five boss calls. Medium 18/18 in all
 runs, 47 s (45, 47, 48), 0.281 (0.277, 0.280, 0.286), against 0.284 and 46 s before.
+
+### Claude Code: the split setting (2026-11-17)
+
+Same host and boss, tiny rules, `--claude-mode save`. `quota-boss set split on` adds a rule that lets the boss split a
+large job into two scoped worker copies (`worktree add <name> --scope <paths> --plan <file>`, then one
+`worktree merge` of both). The new xlarge task is the large task plus an orders module and two CLI commands (44 hidden
+checks).
+
+| Task | Arm | Runs | Hidden | Time (s) | Claude USD |
+|---|---|---|---|---|---|
+| large | off | 2 | 32/32 both | 162 (155, 169) | 0.742 (0.728, 0.755) |
+| large | on, one worker | 1 | 32/32 | 225 | 0.520 (+0.102 Codex) |
+| large | on, split allowed | 1 | 32/32 | 280 | 0.482 (+0.177 Codex) |
+| xlarge | off | 1 | 44/44 | 181 | 0.849 |
+| xlarge | on, one worker | 1 | 44/44 | 265 | 0.501 (+0.171 Codex) |
+| xlarge | on, split allowed | 1 | 44/44 | 292 | 0.632 (+0.115 Codex) |
+
+In both split runs the rule was in the session, but the boss judged the modules too dependent on each other and sent
+one worker, as with split off; the gap in time is spread between runs, not the feature. The bench was stopped there, so
+split stays off by default until a task where the boss actually splits shows a gain.
