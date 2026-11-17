@@ -238,7 +238,9 @@ test.describe('providers', () => {
   test('hooks include enabled counters, skip disabled live readers and warn on invalid provider config', () => {
     const prompt = require('../scripts/hook-prompt');
     const session = require('../scripts/hook-session');
-    lib.saveProject(project, { enabled: true, rules: 'full' });
+    lib.saveProject(project, { enabled: true });
+    // A saving Claude gets the full start with the limits line.
+    lib.writeState({ claude: { five_hour: { used_percentage: 80 } } });
     lib.writeJson(userFile(), { providers: { grok: { enabled: true }, codex: { enabled: false } } });
     const original = { input: lib.readInput, codex: lib.readCodexLimits, out: process.stdout.write };
     lib.readInput = () => ({ cwd: project });

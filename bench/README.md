@@ -84,4 +84,4 @@ Suggested full plan: 6 tasks × 3 arms (off, on, on:quality) × 5 repetitions ×
 all failed-run outcomes in the analysis. **This spends real quota and must be agreed with the owner before execution.**
 Only tooling and fake invocations should run during development; `node --test bench/*.test.js` never starts a paid CLI.
 
-Use `--split on|off` with an `on` arm to configure splitting; labels gain `-split` or `-nosplit` and results record `split`. The `xlarge` task extends `large` with persistent orders, stock-safe placement and cancellation, and two CLI commands; its reference solution is in `reference/xlarge/`.
+The `xlarge` task extends `large` with persistent orders, stock-safe placement and cancellation, and two CLI commands; its reference solution is in `reference/xlarge/`.

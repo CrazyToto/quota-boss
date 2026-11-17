@@ -45,7 +45,8 @@ test.describe('security review regressions', () => {
 
   test('finding 1: every host and hook uses installed absolute helpers despite checkout helpers', () => {
     lib.atomicWrite(path.join(project,'scripts','compact.js'), 'throw new Error("project helper executed")');
-    lib.saveProject(project,{enabled:true,rules:'full'});
+    lib.saveProject(project,{enabled:true});
+    lib.writeState({claude:{five_hour:{used_percentage:80}}});
     for (const host of lib.HOSTS) {
       const text = hosts.rules(host);
       // Codex and generic rules drop the quotes when the path needs none: Codex on Windows mangles them.
@@ -242,12 +243,12 @@ test.describe('security review regressions', () => {
     installer(['--uninstall']);assert.equal(fs.existsSync(file),false);assert.equal(fs.existsSync(manifest),false);
   });
 
-  test('finding 12: mutations inherit enablement, privacy, workers and caps from nearest registered real path', () => {
+  test('finding 12: mutations inherit enablement, privacy and caps from nearest registered real path', () => {
     lib.saveProject(project,{enabled:true,profile:'quality',allowTrainingProviders:true,host:'generic',terse:true,consensus:false,workers:{gpt:false},caps:{codex:{weekly:10}}});
     const nested=path.join(project,'nested');fs.mkdirSync(nested);process.chdir(nested);
     cli.run(['set', 'profile','frugal']);const effective=lib.findProjectConfig();
     assert.equal(effective.enabled,true);assert.equal(effective.allowTrainingProviders,true);assert.equal(effective.host,'generic');
-    assert.equal(effective.workers.gpt,false);assert.equal(effective.terse,true);assert.equal(effective.consensus,false);assert.equal(effective.caps.codex.weekly,10);
+    assert.equal(effective.workers,undefined);assert.equal(effective.terse,undefined);assert.equal(effective.consensus,undefined);assert.equal(effective.caps.codex.weekly,10);
     assert.equal(effective.directory,lib.projectKey(nested));assert.equal(lib.findProjectConfig(project).profile,'quality');
     assert.equal(lib.projectKey(project,'win32'),fs.realpathSync(project).toLowerCase());
     const link=path.join(dir,'alias');fs.symlinkSync(project,link,process.platform==='win32'?'junction':'dir');

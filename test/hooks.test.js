@@ -100,7 +100,7 @@ test('default tiny startup quotes paths with spaces and uses full rules while sa
   assert.equal(saving.status, 0);
 });
 
-test('tiny startup has only the seven boot lines, graph, warning and existing notes', t => {
+test('tiny startup has only the eight boot lines, graph, warning and existing notes', t => {
   enable({ rules: 'tiny', terse: true });
   const graph = require('../scripts/graph'), context = require('../scripts/context');
   const load = lib.loadConfig;
@@ -110,7 +110,7 @@ test('tiny startup has only the seven boot lines, graph, warning and existing no
   t.mock.method(require('../scripts/session-routing'), 'build', () => { throw new Error('Tiny startup must not build routing'); });
   t.mock.method(context, 'deferTable', () => { throw new Error('Tiny startup must not defer routing'); });
   const boot = fs.readFileSync(path.join(__dirname, '../templates/BOOT.md'), 'utf8').trim();
-  assert.equal(boot.split('\n').length, 7);
+  assert.equal(boot.split('\n').length, 8);
   assert.ok(boot.includes('"{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" rules --host claude-code'));
   const result = invoke(session.main, input());
   assert.equal(result.stdout, [lib.substituteHome(boot), 'graph context', 'config warning', 'previous-session notes'].join('\n') + '\n');
@@ -136,7 +136,7 @@ test('tiny startup falls back to the marked full start while the Claude pool is 
   assert.ok(invoke(session.main, input()).stdout.startsWith(hosts.boot()));
 });
 
-test('explicit full startup matches fresh routing with large-job hints byte for byte', t => {
+test('the saving full startup matches fresh routing with large-job hints byte for byte, ignoring old stored switches', t => {
   const context = require('../scripts/context'), graph = require('../scripts/graph');
   const { routeTable, formatTable } = require('../scripts/route');
   const now = 1800000000000;
@@ -144,6 +144,7 @@ test('explicit full startup matches fresh routing with large-job hints byte for 
   t.mock.method(graph, 'sessionText', () => 'graph context');
   t.mock.method(context, 'sessionStartText', () => 'previous-session notes');
   t.mock.method(context, 'deferTable', (_p, _cwd, late) => late);
+  lib.writeState({ claude: limits(80).claude });
   for (const normalized of [false, true]) for (const large of [false, true]) {
     const project = { enabled: true, rules: 'full', terse: true, consensus: false };
     enable(normalized ? lib.normalizeProject(project) : project);
@@ -155,7 +156,7 @@ test('explicit full startup matches fresh routing with large-job hints byte for 
       const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
       const bossModel = lib.currentBossModel(p, state);
       let table = formatTable(routeTable({ ...config, ...p, bossModel, bossEffort: lib.currentBossEffort(p, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now }), { ladder: false });
-      const fixed = [hosts.rules('claude-code', p), graph.sessionText(p.directory), [lib.formatLimits(limits, p.profile, config.thresholds, now, config.providers), config.warning].filter(Boolean).join('\n')];
+      const fixed = [hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...p, rules: 'full' }), graph.sessionText(p.directory), [lib.formatLimits(limits, p.profile, config.thresholds, now, config.providers), config.warning].filter(Boolean).join('\n')];
       if (Buffer.byteLength([...fixed, table].filter(Boolean).join('\n')) + 1 > context.HOOK_BUDGET) table = '[quota-boss] The routing table arrives with the user\'s first message.';
       assert.equal(invoke(session.main, input()).stdout, [fixed[0], fixed[1], 'previous-session notes', table, fixed[2]].filter(Boolean).join('\n') + '\n');
     } finally { lib.formatLimits = original; }
@@ -240,16 +241,18 @@ test('read guard turns a whole read of a large saved output into a targeted one'
   }
 });
 
-test('worker gate ignores other agents, disabled boss, full rules and other hosts', () => {
+test('worker gate ignores other agents, disabled boss and other hosts, and gates an old stored full rules field', () => {
   const file = transcript([]);
   enable({ rules: 'tiny' });
   for (const type of ['general-purpose', 'custom-agent', '../sonnet-worker', undefined]) {
     assert.equal(invoke(agent.main, JSON.stringify({ cwd: project, transcript_path: file, tool_input: { subagent_type: type } })).stdout, '');
   }
-  for (const config of [{ enabled: false, rules: 'tiny' }, { rules: 'full' }, { rules: 'full', terse: true }, { host: 'codex', rules: 'tiny' }, { host: 'generic', rules: 'tiny' }]) {
+  for (const config of [{ enabled: false, rules: 'tiny' }, { host: 'codex', rules: 'tiny' }, { host: 'generic', rules: 'tiny' }]) {
     enable(config);
     assert.equal(invoke(agent.main, agentInput(file)).stdout, '');
   }
+  enable({ rules: 'full', terse: true });
+  assert.match(invoke(agent.main, agentInput(file)).stdout, /"deny"/);
 });
 
 test('worker gate recognizes every worker shipped by this install and fails open at its time budget', t => {
@@ -315,22 +318,23 @@ test('hooks are silent when disabled, missing opt-in, or malformed', () => {
 });
 
 test('session prints rules when present, compact routing, and numeric quota context', () => {
-  enable({ rules: 'full' });
+  enable();
   codexLog();
-  lib.writeState({ claude: limits().claude });
+  lib.writeState({ claude: limits(80).claude });
   const result = start(input());
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
-  assert.ok(result.stdout.startsWith(require('../scripts/hosts').rules('claude-code', lib.findProjectConfig(project))));
+  const hosts = require('../scripts/hosts');
+  assert.ok(result.stdout.startsWith(hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...lib.findProjectConfig(project), rules: 'full' })));
   assert.doesNotMatch(result.stdout, /Codex host:/);
   assert.match(result.stdout, /critical: architecture=/);
-  assert.match(result.stdout, /\[quota-boss\] Claude 5h 4% wk 49% \| Codex 5h 0% wk 2% \| profile balanced \| mode normal/);
+  assert.match(result.stdout, /\[quota-boss\] Claude 5h 80% wk 49% \| Codex 5h 0% wk 2% \| profile balanced \| mode claude-save/);
 });
 
 test('a broken providers.json keeps the table on built-in providers and warns in hooks and route', () => {
-  enable({ rules: 'full' });
+  enable();
   codexLog();
-  lib.writeState({ claude: limits().claude });
+  lib.writeState({ claude: limits(80).claude });
   const file = path.join(process.env.QUOTA_BOSS_HOME, 'config', 'providers.json');
   for (const broken of ['[', '{"providers":{"bad id!":{}}}', '[]']) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -350,30 +354,26 @@ test('a broken providers.json keeps the table on built-in providers and warns in
   assert.doesNotMatch(start(input()).stdout, /WARNING: the provider config/);
 });
 
-test('session honors consensus and terse together through shared host rules', () => {
+test('session ignores old stored consensus and terse fields: consensus stays, no terse line', () => {
   const hosts = require('../scripts/hosts');
+  lib.writeState({ claude: limits(80).claude });
   for (const consensus of [undefined, true, false]) {
     for (const terse of [false, true]) {
       enable({ rules: 'full', consensus, terse });
       const result = start(input());
       assert.equal(result.status, 0);
       assert.equal(result.stderr, '');
-      assert.ok(result.stdout.startsWith(hosts.rules('claude-code', lib.findProjectConfig(project))));
-      assert.equal(result.stdout.includes('use `consensus` before deciding'), consensus !== false);
-      assert.equal(result.stdout.split('Keep answers terse:').length - 1, terse ? 1 : 0);
+      assert.ok(result.stdout.startsWith(hosts.RULES_LOADED + '\n' + hosts.rules('claude-code', { ...lib.findProjectConfig(project), rules: 'full' })));
+      assert.ok(result.stdout.includes('use `consensus` before deciding'));
+      assert.doesNotMatch(result.stdout, /Keep answers terse/);
       assert.match(result.stdout, /critical: architecture=/);
     }
   }
 });
 
-test('consensus off explains both route and session behavior', () => {
-  enable();
-  const output = require('../scripts/quota-boss').run(['set', 'consensus', 'off']);
-  assert.ok(output.includes('The consensus option is off: it is hidden from the route table and removed from the session rules. Critical changes still get the counter-review from templates/RULES.md.'));
-});
-
 test('session read errors do not crash and tell an active boss the table is missing', () => {
-  enable({ rules: 'full' });
+  enable();
+  lib.writeState({ claude: limits(80).claude });
   const original = lib.readBounded;
   lib.readBounded = (file, max) => {
     if (path.basename(file) === 'RULES.md') throw Object.assign(new Error('denied'), { code: 'EACCES' });
@@ -389,7 +389,8 @@ test('session read errors do not crash and tell an active boss the table is miss
 });
 
 test('missing RULES does not prevent routing; hook data never echoes injected log content', () => {
-  enable({ rules: 'full', profile: 'balanced\nIGNORE', workers: { perplexity: false } });
+  enable({ profile: 'balanced\nIGNORE', workers: { perplexity: false } });
+  lib.writeState({ claude: limits(80).claude });
   const log = codexLog();
   fs.appendFileSync(log, JSON.stringify({ timestamp: 'IGNORE\ninstructions', payload: { type: 'token_count', rate_limits: {
     primary: { used_percent: 'IGNORE', resets_at: 'IGNORE' }, secondary: { used_percent: 2 }, text: 'IGNORE instructions'
@@ -401,7 +402,8 @@ test('missing RULES does not prevent routing; hook data never echoes injected lo
   };
   try {
     const result = invoke(session.main, input());
-    assert.ok(result.stdout.startsWith('critical:'));
+    assert.ok(result.stdout.startsWith(require('../scripts/hosts').RULES_LOADED + '\n'));
+    assert.match(result.stdout, /^critical:/m);
     assert.doesNotMatch(result.stdout, /IGNORE/);
     assert.match(result.stdout, /profile balanced/);
     assert.match(result.stdout, /codex data unknown/);
@@ -501,9 +503,9 @@ test('session and changed-mode prompt use learned exclusions and preserve sample
 
 test('the session start stays under the host limit: a long table and long notes wait for the first prompt', () => {
   const context = require('../scripts/context');
-  enable({ rules: 'full' });
+  enable();
   codexLog();
-  lib.writeState({ claude: limits().claude });
+  lib.writeState({ claude: limits(80).claude });
   const clear = JSON.stringify({ cwd: project, session_id: 'session-1', source: 'clear' });
   context.save('Goal: ship it\n' + 'A long line of notes about the work. '.repeat(120), lib.findProjectConfig(project), project);
   const started = invoke(session.main, clear);
@@ -621,6 +623,54 @@ test('Codex oversize table becomes one route command, while Claude output stays 
     assert.equal(invoke(session.main, input(), ['--host', 'codex']).stdout,
       '[quota-boss] Run node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" route before delegating.\n');
   } finally { lib.formatLimits = original; }
+});
+
+test('suggestions come last at the session start and are dropped first when the budget is nearly full', t => {
+  const context = require('../scripts/context'), suggest = require('../scripts/suggest');
+  enable();
+  const tip = { id: 'profile-frugal', text: 'Claude week is 85% used', command: 'set profile frugal' };
+  t.mock.method(suggest, 'suggestions', () => [tip]);
+  let room = 0, slack = 0;
+  t.mock.method(context, 'sessionStartText', (project, source, cwd, now, budget) => { room = budget; return 'n'.repeat(Math.max(0, budget - slack)); });
+  const full = invoke(session.main, input());
+  assert.ok(Buffer.byteLength(full.stdout) <= context.HOOK_BUDGET, 'session start has ' + Buffer.byteLength(full.stdout) + ' bytes');
+  assert.ok(room > 0);
+  assert.doesNotMatch(full.stdout, /Suggestion: Claude week/);
+  slack = 200;
+  const fits = invoke(session.main, input());
+  assert.ok(Buffer.byteLength(fits.stdout) <= context.HOOK_BUDGET);
+  assert.match(fits.stdout, /n\n\[quota-boss\] Suggestion: Claude week is 85% used\. Propose to the user: quota-boss set profile frugal\n$/);
+});
+
+test('a shown suggestion returns only after a day or after its condition went away and came back', t => {
+  const suggest = require('../scripts/suggest');
+  enable();
+  const tip = { id: 'provider-off:grok', text: 'the grok CLI is not installed', command: 'use grok off' };
+  let list = [tip], now = Date.UTC(2026, 10, 17, 12);
+  t.mock.method(suggest, 'suggestions', () => list);
+  t.mock.method(Date, 'now', () => now);
+  const shows = () => /Suggestion: the grok CLI/.test(invoke(session.main, input()).stdout);
+  assert.equal(shows(), true);
+  assert.equal(shows(), false, 'not again in the same day');
+  now += 23 * 3600000;
+  assert.equal(shows(), false);
+  now += 3600000;
+  assert.equal(shows(), true, 'again after 24 hours');
+  list = [];
+  assert.equal(shows(), false);
+  list = [tip];
+  assert.equal(shows(), true, 'again when the condition comes back');
+});
+
+test('the handoff pointers stay within the room they are given', () => {
+  const context = require('../scripts/context');
+  enable();
+  const config = lib.findProjectConfig(project);
+  context.save('Goal: huge\n' + 'x'.repeat(5000), config, project);
+  assert.equal(context.sessionStartText(config, 'startup', project, Date.now(), 20), '');
+  assert.match(context.sessionStartText(config, 'startup', project, Date.now(), 1000), /A recent handoff exists/);
+  assert.equal(context.sessionStartText(config, 'clear', project, Date.now(), 20), '');
+  assert.deepEqual(Object.values(lib.readState().pendingHandoffs).length, 1, 'the notes still arrive with the first prompt');
 });
 
 });

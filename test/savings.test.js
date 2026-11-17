@@ -166,6 +166,21 @@ test('global counters and successful runs, median, cutoff, malformed and future 
   assert.deepEqual(fs.readFileSync(f.paths.usageFile), before);
 });
 
+test('details show pass rates per model and category from feedback, replacing the removed stats command', t => {
+  const f = fixture(t);
+  const outcome = { t: now - 1000, model: 'gpt', category: 'review', tier: 'normal', result: 'pass' };
+  f.write(path.join(f.paths.quotaBossHome, 'outcomes.jsonl'), [outcome, outcome, { ...outcome, result: 'fail' }, { ...outcome, result: 'unavailable' },
+    { ...outcome, model: 'opus', category: 'architecture', result: 'fail' }, { ...outcome, bench: 'run-1' },
+    { ...outcome, t: now - 91 * 86400000 }, { ...outcome, category: 'invented' }, '{bad']);
+  const result = savings.collect({ ...f.options, days: 365 });
+  assert.equal(result.outcomes.length, 5);
+  const report = savings.formatReport(result, { ...f.options, details: true });
+  assert.match(report, /Results \(all projects\): model \/ category \| pass rate \| pass \| fail/);
+  assert.match(report, /gpt \/ review: 67% \| 2 \| 1/);
+  assert.match(report, /opus \/ architecture: 0% \| 0 \| 1/);
+  assert.doesNotMatch(savings.formatReport(result, f.options), /Results \(all projects\)/);
+});
+
 test('oversized files, non-regular entries and missing directories are silently skipped', t => {
   const f = fixture(t);
   const file = f.claude([assistant('a')]);

@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const { PRESETS } = require('./add-api');
-const USAGE = 'Usage: quota-boss free-models <models-dev.json> [<openrouter.json>]';
+const USAGE = 'Usage: node tools/free-models.js <models-dev.json> [<openrouter.json>]';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const number = value => typeof value === 'number' && Number.isFinite(value);
 const safe = value => String(value).replace(/[^A-Za-z0-9._:/@+-]/g, '?').slice(0, 120);

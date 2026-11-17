@@ -43,7 +43,7 @@ All per-project settings live exclusively in the user-owned `QUOTA_BOSS_HOME/pro
 keyed by `fs.realpathSync(projectDirectory)`, case-normalised to lowercase on win32. Each value stores:
 
 ```json
-{ "enabled": true, "host": "claude-code", "terse": false, "allowTrainingProviders": false, "consensus": true, "profile": "balanced", "workers": { "codex": true, "gpt": true, "perplexity": true }, "caps": {}, "managedAgents": false }
+{ "enabled": true, "host": "claude-code", "allowTrainingProviders": false, "profile": "balanced", "caps": {}, "managedAgents": false }
 ```
 
 Unregistered projects default to OFF with training permission false. Starting at hook stdin cwd or the CLI's
@@ -83,7 +83,7 @@ only the managed marker range is changed; malformed ranges abort and outside byt
   `used_percent`, `window_minutes`, `resets_at`) and `rate_limits.secondary` (weekly). Record the line's
   `timestamp` as `observed_at`. If a window's `resets_at` is in the past, treat used as 0.
 - **Available Codex models**: `CODEX_DIR/models_cache.json` -> `.models[]` with `slug`, `display_name`,
-  `description`, `visibility` (`"list"` = user-visible). Used only by `quota-boss models` to report unrated models.
+  `description`, `visibility` (`"list"` = user-visible). Used to accept Codex model ids in `feedback` and `verify --log`.
 
 ## Modes
 
@@ -143,7 +143,7 @@ Workers that need the same files can use separate `qb/<name>` branches in the si
 | `scripts/codex-hooks.js` | Locked, bounded, atomic merge/removal of our SessionStart entry in `CODEX_DIR/hooks.json`; `on --host codex` adds it, `/hooks` trust is required in Codex, `off` keeps it, uninstall removes it. Foreign entries survive; empty files are retained. |
 | `scripts/hook-prompt.js` | UserPromptSubmit hook. If enabled: print ONE line `[quota-boss] Claude 5h 4% wk 49% | Codex 5h 0% wk 2% | profile balanced | mode normal`. If mode changed since the last prompt of this `session_id` (stored in state `sessions[session_id].mode`, keep max 50 sessions, drop oldest), also print `[quota-boss] mode changed -> <mode>. New routing:` + table. |
 | `scripts/hook-agent.js` | Claude Code PreToolUse hook (matcher `Agent\|Task\|Read`). Agent/Task: in an enabled tiny project, a Quota Boss worker handover before the full rules are loaded (or after a compaction) is denied with the rules as the reason. Read: in an enabled Claude Code project, a read that covers 40 KB or more of a saved tool output of this session (`<transcript>/tool-results/`), whole or as a line range, is denied with a hint to Grep it or read a smaller range. Fails silent. |
-| `scripts/quota-boss.js` | CLI used by the `/boss` slash command: `on [profile]`, `off`, `status`, `settings`, `set <name> <value>`, `explain <setting>`, `help`, `route`, `models` (registry vs Codex cache: lists rated, unrated, and stale entries). Operates on `process.cwd()` project (registers the current real path in user-owned `projects.json`). Human-readable output. Exit 1 with a message on bad input. |
+| `scripts/quota-boss.js` | CLI used by the `/boss` slash command: `on [profile]`, `off`, `status`, `settings`, `set <name> <value>`, `help`, `route`, `use`, `cap`, `savings`, `doctor`. Operates on `process.cwd()` project (registers the current real path in user-owned `projects.json`). Human-readable output. Exit 1 with a message on bad input. |
 | `scripts/pplx.js` | Perplexity manual bridge. `ask [--model <hint>] <prompt...>` (or prompt from stdin): writes `QUOTA_BOSS_HOME/pplx/pending.md`, copies prompt to clipboard (`clip` on win32, `pbcopy` darwin, `wl-copy` then `xclip -selection clipboard` linux; spawn with argument arrays + stdin, no shell), prints instructions. `result` reads answer from stdin, saves to `QUOTA_BOSS_HOME/pplx/<timestamp>.md`, clears pending, prints the saved path. |
 | `install.js` | see below |
 

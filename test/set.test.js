@@ -7,8 +7,8 @@ const path = require('node:path');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 
-const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', split: 'on', research: 'on', training: 'on',
-  'codex-tasks': 'off', 'gpt-reviews': 'off', perplexity: 'off', statusline: 'always', context: '100000' };
+const choices = { profile: 'frugal', training: 'on', statusline: 'always', context: '100000' };
+const removedSettings = ['short-answers', 'rules', 'consensus', 'split', 'research', 'codex-tasks', 'gpt-reviews', 'perplexity'];
 test.describe('set and public command help', () => {
   let root, cwd, env;
   test.beforeEach(() => {
@@ -32,10 +32,9 @@ test.describe('set and public command help', () => {
       const project = lib.findProjectConfig();
       if (name === 'statusline') { assert.equal(lib.showsWithoutBoss(), true); assert.equal(fs.existsSync(lib.getPaths().projectsFile), false); }
       else if (name === 'context') assert.equal(project.contextSuggest, 100000);
-      else if (name === 'profile' || name === 'rules') assert.equal(project[name], value);
+      else if (name === 'profile') assert.equal(project.profile, value);
       else {
-        const worker = { 'codex-tasks': 'codex', 'gpt-reviews': 'gpt', perplexity: 'perplexity' }[name];
-        assert.equal(worker ? project.workers[worker] : project[{ 'short-answers': 'terse', training: 'allowTrainingProviders' }[name] || name], value === 'on');
+        assert.equal(project.allowTrainingProviders, true);
         assert.match(output, /Effect:/);
       }
     });
@@ -46,58 +45,55 @@ test.describe('set and public command help', () => {
     }
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
   });
-  test('rules default to tiny, normalize invalid values, and persist either choice', () => {
-    for (const value of [undefined, null, 'bad', 'TINY', true]) assert.equal(lib.normalizeProject({ rules: value }).rules, 'tiny');
-    assert.match(cli.run(['settings']), /^rules\s*\| tiny\s*\| set rules <tiny\|full>/m);
-    for (const value of ['tiny', 'full']) {
-      assert.match(cli.run(['set', 'rules', value]), /Effect: Claude Code sessions use/);
-      assert.equal(lib.findProjectConfig().rules, value);
-      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].rules, value);
-      assert.match(cli.run(['settings']), new RegExp('^rules\\s*\\| ' + value + '\\s*\\|', 'm'));
+  test('removed settings fail with their replacement and exit 1, without writes', () => {
+    for (const name of removedSettings) {
+      assert.throws(() => cli.run(['set', name, 'on']), error => error.message.startsWith(name + ' was removed in 0.2.0: ') && error.message.endsWith('.'), name);
     }
+    assert.throws(() => cli.run(['set', 'split', 'on']), /^Error: split was removed in 0\.2\.0: the benchmark showed no gain/);
+    assert.throws(() => cli.run(['set', 'codex-tasks', 'off']), /quota-boss use codex on\|off/);
+    assert.throws(() => cli.run(['set', 'perplexity', 'off']), /quota-boss use perplexity on\|off/);
+    assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
+    const result = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '../scripts/quota-boss.js'), 'set', 'split', 'on'], { encoding: 'utf8', env: process.env });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^quota-boss: split was removed in 0\.2\.0: /);
+    assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
   });
-  test('all removed forms fail without writes, and context still reports', () => {
+  test('old stored fields of removed settings never cause an error, and old exclusions keep excluding', () => {
+    const old = { enabled: true, rules: 'full', terse: true, consensus: false, split: true, research: false, workers: { codex: false, gpt: false, perplexity: false }, use: { only: ['claude'] } };
+    lib.saveProject(process.cwd(), old);
+    const project = lib.findProjectConfig();
+    assert.equal(project.enabled, true);
+    assert.equal(project.rules, 'tiny');
+    for (const key of ['terse', 'consensus', 'split', 'research', 'workers']) assert.equal(Object.hasOwn(project, key), false, key);
+    assert.deepEqual(project.use, { only: ['claude'], providersOff: ['codex', 'perplexity'], modelsOff: [] });
+    for (const value of [undefined, null, 'bad', 'full', true]) assert.equal(lib.normalizeProject({ rules: value }).rules, 'tiny');
+    assert.deepEqual(lib.normalizeUse({ only: ['claude'], providersOff: ['grok'] }), { only: ['claude'], providersOff: ['grok'], modelsOff: [] });
+    assert.doesNotThrow(() => cli.run(['settings']));
+    assert.doesNotThrow(() => cli.run(['status']));
+    assert.match(cli.run(['set', 'profile', 'frugal']), /Effect:/);
+    assert.equal(lib.findProjectConfig().profile, 'frugal');
+  });
+  test('all removed forms fail without writes', () => {
     const removed = [['profile', 'frugal'], ['terse', 'on'], ['consensus', 'on'], ['allow-training', 'on'],
-      ['workers', 'codex=on'], ['statusline'], ['statusline', 'always'], ['context', '100000'], ['context', 'off'],
-      ['providers', 'enable', 'grok'], ['providers', 'disable', 'claude']];
+      ['workers', 'codex=on'], ['statusline'], ['statusline', 'always'], ['context'], ['context', '100000'], ['context', 'off'],
+      ['providers', 'enable', 'grok'], ['providers', 'disable', 'claude'], ['explain', 'profile'], ['only', 'claude'], ['only', 'off'],
+      ['models'], ['stats'], ['boss'], ['free-models'], ['split', 'on'], ['research', 'on'], ['rules', 'full']];
     for (const args of removed) assert.throws(() => cli.run(args), undefined, args.join(' '));
-    assert.match(cli.run(['context']), /Change with: quota-boss set context/);
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
     assert.equal(fs.existsSync(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'providers.json')), false);
   });
-  test('split defaults off, normalizes strictly, and persists both switches with their effects', () => {
-    for (const value of [undefined, null, false, 1, 'true', 'on']) assert.equal(lib.normalizeProject({ split: value }).split, false);
-    assert.equal(lib.normalizeProject({ split: true }).split, true);
-    assert.match(cli.run(['settings']), /^split\s*\| off\s*\| set split <on\|off>/m);
-    for (const [value, message] of [['on', 'Large jobs with disjoint parts may be split across two scoped worker copies; applies from the next session.'],
-      ['off', 'Large jobs go to one worker; applies from the next session.']]) {
-      assert.ok(cli.run(['set', 'split', value]).includes(message));
-      assert.equal(lib.findProjectConfig().split, value === 'on');
-      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].split, value === 'on');
-      assert.match(cli.run(['settings']), new RegExp('^split\\s*\\| ' + value + '\\s*\\|', 'm'));
-    }
-    assert.throws(() => cli.run(['split', 'on']));
-    assert.match(cli.run(['help']), /set split on\|off/);
-  });
-  test('research defaults off, normalizes strictly, and persists both switches with their effects', () => {
-    assert.equal(lib.normalizeProject().research, false);
-    assert.equal(lib.findProjectConfig().research, false);
-    for (const value of [undefined, null, false, 0, 1, 'true', 'on', [], {}]) assert.equal(lib.normalizeProject({ research: value }).research, false);
-    assert.equal(lib.normalizeProject({ research: true }).research, true);
-    assert.match(cli.run(['settings']), /^research\s*\| off\s*\| set research <on\|off>/m);
-    for (const [value, message] of [['on', 'While Claude is saving, research over about 40 KB goes to the research worker; applies from the next session.'],
-      ['off', 'Research is handled like any other job; applies from the next session.']]) {
-      assert.ok(cli.run(['set', 'research', value]).includes(message));
-      assert.equal(lib.findProjectConfig().research, value === 'on');
-      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].research, value === 'on');
-      assert.match(cli.run(['settings']), new RegExp('^research\\s*\\| ' + value + '\\s*\\|', 'm'));
-    }
-    assert.throws(() => cli.run(['research', 'on']));
-  });
   test('help groups public commands and hides worker commands; unknown and empty commands fail with help', () => {
     const help = cli.run(['help']);
-    for (const group of ['Start:', 'Settings:', 'Providers and models:', 'Reports:']) assert.ok(help.includes(group));
-    for (const name of ['usage', 'timing', 'feedback', 'rules', 'graph', 'verify', 'handoff']) assert.doesNotMatch(help, new RegExp('\\b' + name + '\\b'));
+    for (const group of ['Start:', 'Settings:', 'Providers:', 'Reports:']) assert.ok(help.includes(group));
+    for (const name of ['usage', 'timing', 'feedback', 'rules', 'graph', 'verify', 'handoff', 'worktree', 'providers', 'tools']) assert.doesNotMatch(help, new RegExp('\b' + name + '\b'));
+    const commands = help.split('\n').filter(line => line.startsWith('  ')).map(line => line.trim().split(/[\s,]+/)[0]);
+    for (const removed of ['explain', 'only', 'models', 'stats', 'context', 'boss', 'free-models']) {
+      assert.ok(!commands.includes(removed), removed);
+      assert.doesNotMatch(help, new RegExp('(^|\s)' + removed + '(\s|$)', 'm'), removed);
+    }
+    for (const name of [...removedSettings, 'terse']) assert.doesNotMatch(help, new RegExp('set ' + name + '\b'));
+    for (const kept of ['setup', 'on', 'off', 'status', 'doctor', 'settings', 'set', 'use', 'cap', 'add-api', 'local', 'savings', 'route']) assert.ok(commands.includes(kept), kept);
+    assert.match(help, /remove-api/);
     for (const args of [[], ['missing']]) assert.throws(() => cli.run(args), { message: help });
   });
   test('wrong arguments show only the relevant usage line', () => {
@@ -105,16 +101,18 @@ test.describe('set and public command help', () => {
     assert.throws(() => cli.run(['settings', 'extra']), { message: 'Usage: quota-boss settings' });
     assert.throws(() => cli.run(['providers', 'enable', 'claude']), error => error.message.startsWith('Usage: quota-boss providers ') && !error.message.includes('enable'));
   });
-  test('settings shows all exact change commands and explain accepts only public setting names', () => {
+  test('settings shows every kept setting with its change command and one-line help, and no removed one', () => {
     const output = cli.run(['settings']);
+    const help = require('../scripts/settings').HELP;
     for (const name of Object.keys(choices)) {
       assert.ok(output.split('\n').some(line => line.startsWith(name + ' ') && line.includes('set ' + name + ' ')), name);
-      assert.doesNotMatch(cli.run(['explain', name]), /undefined/);
+      assert.ok(output.includes(help[name].what), name);
     }
+    for (const name of ['enabled', 'host']) assert.ok(output.includes(help[name].what), name);
+    assert.doesNotMatch(output, /undefined|explain/);
+    for (const name of removedSettings) assert.ok(!output.split('\n').some(line => line.startsWith(name + ' ')), name);
     assert.match(output, /on \/ off/); assert.match(output, /on --host <claude-code\|codex\|generic>/);
     assert.match(output, /use <id> on\|off/); assert.match(output, /cap <provider>/);
-    for (const name of ['terse', 'allowTrainingProviders', 'workers.codex', 'workers.gpt', 'workers.perplexity']) assert.throws(() => cli.run(['explain', name]), /Unknown setting/);
-    for (const name of ['enabled', 'host', 'providers.claude', 'caps.codex.weekly']) assert.doesNotMatch(cli.run(['explain', name]), /undefined/);
   });
   test('use refuses local providers and missing Claude uses the global provider switch', t => {
     assert.throws(() => cli.run(['use', 'ollama', 'on']), /Local models have their own switch: quota-boss local on <model>/);

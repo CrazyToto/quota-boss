@@ -23,52 +23,12 @@
     "when": "Choose the tool where you are working; this changes how routing instructions and workers are delivered.",
     "advanced": false
   },
-  "codex-tasks": {
-    "title": "Codex task worker",
-    "what": "Allow Codex to carry out delegated coding tasks using your ChatGPT quota.",
-    "quality": "same",
-    "quota": "costs",
-    "when": "Enable it to share coding work with Codex; turn it off to reserve ChatGPT quota.",
-    "advanced": false
-  },
-  "gpt-reviews": {
-    "title": "GPT second opinions",
-    "what": "Allow read-only GPT reviews, research and critical consensus through Codex using your ChatGPT quota.",
-    "quality": "up",
-    "quota": "costs",
-    "when": "Enable it when an independent review or research answer is useful.",
-    "advanced": false
-  },
-  "perplexity": {
-    "title": "Perplexity research bridge",
-    "what": "Offer a research prompt for you to paste into Perplexity and bring back manually.",
-    "quality": "up",
-    "quota": "costs",
-    "when": "Enable it for source-heavy research when you are willing to copy and paste.",
-    "advanced": false
-  },
   "training": {
     "title": "Allow providers that train on data",
     "what": "Permit enabled providers marked as training on your data to receive project tasks.",
     "quality": "same",
     "quota": "saves",
     "when": "Leave it off unless you accept those providers using the project prompts and code for training.",
-    "advanced": false
-  },
-  "rules": {
-    "title": "Session rules",
-    "what": "Claude Code starts with tiny text (default) that loads full rules and fresh routing on demand, or full rules with the full option; while the Claude pool is saving, tiny starts with the full rules too.",
-    "quality": "same",
-    "quota": "saves",
-    "when": "Use full when you want the whole rules and routing table in context from the first message.",
-    "advanced": false
-  },
-  "short-answers": {
-    "title": "Shorter answers",
-    "what": "Ask the boss for a brief verdict, changed files, verification, and open issues.",
-    "quality": "same",
-    "quota": "saves",
-    "when": "Enable it when you want shorter replies and fewer output tokens.",
     "advanced": false
   },
   "providers.enabled": {
@@ -87,33 +47,9 @@
     "when": "Set a lower cap to reserve quota for other work; project off preserves any global cap.",
     "advanced": true
   },
-  "consensus": {
-    "title": "Independent critical decisions",
-    "what": "Offer an independent read-only Codex answer before critical architecture or security decisions with real trade-offs.",
-    "quality": "up",
-    "quota": "costs",
-    "when": "Keep it on for important trade-offs; it uses an extra GPT answer and never edits files.",
-    "advanced": true
-  },
-  "split": {
-    "title": "Split large jobs",
-    "what": "Let a large job with disjoint files and a fixed interface run as two scoped worker copies at the same time.",
-    "quality": "same",
-    "quota": "same",
-    "when": "Turn it on to finish large delegated jobs sooner; applies from the next session.",
-    "advanced": true
-  },
-  "research": {
-    "title": "Research by read volume",
-    "what": "While Claude is saving, send research and look-ups over about 40 KB to the research worker instead of the boss reading them.",
-    "quality": "same",
-    "quota": "saves",
-    "when": "Turn it on to spend less Claude on large docs and web look-ups when Claude runs low; they take about twice as long; applies from the next session.",
-    "advanced": true
-  },
   "statusline": {
     "title": "Status line visibility",
-    "what": "Show quota numbers everywhere or only with boss mode.",
+    "what": "Show the Claude and Codex quota numbers everywhere or only where boss mode is on.",
     "quality": "same",
     "quota": "same",
     "when": "Show quota numbers everywhere or only with boss mode.",
@@ -121,7 +57,7 @@
   },
   "context": {
     "title": "Context handoff threshold",
-    "what": "Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off.",
+    "what": "Suggest a handoff from this token count; also stops a message once after an hour-long pause in a large session.",
     "quality": "same",
     "quota": "same",
     "when": "Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off.",

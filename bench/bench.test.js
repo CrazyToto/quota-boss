@@ -72,49 +72,12 @@ test('fake runs repetitions and profile restoration', t => {
   assert.notEqual(rows[0].runName, rows[1].runName);
   assert.equal(rows[0].arm, 'on:quality');
   assert.equal(rows[0].claudeMode, null);
-  assert.equal(rows[0].rules, null);
   assert.equal(rows[0].label, 'claude-opus-on:quality');
   assert.equal(calls.filter(x => x[1].join(' ').includes('set profile frugal')).length, 2);
   assert.equal(calls.filter(x => x[0] === 'claude').length, 2);
 });
 
-test('rules flag records and labels fake runs, setting rules only for the on arm', t => {
-  for (const rules of ['tiny', 'full']) for (const arm of ['on', 'off']) {
-    const d = temporary(t), calls = [];
-    const fake = (command, args, options) => {
-      calls.push({ command, args, cwd: options.cwd });
-      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
-      return { status: 0, stdout: '{}', stderr: '' };
-    };
-    main(['--host', 'claude', '--arm', arm, '--task', 'small', '--rules', rules, '--out', d], fake);
-    const row = JSON.parse(fs.readFileSync(path.join(d, 'results.jsonl'), 'utf8'));
-    assert.equal(row.rules, rules);
-    assert.equal(row.label, `claude-opus-${arm}-${rules}`);
-    const setters = calls.filter(c => c.args.slice(1).join(' ') === `set rules ${rules}`);
-    assert.equal(setters.length, arm === 'on' ? 1 : 0);
-    if (arm === 'on') {
-      const index = calls.indexOf(setters[0]);
-      assert.equal(calls[index - 1].args[1], 'on');
-      assert.equal(setters[0].cwd, path.join(d, 'runs', row.runName));
-    }
-    assert.ok(!Object.hasOwn(row, 'rulesLoads'));
-  }
-});
 
-test('invalid rules flags exit 2 before executing anything', () => {
-  const exit = process.exit, error = console.error;
-  let message = '';
-  process.exit = code => { throw Object.assign(new Error('exit'), { code }); };
-  console.error = value => { message += value; };
-  try {
-    for (const value of ['', 'TINY', 'bad', undefined]) {
-      message = '';
-      const args = ['--host', 'claude', '--arm', 'on', '--task', 'small', '--rules', ...(value === undefined ? [] : [value])];
-      assert.throws(() => main(args, () => { throw new Error('must not execute'); }), e => e.code === 2);
-      assert.match(message, /Usage: .*--rules tiny\|full/);
-    }
-  } finally { process.exit = exit; console.error = error; }
-});
 
 test('Claude mode flag labels runs and reaches quota and host children', t => {
   for (const host of ['claude', 'codex']) {
@@ -332,88 +295,8 @@ test('xlarge hidden checks: empty fixture fails, the reference solution passes a
   assert.equal(r.stdout.trim(), total + '/' + total);
 });
 
-test('split flag labels and records runs and configures after rules', t => {
-  for (const split of ['on', 'off', null]) {
-    const d = temporary(t), calls = [];
-    const fake = (command, args) => {
-      calls.push(args);
-      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
-      return { status: 0, stdout: '', stderr: '' };
-    };
-    main(['--host','claude','--arm','on:quality','--task','small','--rules','tiny','--out',d,...(split ? ['--split',split] : [])],fake);
-    const row=JSON.parse(fs.readFileSync(path.join(d,'results.jsonl'),'utf8'));
-    assert.equal(row.split,split);
-    assert.equal(row.label,'claude-opus-on:quality-tiny'+(split === null ? '' : split === 'on' ? '-split' : '-nosplit'));
-    const index=calls.findIndex(a=>a.slice(1).join(' ')===`set split ${split}`);
-    if(split) { assert.ok(index>0); assert.equal(calls[index-1].slice(1).join(' '),'set rules tiny'); }
-    else assert.equal(index,-1);
-  }
-});
 
-test('invalid split flags and off arm exit 2 before executing', () => {
-  const exit=process.exit, error=console.error;
-  process.exit=code=>{throw Object.assign(new Error('exit'),{code});};
-  console.error=()=>{};
-  try {
-    for(const [arm,split] of [['off','on'],['off','off'],['on',''],['on','ON'],['on','bad'],['on',undefined]]) {
-      assert.throws(()=>main(['--host','claude','--arm',arm,'--task','small','--split',...(split === undefined ? [] : [split])],()=>{throw new Error('must not execute');}),e=>e.code===2);
-    }
-  } finally { process.exit=exit; console.error=error; }
-});
 
-test('failed split setup restores profile and does not run host', t => {
-  const d=temporary(t), calls=[];
-  const fake=(command,args)=>{
-    calls.push(args);
-    assert.notEqual(command,'claude');
-    if(args.includes('settings')) return {status:0,stdout:'profile | quality | change'};
-    if(args.slice(1).join(' ')==='set split on') return {status:1,stdout:'',stderr:'failed split'};
-    return {status:0,stdout:'',stderr:''};
-  };
-  assert.throws(()=>main(['--host','claude','--arm','on','--task','small','--split','on','--out',d],fake),/split setup failed/);
-  assert.ok(calls.some(a=>a.slice(1).join(' ')==='set profile quality'));
-  assert.ok(!fs.existsSync(path.join(d,'results.jsonl')));
-});
 
-test('research flag labels and records runs and configures after rules', t => {
-  for (const research of ['on', 'off', null]) {
-    const d = temporary(t), calls = [];
-    const fake = (command, args) => {
-      calls.push(args);
-      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
-      return { status: 0, stdout: '', stderr: '' };
-    };
-    main(['--host','claude','--arm','on:quality','--task','small','--rules','tiny','--out',d,...(research ? ['--research',research] : [])],fake);
-    const row=JSON.parse(fs.readFileSync(path.join(d,'results.jsonl'),'utf8'));
-    assert.equal(row.research,research);
-    assert.equal(row.label,'claude-opus-on:quality-tiny'+(research === null ? '' : research === 'on' ? '-research' : '-noresearch'));
-    const index=calls.findIndex(a=>a.slice(1).join(' ')===`set research ${research}`);
-    if(research) { assert.ok(index>0); assert.equal(calls[index-1].slice(1).join(' '),'set rules tiny'); }
-    else assert.equal(index,-1);
-  }
-});
 
-test('invalid research flags and off arm exit 2 before executing', () => {
-  const exit=process.exit, error=console.error;
-  process.exit=code=>{throw Object.assign(new Error('exit'),{code});};
-  console.error=()=>{};
-  try {
-    for(const [arm,research] of [['off','on'],['off','off'],['on',''],['on','ON'],['on','bad'],['on',undefined]]) {
-      assert.throws(()=>main(['--host','claude','--arm',arm,'--task','small','--research',...(research === undefined ? [] : [research])],()=>{throw new Error('must not execute');}),e=>e.code===2);
-    }
-  } finally { process.exit=exit; console.error=error; }
-});
 
-test('failed research setup restores profile and does not run host', t => {
-  const d=temporary(t), calls=[];
-  const fake=(command,args)=>{
-    calls.push(args);
-    assert.notEqual(command,'claude');
-    if(args.includes('settings')) return {status:0,stdout:'profile | quality | change'};
-    if(args.slice(1).join(' ')==='set research on') return {status:1,stdout:'',stderr:'failed research'};
-    return {status:0,stdout:'',stderr:''};
-  };
-  assert.throws(()=>main(['--host','claude','--arm','on','--task','small','--research','on','--out',d],fake),/research setup failed/);
-  assert.ok(calls.some(a=>a.slice(1).join(' ')==='set profile quality'));
-  assert.ok(!fs.existsSync(path.join(d,'results.jsonl')));
-});

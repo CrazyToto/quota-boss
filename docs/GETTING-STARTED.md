@@ -34,7 +34,7 @@ sources. You answer once, then it:
 2. saves your choices. A provider only ends up on if its program is really there,
 3. offers each login that is still missing, one at a time. On Windows each opens in its own window, so the setup stays visible.
 
-`quota-boss explain providers.<name>` shows the explanation for one option at any time.
+`quota-boss settings` shows every option with its explanation at any time.
 
 ## 3. Choose what to use
 

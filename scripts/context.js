@@ -207,12 +207,14 @@ function sessionStartText(project, source, cwd, now = Date.now(), room = Infinit
     if (now - fs.statSync(path.join(folder(id), newest)).mtimeMs > FRESH_MS) return '';
     text = read(id, newest);
   } catch { return ''; }
-  if (source === 'startup') return '[quota-boss] A recent handoff exists for this project. If the user wants to continue that work, run: node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" handoff show';
+  // Every text returned here, also the short pointers, stays within `room`; a pointer that does not fit is left out.
+  const within = line => Buffer.byteLength(line) <= room ? line : '';
+  if (source === 'startup') return within('[quota-boss] A recent handoff exists for this project. If the user wants to continue that work, run: node "' + lib.trustedHomeText() + '/scripts/quota-boss.js" handoff show');
   const notes = NOTES_INTRO + text.trim();
   const fits = Buffer.byteLength(notes) <= room;
   lib.updateState(current => ({ handoffs: Object.fromEntries([...withoutKey(current.handoffs, id), [id, newest]]),
     pendingHandoffs: Object.fromEntries([...withoutKey(current.pendingHandoffs, id), ...(fits ? [] : [[id, newest]])]) }));
-  return fits ? notes : '[quota-boss] Notes from the previous session arrive with the user\'s first message.';
+  return fits ? notes : within('[quota-boss] Notes from the previous session arrive with the user\'s first message.');
 }
 
 /** Remember that the routing table did not fit into the session start, or collect that reminder with the first prompt. */
@@ -254,14 +256,4 @@ function handoffCommand(args, project, readInput = lib.readStdin) {
   throw new Error('Usage: quota-boss handoff save | list | show [<name>]');
 }
 
-function report(project) {
-  const setting = lib.normalizeProject(project).contextSuggest;
-  const { entries, count, median } = sessionStarts(project);
-  const entry = entries[0];
-  return ['Handoff suggestion: ' + (setting ? 'from ' + thousands(setting) + ' tokens, or 60% of a smaller window' : 'off'),
-    'Current session: ' + (entry ? thousands(entry.tokens) + ' tokens, ' + entry.percent + '% of ' + thousands(entry.size) : 'not measured yet'),
-    ...(count ? ['Session start: about ' + thousands(median) + ' tokens before your first request is done (median of ' + count + ' sessions). Every step reads them again, so unused skills, plugins and MCP servers cost on every step.'] : []),
-    'Change with: quota-boss set context <tokens>|off'].join('\n');
-}
-
-module.exports = { coldStart, automatedPrompt, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, report, HOOK_BUDGET };
+module.exports = { coldStart, automatedPrompt, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, HOOK_BUDGET };

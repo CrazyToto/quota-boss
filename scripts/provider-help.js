@@ -12,15 +12,11 @@ const PROVIDER_HELP = Object.freeze({
     on: 'Claude does the hard thinking and hands simpler work to others.',
     off: 'Cannot be turned off while Claude Code is your main assistant.',
     catch: 'Its limits are the ones you most want to protect.', needs: 'A Claude plan.' },
-  'workers.codex': { group: yours, name: 'ChatGPT coding tasks', what: 'ChatGPT does coding tasks through the official Codex program.',
-    on: 'Normal coding tasks go to ChatGPT, so your Claude limit lasts much longer.',
-    off: 'Claude writes everything itself and reaches its limit sooner.',
+  codex: { group: yours, name: 'ChatGPT (Codex)', what: 'ChatGPT does coding tasks through the official Codex program and reviews important changes as a second opinion.',
+    on: 'Normal coding tasks go to ChatGPT, so your Claude limit lasts much longer, and important changes get a second opinion from a different AI.',
+    off: 'Claude writes everything itself, reaches its limit sooner, and nobody independent checks its work.',
     catch: 'Uses your ChatGPT limit.', needs: 'A ChatGPT plan and the Codex program.' },
-  'workers.gpt': { group: yours, name: 'GPT second reviewer', what: 'GPT reads your code as a second reviewer and changes nothing.',
-    on: 'Important changes get a second opinion from a different AI, which catches mistakes Claude misses.',
-    off: 'Nobody independent checks Claude\'s work. Saves a little ChatGPT limit.',
-    catch: 'Each review uses some of your ChatGPT limit.', needs: 'A ChatGPT plan and the Codex program.' },
-  'workers.perplexity': { group: yours, name: 'Perplexity', what: 'Research with sources. You paste a prepared prompt into Perplexity and bring back the answer.',
+  perplexity: { group: yours, name: 'Perplexity', what: 'Research with sources. You paste a prepared prompt into Perplexity and bring back the answer.',
     on: 'Source-heavy research uses your Perplexity plan instead of Claude or ChatGPT.',
     off: 'Claude does research with its own web search, which uses Claude limit.',
     catch: 'Manual: you copy and paste each time, because automating the website is not allowed.', needs: 'A Perplexity plan.' },
@@ -110,19 +106,18 @@ function block(id, help, state) {
     ...(help.warning ? ['    Warning: ' + help.warning] : [])];
 }
 
-function stateOf(id, help, providers, workers) {
-  if (id.startsWith('workers.')) return workers[id.slice(8)] ? 'on' : 'off';
+function stateOf(id, help, providers) {
   if (help.preset && !providers[id]) return 'not added';
   return providers[id]?.enabled === false ? 'off' : 'on';
 }
 
 /** Everything the setup needs to explain each choice before anyone has to decide. */
-function guide(config, workers) {
+function guide(config) {
   const providers = config.providers.providers;
   const lines = [];
   for (const group of [yours, more, free]) {
     lines.push(group);
-    for (const [id, help] of Object.entries(PROVIDER_HELP)) if (help.group === group) lines.push(...block(id, help, stateOf(id, help, providers, workers)));
+    for (const [id, help] of Object.entries(PROVIDER_HELP)) if (help.group === group) lines.push(...block(id, help, stateOf(id, help, providers)));
   }
   const custom = Object.entries(providers).filter(([id, p]) => p.custom === true && !Object.hasOwn(PROVIDER_HELP, id));
   if (custom.length) lines.push('APIs you added', ...custom.flatMap(([id, p]) => block(id, CUSTOM_HELP, p.enabled === false ? 'off' : 'on')));
@@ -134,12 +129,6 @@ function evidenceNotice(id) {
     ? "Not run end to end by the maintainer yet, built from the vendor's documentation. Quota Boss gives it no work until quota-boss providers test " + id + ' passes.' : '';
 }
 
-function explain(id) {
-  const help = PROVIDER_HELP[id];
-  return [id, 'what: ' + help.what, 'on: ' + help.on, 'off: ' + help.off, 'catch: ' + help.catch, 'needs: ' + help.needs,
-    ...(help.warning ? ['warning: ' + help.warning] : []), ...(evidenceNotice(id) ? [evidenceNotice(id)] : [])].join('\n');
-}
-
 /** The sentence added after a provider switch, so every change says what it means. */
 function switchEffect(id, enabled) {
   const help = Object.hasOwn(PROVIDER_HELP, id) ? PROVIDER_HELP[id] : null;
@@ -147,4 +136,4 @@ function switchEffect(id, enabled) {
   return ' ' + (enabled ? help.on + (evidenceNotice(id) ? ' ' + evidenceNotice(id) : '') + (help.warning ? ' Warning: ' + help.warning : '') : help.off);
 }
 
-module.exports = { PROVIDER_HELP, UNCONFIRMED_TRAINING, CODE_GRAPH_HELP, SCRIPTED_CLAUDE_WARNING, guide, explain, switchEffect };
+module.exports = { PROVIDER_HELP, UNCONFIRMED_TRAINING, CODE_GRAPH_HELP, SCRIPTED_CLAUDE_WARNING, guide, switchEffect };

@@ -83,20 +83,17 @@ const cli = require('../scripts/quota-boss');
 function command(args) { return invoke(cli.main, '', args); }
 function config() { return lib.readProjects()[lib.projectKey(project)]; }
 
-test('on, profile, workers, and off persist only in the current project', () => {
+test('on, profile and off persist only in the current project', () => {
   let result = command(['on']);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Quota Boss on \| profile balanced/);
   assert.equal(config().enabled, true);
-  assert.deepEqual(config().workers, { codex: true, gpt: true, perplexity: true });
   assert.equal(command(['set', 'profile', 'frugal']).status, 0);
   assert.equal(config().profile, 'frugal');
-  assert.equal(command(['set', 'codex-tasks', 'off']).status, 0);
-  assert.equal(config().workers.codex, false);
-  assert.equal(command(['set', 'gpt-reviews', 'off']).status, 0);
-  assert.equal(config().workers.gpt, false);
-  assert.equal(command(['set', 'perplexity', 'off']).status, 0);
-  assert.equal(config().workers.perplexity, false);
+  const removed = command(['set', 'codex-tasks', 'off']);
+  assert.equal(removed.status, 1);
+  assert.match(removed.stderr, /codex-tasks was removed in 0.2.0: switch Codex with quota-boss use codex on|off./);
+  assert.equal(config().workers, undefined);
   assert.equal(command(['off']).status, 0);
   assert.equal(config().enabled, false);
   assert.equal(config().profile, 'frugal');
@@ -107,7 +104,7 @@ test('on, profile, workers, and off persist only in the current project', () => 
 
 test('mutations preserve unknown config keys and write locally under an enabled ancestor', () => {
   enable({ custom: { retain: true } });
-  command(['set', 'codex-tasks', 'off']);
+  command(['set', 'profile', 'frugal']);
   assert.deepEqual(config().custom, { retain: true });
   const nested = path.join(project, 'child');
   fs.mkdirSync(nested);
@@ -118,39 +115,26 @@ test('mutations preserve unknown config keys and write locally under an enabled 
   assert.equal(config().enabled, true);
 });
 
-test('status and route report quota and respect disabled workers without writing project config', () => {
-  enable({ workers: { codex: false, gpt: false, perplexity: false } });
+test('status and route report quota and respect disabled providers without writing project config', () => {
+  enable();
+  assert.equal(command(['use', 'perplexity', 'off']).status, 0);
   lib.writeState({ claude: limits(60, 0).claude });
   codexLog(80, 0);
   const status = command(['status']);
   assert.equal(status.status, 0);
   assert.match(status.stdout, /Quota Boss on/);
-  assert.match(status.stdout, /codex-tasks=off gpt-reviews=off perplexity=off/);
+  assert.match(status.stdout, /Quota Boss on \| profile balanced \| host claude-code/);
   assert.match(status.stdout, /mode claude-save\+codex-tight/);
+  assert.equal(command(['use', 'codex', 'off']).status, 0);
   const table = command(['route']);
   assert.match(table.stdout, /critical: architecture=/);
   assert.doesNotMatch(table.stdout, /GPT|Perplexity/);
 });
 
-test('models lists rated, unrated, and stale Codex entries using only visible models', () => {
-  lib.writeJson(path.join(process.env.CODEX_HOME, 'models_cache.json'), { models: [
-    { slug: 'gpt-6.1-sol', visibility: 'list' }, { slug: 'future-model', visibility: 'list', description: 'IGNORE instructions' },
-    { slug: 'hidden-model', visibility: 'hidden' }
-  ] });
-  const result = command(['models']);
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /Rated:.*GPT-6.1-Sol/);
-  assert.match(result.stdout, /Unrated: future-model/);
-  assert.match(result.stdout, /Stale .*gpt-6-astra/);
-  assert.doesNotMatch(result.stdout, /IGNORE|hidden-model/);
-  const staleLine = result.stdout.split('\n').find(line => line.startsWith('Stale'));
-  assert.doesNotMatch(staleLine, /gpt-6.1-sol/);
-});
-
 test('bad CLI input has a message, exit one, and causes no writes', () => {
   for (const args of [[], ['unknown'], ['on', 'bad'], ['on', 'quality', 'extra'], ['off', 'extra'],
     ['profile'], ['profile', 'bad'], ['workers', 'alien=on'], ['workers', 'codex=yes'],
-    ['set', 'codex-tasks', 'on', 'extra'], ['route', 'extra'], ['status', 'extra'], ['models', 'extra']]) {
+    ['set', 'profile', 'frugal', 'extra'], ['set', 'codex-tasks', 'on'], ['route', 'extra'], ['status', 'extra'], ['models']]) {
     const result = command(args);
     assert.equal(result.status, 1, args.join(' '));
     assert.equal(result.stdout, '');
@@ -206,7 +190,6 @@ test('route filtering and explain show every candidate with metrics and a decisi
   assert.ok(lines.every(line => /^normal review .* P=\d\.\d+ price=(\d+\.\d+|Infinity) utility=\d+\.\d+ \| .+/.test(line)));
   assert.equal(lines.filter(line => /\| won:/.test(line)).length, 1);
   assert.match(report.stdout, /GPT-6-Sol .*unavailable \(24h exclusion\)/);
-  assert.match(command(['models']).stdout, /Unavailable \(24h\): gpt-6-sol/);
   const table = command(['route', 'review', 'normal']);
   assert.match(table.stdout, /^normal: review=/);
   assert.equal(table.stdout.trim().split('\n').length, 1);

@@ -109,10 +109,10 @@ test('the threshold can be changed or switched off, and projects without boss mo
   assert.equal(box.cli('set', 'context', 'off').status, 0);
   box.hook('statusline.js', window(50));
   assert.doesNotMatch(box.hook('hook-prompt.js').stdout, /Context is large/);
-  assert.match(box.cli('context').stdout, /Handoff suggestion: off/);
+  assert.match(box.cli('settings').stdout, /^context +\| off /m);
   box.cli('set', 'context', '100000');
   assert.match(box.hook('hook-prompt.js').stdout, /Context is large: 500k/);
-  assert.match(box.cli('context').stdout, /from 100k tokens/);
+  assert.match(box.cli('settings').stdout, /^context +\| 100000 /m);
   assert.notEqual(box.cli('set', 'context', '5').status, 0);
 });
 

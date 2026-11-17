@@ -95,7 +95,7 @@ In your terminal:
 | `quota-boss savings` | Show how your work was spread across models and what that saved |
 | `quota-boss route --explain` | Show every candidate model with its numbers and why it won or lost |
 | `quota-boss use <provider\|model> on\|off` | Choose which subscriptions and models may get work |
-| `quota-boss settings` | Show all settings; `quota-boss explain <setting>` explains one |
+| `quota-boss settings` | Show all settings, what each does and the command that changes it |
 
 The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `npx quota-boss <command>` or
 `node ~/.claude/quota-boss/scripts/quota-boss.js <command>`. All settings are explained in

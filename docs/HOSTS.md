@@ -11,7 +11,7 @@ A **host** is the agent the user talks to (the boss). Adapters connect a host to
 
 ## Choosing the boss
 
-`quota-boss boss` recommends the boss **model** among enabled providers that can host:
+The boss **model** is picked among enabled providers that can host:
 `bossScore = 0.6 * architecture + 0.4 * review` (scores from `models.json`). Within 0.5 of the best score, the cheapest model wins, because the boss thread is the main cost.
 Output: host + model + why (including cost) and the best choice on the other host, e.g. `claude-code with Opus 5.5 (boss score 10.0)` and `codex with GPT-6.1-Sol (boss score 8.6, cost 5)`.
 Disabled providers, `tos: avoid`, and models unavailable in the last 24 hours are excluded.
@@ -40,7 +40,7 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   AGENTS.md must be a regular file with no symlinked parents. The registry tracks managed blocks before they
   are written; installer uninstall removes each tracked marker range safely and reports each project. The block = RULES (host-neutral wording) +
   routing-table fallback instructions + instructions for enabled workers only (Claude when enabled; cli-worker when an enabled provider routes through it, including Ollama).
-  Global and project `use`/`only` filters apply. Provider/model switches and `local on/off` refresh all enabled registered Codex projects;
+  Global and project `use` switches apply. Provider/model switches and `local on/off` refresh all enabled registered Codex projects;
   missing directories or malformed markers are skipped with a note. If a table names an omitted worker, run `quota-boss rules --host codex` for its current instructions.
 - `on` also merges a SessionStart command into `<CODEX_HOME or ~/.codex>/hooks.json` when the Codex home exists,
   preserving other hooks. It attaches only the routing table and limits line, using the boss model from hook stdin
@@ -71,8 +71,8 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   "Reply with exactly: OK" to every rated Codex model and records `unavailable` outcomes for failed, timed-out, missing, or unsuccessful probes. Probes use a fixed argument array:
   `codex exec -m <model> -s read-only --skip-git-repo-check --ephemeral "Reply with exactly: OK"`,
   with a 90-second timeout per model. Without `--probe`, only local version, MCP and file checks run; raw CLI output is never printed.
-- `quota-boss stats [--days N]`: local routing split per provider/model, pass rate per model x category from
-  outcomes.jsonl, usage counters - helps users tune `models.json`. Days must be 1-365 (default 30); outcome retention
+- `quota-boss savings --details [--days N]`: also shows the pass rate per model x category from
+  outcomes.jsonl - helps users tune `models.json`. Days must be 1-365 (default 30); outcome retention
   remains bounded to 90 days / 2000 records / 2 MiB. Counter journals compact under a lock above 256 KiB,
   retaining all active-window usage; bounded chunk scans have a 64 MiB ceiling and never invent 100% usage. The split represents
   recorded outcomes, not unrecorded routing suggestions; unavailable results do not count as pass/fail.
@@ -106,7 +106,6 @@ before activation so interrupted installs can be uninstalled.
 `quota-boss verify [--fresh] -- <command...>` reuses passing test evidence for the same Git revision
 for six hours (up to 50 entries); `--fresh` forces a run. `--log <model> <category> <tier> [--effort <level>]`
 records the run's pass or fail as feedback, so no separate `feedback` call is needed; a reused pass is not logged again.
-Run `quota-boss set short-answers on` for shorter answers.
 
 Set `QUOTA_BOSS_HOME` to override `~/.claude/quota-boss`. Deprecated `HARNESS_HOME` remains a user environment fallback. Project files in the checkout are ignored.
 The Claude Code slash command is `/boss on`. After installing, invoke the CLI directly with

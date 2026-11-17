@@ -4,6 +4,72 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
+### Added
+
+- A read of 40 KB or more of a saved tool output is turned into a hint to Grep it or read a smaller range, and the built-in Explore search agent runs on Haiku. In the research benchmark this used 10% less Claude with the same answers.
+
+- Added `verify --log <model> <category> <tier>`, which records the result as feedback in the same call, so logging your own work takes no extra turn.
+
+- `doctor --report` prints a text for GitHub issues with versions, providers, self-test state and seven-day failure counts, without paths, names, keys or custom labels.
+
+- While Claude is saving, research over about 40 KB goes to the research worker (about 25% less Claude in the benchmark). `gpt-advisor` and `researcher` report one line per claim with source and date, and `codex-run --search cached|live|disabled` sets the Codex web search mode.
+
+- Scoped worker copies: `worktree add --scope <paths> --plan <file>`, and `worktree merge` of several copies rejects files outside a scope or shared between copies before merging any.
+
+- `route --needs image,pdf,...` and `--context <tokens>` skip every route whose model cannot take the input (unknown counts as not supported), and a row with no such route says so instead of guessing.
+
+- Self-test passes are bound to the CLI build, so an updated CLI is tested again; `use <provider> on` runs the self-test (`--no-test` skips it), and `doctor` and `providers` show a stale test as stale. Models known only from documentation do trivial work after the self-test, normal work after three verified passes, and critical work only with verified normal passes and public scores.
+
+- The boss suggests setting changes: when a change would clearly help (for example `set profile frugal` when the Claude week is 80% used, or `use <id> off` for a provider that keeps failing or whose CLI is missing), the session start and `quota-boss status` name the command. The boss proposes it to you once and never changes settings itself.
+
+### Changed
+
+- Boss sessions start about 20% smaller: the rules are shorter with every rule kept, and session routing tables leave out the fallback ladder, which `route` still shows when a job fails.
+
+- The delegation gate now uses the boss's real speed (`gate.bossSeconds`, Claude Code 50 s per medium job) instead of 150 s, and assumes a worker without timing data is as fast as the boss. On the large benchmark task, handing the whole build to one Codex worker saved about 22% Claude but took twice as long; with quota to spare such jobs now stay with a fast boss, and while the Claude pool is saving they still go to Codex.
+
+- Independent worker jobs on separate files run at the same time in the background (at most two), while the boss does its own part.
+
+- quota-boss help is short and lists only the everyday commands, grouped as Start, Settings, Providers and Reports.
+
+- quota-boss savings --details also shows the pass rate per model and category, which stats used to show.
+
+- quota-boss settings shows what each setting does next to its value and the command that changes it.
+
+- While Claude is saving, a Claude Code boss now keeps medium implementation jobs, because handing them to Codex saved no Claude in benchmarks; large ones still go to Codex, and the routing table shows them as a `[large:...]` note.
+
+- savings leads with the pool the boss uses, for example "About 30% less Claude usage than doing everything with Opus 5.5 = about 1.4x the work per Claude limit", then the other pools and the all-pools total. The header says "since <date>" when your data starts inside the window, so a short history is not shown as "last 30 days".
+
+- savings now opens with one plain answer (how much cheaper than doing everything with the boss model), then who did the work and the top workers by name with readable times. The old tables moved to savings --details.
+
+- Settings stored before 0.2.0 keep excluding what they excluded: an old only filter keeps every provider outside it off (quota-boss use lists them as off (only filter)), and a project's codex-tasks or perplexity off keeps that provider off for the project. quota-boss use <id> on [--project] lets just that provider in. The setup switches Codex and Perplexity for this project only. A session start repeats a suggestion only after a day or when its condition comes back.
+
+- Claude Code sessions now start with tiny rules (in benchmarks small and medium jobs cost 11-17% less than with the full start, about as much as without boss mode, with the same results); a saving Claude pool still starts with the full rules.
+
+- With quota to spare, the routing no longer hands a job to a worker that would make it more than 90 seconds slower (30 for small, 300 for large jobs); while Claude saves quota, the old limits stay.
+
+### Removed
+
+- Removed the commands explain, only, models, stats, context, boss and free-models: use settings, use, route --explain and savings --details; free-models is now the maintainer tool tools/free-models.js.
+
+- Removed the settings codex-tasks, gpt-reviews and perplexity: use quota-boss use codex|perplexity on|off instead.
+
+- Removed the settings short-answers, rules, consensus, split and research: Claude Code always starts with tiny rules (full while Claude is saving), consensus and research are always on, and large jobs go to one worker. Old stored values are ignored; set <name> names the replacement and exits 1.
+
+### Fixed
+
+- After a long pause the cold-cache check no longer blocks the prompt that carries a finished background task, so a run waiting for a quota reset continues on its own.
+
+- `feedback` and `verify --log` accept table labels such as `Opus 5.5`, and `compact.js` keeps the `node --test` counts and no longer reports passing tests that have "failed" in their name.
+
+- `savings` prices `codex-auto-review` sessions as GPT-6.1-Sol instead of cost 1, as the benchmark already does.
+
+- A scheduled job (CronCreate or /loop) that fires after an hour or more of pause is no longer stopped by the cold-cache check, which used to drop that run. /handoff now lists the session's scheduled jobs so the next session sets them up again.
+
+- The boss leaves the Agent model unset for CLI wrapper workers, which keep their Haiku default instead of a dearer model.
+
 ## [0.1.5] - 2026-11-14
 
 ### Changed

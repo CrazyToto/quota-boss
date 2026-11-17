@@ -20,15 +20,11 @@ function rules(host, project = {}) {
   let text = '';
   try { text = lib.readBounded(path.join(__dirname, '..', 'templates', 'RULES.md'), 1024 * 1024).trim(); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (project.consensus === false) text = text.split('\n').filter(line => !line.includes('use `consensus` before deciding')).join('\n').trimEnd();
-  if (project.split !== true) text = text.split('\n').filter(line => !line.includes('Split a large job only when')).join('\n');
-  if (project.research !== true) text = text.split('\n').filter(line => !line.includes('research and look-ups that need more than about 40 KB read')).join('\n');
   // Each host reads only its own worker list: the other hosts' lines cost tokens in every session.
   const other = host === 'claude-code' ? '   - Codex host:' : '   - Claude Code host:';
   let skipping = false;
   text = text.split('\n').filter(line => (skipping = line.startsWith(other) || skipping && line.startsWith('     '), !skipping)).join('\n');
   text = lib.substituteHome(text);
-  if (project.terse === true) text += '\nKeep answers terse: verdict, changed files, verification, and open issues only.';
   if (host !== 'claude-code') {
     const home = lib.trustedHomeText();
     if (/[\x00-\x1f\x7f"$]/.test(home) || home.includes(String.fromCharCode(96))) throw new Error('Unsafe installation path for rules.');
@@ -49,7 +45,8 @@ function rules(host, project = {}) {
     for (const worker of workers) text += '\n' + lib.readBounded(path.join(__dirname, '..', 'agents', worker + '.md'), 65536).split('{{QUOTA_BOSS_HOME}}').join(home);
     if (/^[A-Za-z0-9_:\/.\-]+$/.test(home)) text = text.replace(/"([^"\r\n]+)"/g, (quoted, file) => file.startsWith(home + '/scripts/') && !file.slice(home.length + 9).includes('/') ? file : quoted);
   }
-  if (host === 'claude-code' && lib.normalizeProject(project).rules === 'tiny') {
+  // Claude Code always starts with tiny rules; only the session hook asks for the full text while Claude is saving.
+  if (host === 'claude-code' && project.rules !== 'full') {
     const config = lib.loadConfig(project, { tolerant: true });
     const routing = require('./session-routing').build(project, config);
     text = [RULES_LOADED, text, routing.table, routing.limits].filter(Boolean).join('\n');
@@ -100,20 +97,4 @@ function scanAgents(directory, maxDepth = 6, maxEntries = 5000) {
   return found;
 }
 function managedBlock(project) { return START + '\n' + rules('codex', project) + '\n' + END; }
-function recommend(config, outcomes = [], now = Date.now()) {
-  const unavailable = lib.unavailableModels(outcomes, now, config.thresholds);
-  const rateLimited = lib.rateLimitedModels(outcomes, now, config.thresholds);
-  const candidates = Object.entries(config.models.models || {}).flatMap(([id, m]) => {
-    const p = config.providers.providers[m?.pool];
-    if (!p || p.enabled === false || p.kind === 'manual' || p.tos === 'avoid' || p.trainsOnData === true && config.allowTrainingProviders !== true || unavailable.has(id) || rateLimited.has(id) || !['claude', 'codex'].includes(m.pool)
-      || !Number.isFinite(m.cost) || m.cost <= 0 || !Number.isFinite(m.scores?.architecture) || !Number.isFinite(m.scores?.review)) return [];
-    return [{ id, host: m.pool === 'claude' ? 'claude-code' : 'codex', label: lib.sanitizeLabel(m.label), score: lib.bossScore(m), cost: m.cost }];
-  });
-  const describe = pick => pick.host + ' with ' + pick.label + ' (' + lib.sanitizeLabel(pick.id) + ', boss score ' + pick.score.toFixed(1) + ', cost ' + pick.cost + ')';
-  const best = lib.pickBoss(candidates);
-  if (!best) return 'No enabled provider can host.';
-  const other = lib.pickBoss(candidates.filter(c => c.host !== best.host));
-  return describe(best) + '; architecture/review score (60/40), and within 0.5 of the best the cheapest wins.'
-    + (other ? '\nBest on the other host: ' + describe(other) + '.' : '');
-}
-module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, PRE_TOOL_MATCHER, LEGACY_PRE_TOOL_MATCHERS, agentsText, managedBlock, recommend, START, END };
+module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, PRE_TOOL_MATCHER, LEGACY_PRE_TOOL_MATCHERS, agentsText, managedBlock, START, END };

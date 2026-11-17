@@ -30,7 +30,7 @@ and escalate through a ladder instead of always starting with the most expensive
    with weights `w = 1` for tier match and `0.5` otherwise, and **failures weighted 2x** (asymmetric penalty):
    `P = (prior * n0 + wins) / (n0 + wins + 2*fails)`, `n0 = 6`.
 3. `unavailable` outcomes in the last 24 h => model excluded (e.g. "model not supported for this plan" or
-   "requires newer CLI"). Reported by `quota-boss models`.
+   "requires newer CLI"). Shown by `quota-boss route --explain`.
 
 ## 3. Quota price `price(pool)` (pace-aware, "use it or lose it")
 
@@ -157,7 +157,7 @@ won or lost - for users who want to tune `models.json`.
 Medians are kept per model and difficulty, with three runs needed before a latency estimate is used. A model
 only loses utility once its median passes the tolerance for that difficulty: 120s for trivial, 600s for normal,
 and 1800s for critical. Critical work is never affected. These values are assumptions and can be overridden with
-`thresholds.latency`. Latency appears only in `stats` and `route --explain` output, never in the status line.
+`thresholds.latency`. Latency appears only in `savings --details` and `route --explain` output, never in the status line.
 
 ## Savings report
 

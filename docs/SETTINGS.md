@@ -1,8 +1,7 @@
 # Settings
 
-Run `quota-boss settings` for aligned current values and `quota-boss explain <setting>` for full help.
-Each setting shows its current value and the exact command to change it; providers and caps follow.
-The table below describes each control’s expected effect.
+Run `quota-boss settings` to see every setting with its current value, what it does and the command that changes it;
+providers and caps follow.
 Provider switches are global. All project switches, profiles, hosts, privacy consent and caps live in
 user-owned `QUOTA_BOSS_HOME/projects.json`, keyed by the project's real path (lowercase on Windows).
 Lookup walks up from cwd to the nearest registered real path; mutations start with inherited settings.
@@ -19,32 +18,45 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 | `enabled` | Turn task routing on or off for this project. | → | saved | Turn it on when you want the boss to share work across your available tools. |
 | `profile` | Quality favors stronger answers, balanced shares the trade-off, and frugal favors lower quota use. | ↑ | used | Choose quality for difficult work, balanced for everyday work, or frugal when quota is scarce. |
 | `host` | Choose the assistant you talk to: Claude Code, Codex, or another tool using generic instructions. | → | same | Choose the tool where you are working; this changes how routing instructions and workers are delivered. |
-| `codex-tasks` | Allow Codex to carry out delegated coding tasks using your ChatGPT quota. | → | used | Enable it to share coding work with Codex; turn it off to reserve ChatGPT quota. |
-| `gpt-reviews` | Allow read-only GPT reviews, research and critical consensus through Codex using your ChatGPT quota. | ↑ | used | Enable it when an independent review or research answer is useful. |
-| `perplexity` | Offer a research prompt for you to paste into Perplexity and bring back manually. | ↑ | used | Enable it for source-heavy research when you are willing to copy and paste. |
 | `training` | Permit enabled providers marked as training on your data to receive project tasks. | → | saved | Leave it off unless you accept those providers using the project prompts and code for training. |
-| `short-answers` | Ask the boss for a brief verdict, changed files, verification, and open issues. | → | saved | Enable it when you want shorter replies and fewer output tokens. |
-| `rules` | Claude Code starts with tiny text (default) that loads full rules and fresh routing on demand, or full rules with the full option; while the Claude pool is saving, tiny starts with the full rules too. | → | saved | Use full when you want the whole rules and routing table in context from the first message. |
 | `providers.enabled` | Enable or disable a provider globally so its models can enter project routing. | → | same | Enable only providers you have configured and accept; training providers also need project permission. |
 | `caps` | Limit the percentage of each provider window available for delegation and raise its routing price as usage approaches that cap. | → | saved | Set a lower cap to reserve quota for other work; project off preserves any global cap. |
-| `consensus` | Offer an independent read-only Codex answer before critical architecture or security decisions with real trade-offs. | ↑ | used | Keep it on for important trade-offs; it uses an extra GPT answer and never edits files. |
-| `split` | Let a large job with disjoint files and a fixed interface run as two scoped worker copies at the same time. | → | same | Turn it on to finish large delegated jobs sooner; applies from the next session. |
-| `research` | While Claude is saving, send research and look-ups over about 40 KB to the research worker instead of the boss reading them. | → | saved | Turn it on to spend less Claude on large docs and web look-ups when Claude runs low; they take about twice as long; applies from the next session. |
-| `statusline` | Show quota numbers everywhere or only with boss mode. | → | same | Show quota numbers everywhere or only with boss mode. |
-| `context` | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. | → | same | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. |
+| `statusline` | Show the Claude and Codex quota numbers everywhere or only where boss mode is on. | → | same | Show quota numbers everywhere or only with boss mode. |
+| `context` | Suggest a handoff from this token count; also stops a message once after an hour-long pause in a large session. | → | same | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. |
 <!-- settings-help:end -->
 
 `quota-boss set profile quality|balanced|frugal` chooses the profile.
-`quota-boss set codex-tasks on|off`, `quota-boss set gpt-reviews on|off`, and `quota-boss set perplexity on|off` control workers.
+`quota-boss set training on|off` lets providers that train on your data receive project tasks.
 `quota-boss set context <tokens>|off` sets the handoff suggestion threshold and controls the check that stops a message once after an hour or more away from a large Claude Code session, before paying for its expired cache.
-`quota-boss set training on|off`, `quota-boss set short-answers on|off`, `quota-boss set consensus on|off`, `quota-boss set split on|off` and `quota-boss set research on|off` change project switches. `quota-boss set rules tiny|full` selects Claude Code session rules.
 The status line shows only in projects with boss mode on. `/boss set statusline always` keeps the Claude and Codex numbers
 visible everywhere, and `/boss set statusline boss` goes back to the default. This choice applies to all projects.
 Training providers default to off. Usage journals compact under a lock above 256 KiB, preserving all active-window
 records; reset windows report real usage, never a fabricated 100%. Every settings mutation reports an Effect using current usage and routing numbers.
 Caps show all four windows; a provider without quota data cannot measure or enforce a usage cap until a quota source is configured.
-Consensus is a read-only extra answer for critical trade-offs, with its model/effort in the critical architecture route row.
-If Codex is disabled, capped, exhausted, avoided or unavailable, no consensus option is offered. Disabling the option does not waive the critical-decision rule.
+
+## Fixed behavior
+
+These are no longer settings. Their old stored values are ignored.
+
+- Claude Code starts with tiny rules and loads the full rules and fresh routing on demand; while Claude is saving, it starts with the full rules.
+- Consensus, a read-only extra Codex answer for critical architecture and security trade-offs, is always offered in the critical architecture route row while Codex is on and has quota. It never waives the critical-decision rule.
+- While Claude is saving, research and look-ups over about 40 KB go to the research worker.
+- Replies use the normal format; large jobs go to one worker.
+- Codex coding tasks, GPT reviews and Perplexity follow their provider switches: `quota-boss use codex on|off`, `quota-boss use perplexity on|off`.
+
+`quota-boss set <removed-name> ...` names the replacement and exits with status 1. Stored values keep excluding what they
+excluded: an old `only` filter keeps every provider outside it off, and a project's old codex-tasks or perplexity off keeps that
+provider off for the project. `quota-boss use <id> on` (with `--project` for a project filter) adds just that provider to the
+filter; `quota-boss use` lists the excluded ones as `off (only filter)`.
+
+## Suggestions
+
+When a change would clearly help, the session start and `quota-boss status` name it, for example `set profile frugal`
+when the Claude week is at least 80% used, `set profile balanced` when frugal saves nothing, or `use <id> off` for a provider
+that failed three recent jobs without a pass or whose CLI is missing. The boss proposes the command once; it never changes
+a setting itself. A session start repeats a suggestion only after a day, or when its condition went away and came back, and
+leaves it out when the start is already full. Codex sessions do not get them at the start: `quota-boss status` always lists the
+current ones.
 
 ## Choose which subscriptions and models are used
 
@@ -54,13 +66,9 @@ Use one switch for delegation choices:
 quota-boss use
 quota-boss use grok on
 quota-boss use gpt-6.1-terra off --project
-quota-boss only claude codex
-quota-boss only off
 ```
 
 `use <provider-id|model-id> on|off` applies globally unless you add `--project`.
 Projects can only restrict global choices; project `on` removes a project restriction.
-`only <provider-id...> [--project]` filters providers without changing their switches;
-`only off [--project]` restores the previous choices. Local models still use `quota-boss local on <model>`.
+Local models still use `quota-boss local on <model>`.
 The boss keeps running on its own model; these switches control delegation. Its current model remains available for `self` work.
-Project `set codex-tasks off` and `set gpt-reviews off` remain separate limits on Codex delegation.

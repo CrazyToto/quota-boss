@@ -87,7 +87,7 @@ test('local file errors, size ceiling, command codes and CLI dispatch', t => {
   assert.equal(command([full, router]).code, 0);
   assert.equal(command([empty]).code, 1);
   for (const [args, code] of [[[full, router], 0], [[empty], 1], [[], 2], [[bad], 2]]) {
-    const result = spawnSync(process.execPath, [path.join(__dirname, '../bin/quota-boss.js'), 'free-models', ...args], { encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [path.join(__dirname, '../tools/free-models.js'), ...args], { encoding: 'utf8' });
     assert.equal(result.status, code, result.stderr);
     assert.doesNotMatch(result.stdout + result.stderr, /\n\s+at /);
     if (!code) assert.match(result.stdout, /All free presets are still listed\./);

@@ -14,12 +14,6 @@ function helpFor(key) {
   if (/^caps\.[a-z][a-z0-9-]{1,31}\.(fiveHour|daily|weekly|monthly)$/.test(key)) return HELP.caps;
   throw new Error('Unknown setting. Use quota-boss settings for setting names.');
 }
-function explain(key) {
-  const provider = key.startsWith('providers.') ? key.slice('providers.'.length) : null;
-  if (provider && Object.hasOwn(providerHelp.PROVIDER_HELP, provider)) return providerHelp.explain(provider);
-  const h = helpFor(key);
-  return h.title + '\n' + Object.entries(h).map(([k, v]) => k + ': ' + v).join('\n');
-}
 function snapshot(project = lib.findProjectConfig()) {
   const config = lib.loadConfig(project), now = Date.now();
   const codex = config.providers.providers.codex?.enabled === false ? null : lib.readCodexLimits(now, config.thresholds);
@@ -31,8 +25,7 @@ function snapshot(project = lib.findProjectConfig()) {
 }
 function entries(project, config) {
   const values = { enabled: project.enabled, profile: project.profile, host: project.host,
-    'codex-tasks': project.workers.codex, 'gpt-reviews': project.workers.gpt, perplexity: project.workers.perplexity,
-    training: project.allowTrainingProviders, 'short-answers': project.terse, rules: lib.normalizeProject(project).rules, consensus: project.consensus, split: lib.normalizeProject(project).split, research: lib.normalizeProject(project).research,
+    training: project.allowTrainingProviders,
     statusline: lib.showsWithoutBoss() ? 'always' : 'boss', context: project.contextSuggest === false ? 'off' : project.contextSuggest };
   return Object.entries(values).map(([key, value]) => ({ key, value, help: helpFor(key) }));
 }
@@ -58,11 +51,13 @@ function table(project = lib.findProjectConfig()) {
   const rows = entries(project, config);
   const keyWidth = Math.max('Setting'.length, ...rows.map(r => r.key.length));
   const valueWidth = Math.max('Current'.length, ...rows.map(r => String(r.value).length));
-  const changes = { enabled: 'on / off', host: 'on --host <claude-code|codex|generic>', profile: 'set profile <quality|balanced|frugal>', rules: 'set rules <tiny|full>', statusline: 'set statusline <always|boss>', context: 'set context <tokens>|off' };
+  const changes = { enabled: 'on / off', host: 'on --host <claude-code|codex|generic>', profile: 'set profile <quality|balanced|frugal>', training: 'set training <on|off>', statusline: 'set statusline <always|boss>', context: 'set context <tokens>|off' };
   const output = ['Setting'.padEnd(keyWidth) + ' | ' + 'Current'.padEnd(valueWidth) + ' | Change with'];
-  for (const r of rows) output.push(r.key.padEnd(keyWidth) + ' | ' + (typeof r.value === 'boolean' ? r.value ? 'on' : 'off' : String(r.value)).padEnd(valueWidth) + ' | ' + (changes[r.key] || 'set ' + r.key + ' <on|off>'));
-  output.push('', ...providerLines(config), '');
-  output.push('Use `explain <setting>` for when to choose it.');
+  for (const r of rows) {
+    output.push(r.key.padEnd(keyWidth) + ' | ' + (typeof r.value === 'boolean' ? r.value ? 'on' : 'off' : String(r.value)).padEnd(valueWidth) + ' | ' + changes[r.key]);
+    output.push(' '.repeat(keyWidth + 3) + r.help.what);
+  }
+  output.push('', ...providerLines(config));
   return output.join('\n');
 }
 function count(s) {
@@ -99,19 +94,9 @@ function effect(command, args, before, after) {
   } else if (command === 'allow-training') {
     const training = Object.values(after.config.providers.providers).filter(p => p.enabled !== false && p.trainsOnData).length;
     text = project.allowTrainingProviders ? training + ' enabled training providers may now receive this project’s tasks.' : 'All training providers are blocked for this project.';
-  } else if (command === 'terse') text = project.terse ? 'Replies now use the 4-part short format to save output tokens.' : 'Replies can include fuller explanations; no short-answer rule is added.';
-  else if (command === 'consensus') text = project.consensus ? 'Independent critical advice is available in ' + after.result.rows.filter(r => r.options.includes('consensus')).length + ' route rows; each use costs an extra Codex answer.' : 'The consensus option is off: it is hidden from the route table and removed from the session rules. Critical changes still get the counter-review from templates/RULES.md.';
-  else if (command === 'split') text = project.split ? 'Large jobs with disjoint parts may be split across two scoped worker copies; applies from the next session.' : 'Large jobs go to one worker; applies from the next session.';
-  else if (command === 'research') text = project.research ? 'While Claude is saving, research over about 40 KB goes to the research worker; applies from the next session.' : 'Research is handled like any other job; applies from the next session.';
-  else if (command === 'on' || command === 'off') text = project.enabled ? 'Routing is on for ' + project.host + ' with the ' + project.profile + ' profile; it applies on the next message/session.' : 'Routing hooks are off and the managed Codex rules block is removed for this project.';
-  else if (command === 'rules') text = 'Claude Code sessions use ' + project.rules + ' rules at startup; tiny rules load the full rules before delegation, review or CRITICAL work.';
+  } else if (command === 'on' || command === 'off') text = project.enabled ? 'Routing is on for ' + project.host + ' with the ' + project.profile + ' profile; it applies on the next message/session.' : 'Routing hooks are off and the managed Codex rules block is removed for this project.';
   else if (command === 'context') text = project.contextSuggest === false ? 'A fresh session is no longer suggested.' : 'A fresh session is suggested from ' + project.contextSuggest + ' tokens of context; a smaller context costs less on every step.';
   else if (command === 'profile') text = 'The ' + project.profile + ' profile uses quality weights ' + lib.TIERS.map(t => t + '=' + (after.config.thresholds.alpha?.[t]?.[project.profile] ?? '?')).join(', ') + '; higher weights favor reliable answers over quota savings.';
-  else if (command === 'workers') {
-    const [worker] = args[0].split('=');
-    text = helpFor({ codex: 'codex-tasks', gpt: 'gpt-reviews', perplexity: 'perplexity' }[worker]).title + ' is ' + (project.workers[worker] ? 'enabled' : 'disabled') + '; ' + Object.values(project.workers).filter(Boolean).length + ' of ' + lib.WORKERS.length + ' worker switches are on.';
-    if (worker === 'codex' || worker === 'gpt') text += ' Codex task and GPT opinion switches overlap for review/research; either can keep those routes available.';
-  }
   return 'Effect: ' + text + ' Suggested task slots by provider: ' + count(before) + ' → ' + count(after) + ' (routing suggestions, not calls made).';
 }
-module.exports = { HELP, helpFor, explain, entries, table, snapshot, effect };
+module.exports = { HELP, helpFor, entries, table, snapshot, effect };

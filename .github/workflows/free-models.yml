@@ -29,6 +29,6 @@ jobs:
           set -o pipefail
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
           status=0
-          node bin/quota-boss.js free-models "$RUNNER_TEMP/models-dev.json" "$RUNNER_TEMP/openrouter.json" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          node tools/free-models.js "$RUNNER_TEMP/models-dev.json" "$RUNNER_TEMP/openrouter.json" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           exit "$status"

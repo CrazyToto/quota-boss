@@ -6,6 +6,7 @@ const lib = require('./lib');
 const hosts = require('./hosts');
 const diagnostics = require('./diagnostics');
 const settings = require('./settings');
+const suggest = require('./suggest');
 const tools = require('./tools');
 const addApi = require('./add-api');
 const local = require('./local');
@@ -19,56 +20,46 @@ const USAGES = {
   'graph': 'graph <explain|affected|path> <name> [<name>]',
   'verify': 'verify [--fresh] [--log <model> <category> <tier> [--effort <level>]] -- <command...>',
   'setup': 'setup',
-  'context': 'context',
   'handoff': 'handoff save|list|show [<name>]',
   'on': 'on [--host claude-code|codex|generic] [quality|balanced|frugal]',
   'off': 'off',
   'status': 'status',
   'settings': 'settings',
-  'explain': 'explain <setting>',
   'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio] [--context <tokens>] [category] [tier]',
-  'models': 'models',
   'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
-  'only': 'only <provider-id...>|off [--project]',
   'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
   'usage': 'usage <id> <amount> <calls|tokens|usd>',
   'timing': 'timing <model> <category|-> <tier|-> <seconds> ok|fail',
-  'boss': 'boss',
   'rules': 'rules --host <host>',
   'doctor': 'doctor [--probe|--report]',
   'tools': 'tools [install <id...>|logins]',
   'add-api': 'add-api [<preset>|<id> <provider/model> --trains <yes|no> [--free] [--budget <amount> <unit> <window>]]',
-  'free-models': 'free-models <models-dev.json> [<openrouter.json>]',
   'remove-api': 'remove-api <id>',
   'local': 'local [on <model>|off]',
-  'stats': 'stats [--days N]',
   'savings': 'savings [--days N] [--all] [--details]',
   'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--effort <level>]',
-  'set': 'set <name> <value> (rules: tiny|full; split: on|off)',
+  'set': 'set <name> <value> (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--probe|--report]        check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting with the command that changes it\n  set <name> <value>               change one setting, e.g. set profile frugal; set split on|off\n  explain <setting>                what a setting does and when to choose it\n\nProviders and models:\n  use                              list subscriptions, free offers and models\n  use <id> on|off                  switch one provider or model\n  only <id...>|off                 allow only these providers\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  free-models <files>              check free offers against models.dev/OpenRouter lists\n  local on <model>|off             use a local model through Ollama\n  providers, models, tools         details on providers, rated models and CLIs\n  worktree add <name> [--scope <paths>] [--plan <file>]  create a worker copy\n  worktree merge <name...>         merge worker copies with scope checks\n  worktree list|remove|clean       inspect or remove worker copies\n\nReports:\n  route                            which model gets which kind of job right now\n  savings                          what delegation saved\n  stats                            jobs and results per model\n  context                          size of this session\n  boss                             which model suits you as boss\n\nAdd --project to use, only and cap to change this project only.';
-const WORKER_NAMES = { codex: 'codex-tasks', gpt: 'gpt-reviews', perplexity: 'perplexity' };
-const SET_NAMES = { profile: 'profile', 'short-answers': 'terse', rules: 'rules', consensus: 'consensus', split: 'split', research: 'research', training: 'allow-training', 'codex-tasks': 'workers', 'gpt-reviews': 'workers', perplexity: 'workers', statusline: 'statusline', context: 'context' };
+const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n\nReports:\n  savings [--details]              what delegation saved\n  route                            which model gets which kind of job right now';
+const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', context: 'context' };
+// Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
+const REMOVED_SETTINGS = {
+  'short-answers': 'replies always use the normal format.',
+  rules: 'Claude Code always starts with tiny rules and loads the full rules when it needs them.',
+  consensus: 'the consensus option is always offered for critical architecture work while Codex is on (quota-boss use codex on|off).',
+  split: 'the benchmark showed no gain, so large jobs go to one worker.',
+  research: 'large research is always handed to a worker while Claude is saving.',
+  'codex-tasks': 'switch Codex with quota-boss use codex on|off.',
+  'gpt-reviews': 'switch Codex with quota-boss use codex on|off.',
+  perplexity: 'switch Perplexity with quota-boss use perplexity on|off.',
+};
 
 function checkProfile(profile) {
   if (!lib.PROFILES.includes(profile)) throw new Error('Profile must be quality, balanced, or frugal.');
 }
-
-function modelReport(models, thresholds = {}, now = Date.now()) {
-  const cache = lib.readCodexModels();
-  const visible = new Set(cache.map(model => model.slug));
-  const registry = models.models || {};
-  const rated = Object.entries(registry).map(([id, model]) => lib.sanitizeLabel(model?.label) + ' (' + lib.sanitizeLabel(id) + ')');
-  const unrated = cache.filter(model => !Object.hasOwn(registry, model.slug)).map(model => lib.sanitizeLabel(model.slug));
-  const stale = Object.entries(registry).filter(([id, model]) => model?.pool === 'codex' && !visible.has(id)).map(([id]) => lib.sanitizeLabel(id));
-  return ['Rated: ' + (rated.join(', ') || '(none)'), 'Unrated: ' + (unrated.join(', ') || '(none)'),
-    'Stale (rated Codex entries absent from visible cache): ' + (stale.join(', ') || '(none)'),
-    'Unavailable (24h): ' + ([...lib.unavailableModels(lib.readOutcomes(now, thresholds), now, thresholds)].map(lib.sanitizeLabel).join(', ') || '(none)')].join('\n');
-}
-
 
 function providerReport(config, limits, models = {}, selfTests = {}) {
   const context = lib.providerContext(config, limits);
@@ -118,8 +109,7 @@ function refreshCodexAgents() {
 }
 function useReport(active, config) {
   const global = lib.readUse(), local = active.use;
-  const filters = [global.only ? 'global only: ' + global.only.join(', ') : '', local.only ? 'project only: ' + local.only.join(', ') : ''].filter(Boolean);
-  const lines = ['Subscriptions' + (filters.length ? ' (' + filters.join('; ') + ')' : '')];
+  const lines = ['Subscriptions'];
   const raw = rawProviders(active);
   const now = Date.now();
   const limits = lib.readProviderLimits(raw, { claude: lib.readState().claude, codex: lib.readCodexLimits(now, config.thresholds) }, now);
@@ -129,8 +119,8 @@ function useReport(active, config) {
     if (!subscription) lines.push('Free, API, local and manual');
     for (const [id] of Object.entries(config.providers.providers).filter(([, p]) => (p.kind === 'subscription') === subscription)) {
       const reason = raw.providers[id].enabled === false ? 'off'
-        : global.only && !global.only.includes(id) ? 'off (only filter)'
-          : local.providersOff.includes(id) || local.only && !local.only.includes(id) ? 'off (this project)' : 'on';
+        : global.only && !global.only.includes(id) || local.only && !local.only.includes(id) ? 'off (only filter)'
+          : local.providersOff.includes(id) ? 'off (this project)' : 'on';
       const windows = Object.entries(context.usage[id]?.effective || {}).filter(([, w]) => Number.isFinite(w.used_percent))
         .map(([name, w]) => ({ fiveHour: '5h', daily: 'day', weekly: 'week', monthly: 'month' }[name] ?? name) + ' ' + Math.max(0, Math.round((100 - w.used_percent) * 100) / 100) + '% left');
       lines.push(('  ' + id.padEnd(16) + reason.padEnd(20) + windows.join(', ')).trimEnd());
@@ -146,15 +136,13 @@ function useReport(active, config) {
       lines.push('      ' + line);
     }
   }
-  for (const worker of ['codex', 'gpt']) if (!active.workers[worker]) lines.push('Codex delegation is also limited by quota-boss set ' + (worker === 'codex' ? 'codex-tasks' : 'gpt-reviews') + ' off.');
-  lines.push('Switch: quota-boss use <provider-id|model-id> on|off [--project]',
-    'Filter: quota-boss only <provider-id...> [--project]', 'Clear filter: quota-boss only off [--project]');
+  lines.push('Switch: quota-boss use <provider-id|model-id> on|off [--project]');
   return lines.join('\n');
 }
 function useCommand(command, rest) {
   const active = lib.findProjectConfig(), config = lib.loadConfig(active);
-  if (command === 'use' && !rest.length) return useReport(active, config);
-  const noTest = command === 'use' && rest.at(-1) === '--no-test';
+  if (!rest.length) return useReport(active, config);
+  const noTest = rest.at(-1) === '--no-test';
   if (noTest) rest = rest.slice(0, -1);
   const project = rest.at(-1) === '--project';
   if (project) rest = rest.slice(0, -1);
@@ -168,64 +156,54 @@ function useCommand(command, rest) {
       throw new Error(value + ' is neither a provider id nor a model id. See quota-boss use.');
     }
   };
-  if (command === 'use') {
-    if (rest.length !== 2 || !['on', 'off'].includes(action)) throw new Error(usage(command));
-    checkId(id);
-    if (noTest && (project || !provider || action !== 'on')) throw new Error(usage(command));
-    if (provider && action === 'on' && !project && raw.providers[id].kind === 'local') throw new Error('Local models have their own switch: quota-boss local on <model>');
-  } else if (!(rest.length === 1 && id === 'off')) {
-    for (const value of rest) {
-      checkId(value);
-      if (!lib.validProviderId(value) || !Object.hasOwn(raw.providers, value)) throw new Error('only requires provider ids. See quota-boss use.');
-    }
-    if (rest.every(value => raw.providers[value].enabled === false)) throw new Error('Every selected provider is disabled; nothing would be left. Enable one with quota-boss use <provider-id> on.');
-  }
+  if (rest.length !== 2 || !['on', 'off'].includes(action)) throw new Error(usage(command));
+  checkId(id);
+  if (noTest && (project || !provider || action !== 'on')) throw new Error(usage(command));
+  if (provider && action === 'on' && !project && raw.providers[id].kind === 'local') throw new Error('Local models have their own switch: quota-boss local on <model>');
   const update = value => {
     const next = lib.normalizeUse(value);
-    if (command === 'only') { if (id === 'off') delete next.only; else next.only = [...new Set(rest)]; }
-    else {
-      const key = provider ? 'providersOff' : 'modelsOff';
-      next[key] = next[key].filter(value => value !== id);
-      if (action === 'off') next[key].push(id);
-    }
+    const key = provider ? 'providersOff' : 'modelsOff';
+    next[key] = next[key].filter(value => value !== id);
+    if (action === 'off') next[key].push(id);
+    // A stored only filter (removed in 0.2.0) keeps excluding; turning a provider on lets in that one provider only.
+    if (provider && action === 'on' && next.only && !next.only.includes(id)) next.only.push(id);
     return next;
   };
-  let output;
-  if (command === 'use' && provider && !project) {
-    output = providerCommand('provider-switch', [action === 'on' ? 'enable' : 'disable', id]);
-  } else if (project) {
-    lib.updateProjects(entries => {
-      const current = lib.findProjectConfig();
-      return { ...entries, [lib.projectKey(current.directory)]: { ...current.raw, ...lib.normalizeProject(current), use: update(current.use) } };
-    });
-  } else {
+  const saveGlobal = () => {
     const saved = lib.withLock(lib.useFile(), verify => {
       const { providersOff, ...next } = update(lib.readUse());
       lib.atomicWrite(lib.useFile(), JSON.stringify(next, null, 2) + '\n', verify); return true;
     });
     if (saved === null) throw new Error('Use config is busy; retry.');
-  }
-  output = output || (command === 'only' ? 'Only filter ' + (id === 'off' ? 'cleared' : rest.join(', ')) : id + ' ' + action) + (project ? ' (this project)' : '');
-  if (command === 'use' && action === 'on') {
-    const global = lib.readUse(), local = lib.findProjectConfig().use;
+  };
+  let output;
+  if (provider && !project) {
+    output = providerCommand('provider-switch', [action === 'on' ? 'enable' : 'disable', id]);
+    if (action === 'on' && lib.readUse().only?.includes(id) === false) saveGlobal();
+  } else if (project) {
+    lib.updateProjects(entries => {
+      const current = lib.findProjectConfig();
+      // Old worker switches already sit in current.use as providersOff, so the saved entry drops them.
+      const { workers, ...raw } = current.raw;
+      return { ...entries, [lib.projectKey(current.directory)]: { ...raw, ...lib.normalizeProject(current), use: update(current.use) } };
+    });
+  } else saveGlobal();
+  output = output || id + ' ' + action + (project ? ' (this project)' : '');
+  if (action === 'on') {
+    const global = lib.readUse();
     const pool = provider ? id : config.models.models[id]?.pool;
     const fixes = [];
-    if (raw.providers[pool]?.enabled === false && (project || !provider)) fixes.push(raw.providers[pool].kind === 'local'
+    if ((raw.providers[pool]?.enabled === false || global.only?.includes(pool) === false) && (project || !provider)) fixes.push(raw.providers[pool].kind === 'local'
       ? 'quota-boss local on <model>' : 'quota-boss use ' + pool + ' on');
-    if (global.only && !global.only.includes(pool)) fixes.push('quota-boss only off');
     if (!provider && global.modelsOff.includes(id) && project) fixes.push('quota-boss use ' + id + ' on');
-    const filtered = local.only && !local.only.includes(pool);
-    // The effect text describes the filtered state, which reads as a contradiction right after "enabled".
-    if (fixes.length || filtered) output = output.split('\n').filter(line => !line.startsWith('Effect:')).join('\n');
     if (fixes.length) output += '\nStill off globally. Turn it on with: ' + fixes.join('; ');
-    if (filtered) output += '\nStill off by the project only filter. Clear it with: quota-boss only off --project';
+    if (!project && active.use.only?.includes(pool) === false) output += '\nStill off by the project only filter. Turn it on with: quota-boss use ' + pool + ' on --project';
   }
   const hostPool = active.host === 'claude-code' ? 'claude' : active.host === 'codex' ? 'codex' : null;
   const boss = lib.delegationBoss(config.models, active);
-  const changedOff = command === 'only' ? hostPool && id !== 'off' && !rest.includes(hostPool)
-    : action === 'off' && (provider ? id === hostPool : id === boss);
+  const changedOff = action === 'off' && (provider ? id === hostPool : id === boss);
   if (changedOff) output += '\nThe boss itself keeps running on its model; this only stops delegation to it.';
-  if (command === 'use' && provider && !project && action === 'on' && raw.providers[id].evidence === 'docs' && raw.providers[id].cli) {
+  if (provider && !project && action === 'on' && raw.providers[id].evidence === 'docs' && raw.providers[id].cli) {
     const { selfTest, validSelfTest } = require('./self-test');
     const enabled = lib.loadConfig({});
     const models = Object.entries(enabled.models.models).filter(([, model]) => model.pool === id && model.enabled !== false);
@@ -237,7 +215,7 @@ function useCommand(command, rest) {
       output += '\n' + selfTest(id, { config: enabled });
     }
   }
-  return output + (command === 'use' && provider && !project ? '' : refreshCodexAgents());
+  return output + (provider && !project ? '' : refreshCodexAgents());
 }
 function providerCommand(command, rest) {
   const active = lib.findProjectConfig();
@@ -262,7 +240,7 @@ function providerCommand(command, rest) {
     return require('./self-test').selfTest(rest[1], { config, model: flags['--model'], effort: flags['--effort'] });
   }
   if (command === 'providers' && rest[0] === 'guide' && rest.length === 1) {
-    return providerHelp.guide(config, lib.normalizeProject(active).workers);
+    return providerHelp.guide(config);
   }
   if (command === 'providers' && rest[0] === 'show' && rest.length >= 2 && rest.length % 2 === 0) {
     checkId(rest[1]);
@@ -373,13 +351,13 @@ function run(args = process.argv.slice(2)) {
   if (command === 'help') { if (rest.length) throw new Error(usage(command)); return HELP; }
   const setting = command === 'set' ? rest[0] : null;
   if (setting !== null) {
+    if (Object.hasOwn(REMOVED_SETTINGS, setting)) throw new Error(setting + ' was removed in 0.2.0: ' + REMOVED_SETTINGS[setting]);
     if (!Object.hasOwn(SET_NAMES, setting)) throw new Error('Valid settings: ' + Object.keys(SET_NAMES).join(', '));
-    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'rules' ? ['tiny', 'full'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
+    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
     if (rest.length !== 2 || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
     command = SET_NAMES[setting]; rest = rest.slice(1);
-    if (command === 'workers') rest = [({ 'codex-tasks': 'codex', 'gpt-reviews': 'gpt', perplexity: 'perplexity' }[setting]) + '=' + rest[0]];
-  } else if (['profile', 'terse', 'consensus', 'split', 'research', 'allow-training', 'workers', 'statusline'].includes(command) || command === 'context' && rest.length) throw new Error(HELP);
-  if (['use', 'only'].includes(command)) return useCommand(command, rest);
+  } else if (['profile', 'allow-training', 'statusline', 'context'].includes(command)) throw new Error(HELP);
+  if (command === 'use') return useCommand(command, rest);
   if (command === 'graph') {
     const graph = require('./graph');
     const [kind, ...names] = rest;
@@ -389,15 +367,6 @@ function run(args = process.argv.slice(2)) {
   if (command === 'settings') {
     if (rest.length) throw new Error(usage(command));
     return settings.table();
-  }
-  if (command === 'explain') {
-    if (rest.length !== 1) throw new Error(usage(command));
-    return settings.explain(rest[0]);
-  }
-  if (command === 'boss') {
-    if (rest.length) throw new Error(usage(command));
-    const config = lib.loadConfig();
-    return hosts.recommend({ ...config, ...lib.findProjectConfig() }, lib.readOutcomes(Date.now(), config.thresholds));
   }
   if (command === 'rules' && setting === null) {
     if (rest.length !== 2 || rest[0] !== '--host') throw new Error(usage(command));
@@ -409,23 +378,13 @@ function run(args = process.argv.slice(2)) {
   }
   if (command === 'setup') return setupWizard.setup(rest, run);
   if (command === 'handoff') return context.handoffCommand(rest, lib.findProjectConfig());
-  if (command === 'context' && !rest.length) return context.report(lib.findProjectConfig());
   if (command === 'statusline') return statuslineCommand(rest);
   if (command === 'tools') return tools.command(rest, lib.loadConfig());
   if (command === 'add-api') return addApi.add(rest);
-  if (command === 'free-models') {
-    const result = require('./free-models').command(rest);
-    process.exitCode = result.code;
-    return result.text;
-  }
   if (command === 'remove-api') return addApi.remove(rest);
   if (command === 'local') {
     const output = local.command(rest, lib.loadConfig());
     return output + (rest.length ? refreshCodexAgents() : '');
-  }
-  if (command === 'stats') {
-    if (rest.length && (rest.length !== 2 || rest[0] !== '--days' || !/^[1-9]\d{0,2}$/.test(rest[1]) || Number(rest[1]) > 365)) throw new Error(usage(command));
-    return diagnostics.stats(rest.length ? Number(rest[1]) : 30);
   }
   if (command === 'savings') {
     const savings = require('./savings');
@@ -449,15 +408,9 @@ function run(args = process.argv.slice(2)) {
     if (rest.length !== 1) throw new Error(usage(command));
     checkProfile(rest[0]);
     project.profile = rest[0];
-  } else if (command === 'rules') {
-    project.rules = rest[0];
-  } else if (command === 'workers') {
-    if (rest.length !== 1 || !/^(codex|gpt|perplexity)=(on|off)$/.test(rest[0])) throw new Error(usage(command));
-    const [worker, enabled] = rest[0].split('=');
-    project.workers[worker] = enabled === 'on';
-  } else if (['allow-training', 'terse', 'consensus', 'split', 'research'].includes(command)) {
+  } else if (command === 'allow-training') {
     if (rest.length !== 1 || !['on', 'off'].includes(rest[0])) throw new Error(usage(command));
-    project[command === 'allow-training' ? 'allowTrainingProviders' : command] = rest[0] === 'on';
+    project.allowTrainingProviders = rest[0] === 'on';
   } else if (command === 'context') {
     if (rest.length !== 1) throw new Error(usage(command));
     project.contextSuggest = context.parseSetting(rest[0]);
@@ -468,7 +421,7 @@ function run(args = process.argv.slice(2)) {
     const model = resolveModel(config.models.models, name) ?? name;
     lib.appendOutcome({ model, category, tier, result, effort }, config.models, lib.readCodexModels(true));
     return 'Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + category + ' ' + tier + ' ' + result + (effort ? ' at ' + effort : '');
-  } else if (['status', 'route', 'models'].includes(command)) {
+  } else if (['status', 'route'].includes(command)) {
     if (command !== 'route' && rest.length) throw new Error(usage(command));
     let explain = false, size, needs, contextTokens;
     const filters = [...rest];
@@ -491,7 +444,6 @@ function run(args = process.argv.slice(2)) {
       || filters.length > 1 && !lib.TIERS.includes(filters[1]))) throw new Error(usage(command));
     const active = lib.findProjectConfig();
     const config = lib.loadConfig(active, { tolerant: command === 'route' });
-    if (command === 'models') return modelReport(config.models, config.thresholds);
     const now = Date.now();
     const codex = config.providers.providers.codex?.enabled === false ? null : lib.readCodexLimits(now, config.thresholds, command === 'route');
     const state = lib.readState();
@@ -504,12 +456,12 @@ function run(args = process.argv.slice(2)) {
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
       return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));
     }
-    return 'Quota Boss ' + (active.enabled ? 'on' : 'off') + ' | '
-    + lib.WORKERS.map(key => WORKER_NAMES[key] + '=' + (active.workers[key] ? 'on' : 'off')).join(' ')
+    return 'Quota Boss ' + (active.enabled ? 'on' : 'off') + ' | profile ' + active.profile
       + ' | host ' + active.host
       + '\n' + lib.formatLimits(limits, active.profile, config.thresholds, now, config.providers)
-      + lib.providerWarnings(config.models, config.providers).map(w => '\n' + w).join('');
-  } else throw new Error(command === 'context' ? usage(command) : HELP);
+      + lib.providerWarnings(config.models, config.providers).map(w => '\n' + w).join('')
+      + suggest.statusLines(active, now).map(line => '\n' + line.replace('[quota-boss] ', '').replace('. Propose to the user: ', '. Change with: ')).join('');
+  } else throw new Error(HELP);
   const directory = lib.projectKey(process.cwd());
   const before = settings.snapshot();
   let agent;
@@ -518,9 +470,8 @@ function run(args = process.argv.slice(2)) {
     const current = lib.normalizeProject(effective);
     const fields = command === 'on' ? ['enabled', ...(args.includes('--host') ? ['host'] : []), ...(rest.length ? ['profile'] : [])]
       : command === 'off' ? ['enabled'] : command === 'profile' ? ['profile']
-        : command === 'workers' ? [] : [command === 'allow-training' ? 'allowTrainingProviders' : command === 'context' ? 'contextSuggest' : command];
+        : [command === 'allow-training' ? 'allowTrainingProviders' : 'contextSuggest'];
     for (const field of fields) current[field] = project[field];
-    if (command === 'workers') { const worker = rest[0].split('=')[0]; current.workers[worker] = project.workers[worker]; }
     project = current;
     agent = hosts.agentsText(directory, project.enabled && project.host === 'codex' ? hosts.managedBlock(project) : '');
     return { ...entries, [directory]: { ...effective.raw, ...project,
@@ -541,8 +492,7 @@ function run(args = process.argv.slice(2)) {
     if (result.message) hookNotice = '\nNote: Could not install Codex SessionStart hook: ' + result.message;
     else if (result.changed) hookNotice = '\nCodex skips new hooks until you trust them: type /hooks in Codex once; until then the boss runs route itself.';
   }
-  return 'Quota Boss ' + (project.enabled ? 'on' : 'off') + ' | profile ' + project.profile + ' | '
-    + lib.WORKERS.map(key => WORKER_NAMES[key] + '=' + (project.workers[key] ? 'on' : 'off')).join(' ')
+  return 'Quota Boss ' + (project.enabled ? 'on' : 'off') + ' | profile ' + project.profile
     + '\n' + settings.effect(command, rest, before, after) + claudeNotice + hookNotice
     + (command === 'on' && project.host === 'codex' && lib.loadConfig().providers.providers.claude?.enabled !== false ? '\nWarning: ' + providerHelp.SCRIPTED_CLAUDE_WARNING : '');
 }

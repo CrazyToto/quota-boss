@@ -88,7 +88,7 @@ test('doctor report contains only safe metadata and seven-day feedback counts', 
     readOutcomes: () => [{ t: now, model, result: 'limited', text: secrets.join(' ') }, { t: now - 8 * 86400000, model, result: 'fail' }, { t: now, model: secrets.join(' '), result: 'unavailable' }] };
   const report = diagnostics.report(deps);
   for (const secret of secrets) assert.ok(!report.includes(secret), secret);
-  assert.match(report, /quota-boss \d+\.\d+\.\d+/); assert.match(report, /Boss mode: on; profile=frugal; rules=tiny/);
+  assert.match(report, /quota-boss \d+\.\d+\.\d+/); assert.match(report, /Boss mode: on; profile=frugal\n/);
   assert.match(report, /grok: enabled=no; CLI found=yes; version=1.2.3; self-test=pass/);
   assert.ok(report.includes(model + ' limited: 1')); assert.doesNotMatch(report, / fail:/);
   assert.match(report, /custom-model-1 unavailable: 1/);

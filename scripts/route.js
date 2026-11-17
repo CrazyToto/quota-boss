@@ -207,8 +207,8 @@ function probabilityOrder(a, b, previousPool) {
 }
 
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
-function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}, workers,
-  host = 'claude-code', allowTrainingProviders = false, consensus = true, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable } = {}) {
+function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {},
+  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable } = {}) {
   if (!['small', 'medium', 'large'].includes(size)) size = null;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(bossEffort)) bossEffort = null;
   if (caps) providers = { ...providers, caps: tightenCaps(providers.caps ?? {}, caps) };
@@ -217,7 +217,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
   const rawModes = computeModes(limits, thresholds, now);
   limits = context.limits;
   history = context.history;
-  const settings = normalizeProject({ profile, workers, host, allowTrainingProviders, consensus });
+  const settings = normalizeProject({ profile, host, allowTrainingProviders });
   const bossPool = settings.host === 'codex' ? 'codex' : settings.host === 'claude-code' ? 'claude' : null;
   const hostSaving = bossPool === 'claude' ? modes.claudeMode !== 'normal' : bossPool === 'codex' && modes.codexMode !== 'normal';
   const learned = recentOutcomes(outcomes, now, thresholds);
@@ -273,8 +273,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         else if (provider.trainsOnData === true && !settings.allowTrainingProviders) reason = 'training provider blocked (allowTrainingProviders is off)';
         else if (unavailable.has(model.id)) reason = 'unavailable (24h exclusion)';
         else if (rateLimited.has(model.id)) reason = 'rate limited (paused for 15 minutes)';
-        else if (method !== 'self' && model.pool === 'codex' && !(settings.workers.codex || settings.workers.gpt && ['review', 'research'].includes(category))) reason = 'worker disabled';
-        else if (model.pool === 'perplexity' && (category !== 'research' || !settings.workers.perplexity)) reason = 'manual worker disabled for category';
+        else if (model.pool === 'perplexity' && category !== 'research') reason = 'manual worker disabled for category';
         else if (capped && !self) reason = 'provider capped:' + model.pool;
         else if (!method) reason = 'worker unavailable';
         else if (model.cliModel && provider.worker === 'cli-worker') {
@@ -395,8 +394,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const next = [...(different.length ? different : steps)].sort((a, b) =>
           (stronger.length ? b.utility - a.utility : 0) || probabilityOrder(a, b, previousPool))[0];
         if (next) ladder.push(step(next));
-        const advisor = tier === 'critical' && category === 'architecture' && settings.consensus
-          ? evaluated.filter(c => c.pool === 'codex' && (settings.workers.codex || settings.workers.gpt)
+        const advisor = tier === 'critical' && category === 'architecture'
+          ? evaluated.filter(c => c.pool === 'codex'
             && !c.capabilityReason
             && !context.usage.codex?.capped && modes.codexMode !== 'exhausted'
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)

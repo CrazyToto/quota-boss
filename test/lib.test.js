@@ -123,11 +123,12 @@ test('user configuration replaces model entries and merges thresholds leaf by le
 });
 
 test('project lookup uses the nearest config and strict enablement', () => {
-  enable({ profile: 'frugal', workers: { codex: false } });
+  enable({ profile: 'frugal', workers: { codex: false } }); // the old workers field only keeps codex off for this project
   const nested = path.join(project, 'a', 'b');
   fs.mkdirSync(nested, { recursive: true });
   assert.equal(lib.findProjectConfig(nested).profile, 'frugal');
-  assert.equal(lib.findProjectConfig(nested).workers.codex, false);
+  assert.equal(lib.findProjectConfig(nested).workers, undefined);
+  assert.deepEqual(lib.findProjectConfig(nested).use.providersOff, ['codex']);
   lib.saveProject(path.join(project, 'a'), { enabled: 'true', profile: 'INJECT\ntext' });
   const nearer = lib.findProjectConfig(nested);
   assert.equal(nearer.enabled, false);
@@ -506,8 +507,8 @@ test('an unknown feedback model names the closest registry ids', () => {
   const models = { models: { 'claude-sonnet-5-5': {}, 'claude-opus-5-5': {}, 'gpt-6.1-sol': {} } };
   const value = { model: 'sonnet', category: 'implementation', tier: 'normal', result: 'pass' };
   assert.throws(() => lib.appendOutcome(value, models, [], 1000), /Did you mean claude-sonnet-5-5\?/);
-  assert.throws(() => lib.appendOutcome({ ...value, model: 'zz' }, models, [], 1000), /Run quota-boss models for the ids/);
-  assert.throws(() => lib.appendOutcome({ ...value, model: 'xyzq' }, models, [], 1000), /Run quota-boss models for the ids/);
+  assert.throws(() => lib.appendOutcome({ ...value, model: 'zz' }, models, [], 1000), /Run quota-boss use for the ids/);
+  assert.throws(() => lib.appendOutcome({ ...value, model: 'xyzq' }, models, [], 1000), /Run quota-boss use for the ids/);
 });
 
 test('only a root-owned link directly in a root-owned root directory that others cannot write counts as a system link', () => {

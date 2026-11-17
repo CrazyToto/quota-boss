@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const child = require('node:child_process');
 const lib = require('./lib');
-const latency = require('./latency');
 function version(text) { return typeof text === 'string' ? text.match(/\b\d+\.\d+\.\d+\b/)?.[0] : undefined; }
 function older(a, b) {
   const x = a.split('.').map(Number), y = b.split('.').map(Number);
@@ -172,9 +171,7 @@ function doctor(probe = false, options = {}) {
       const raw = project.raw;
       if (raw.host !== undefined && !lib.HOSTS.includes(raw.host) || raw.profile !== undefined && !lib.PROFILES.includes(raw.profile)
         || raw.allowTrainingProviders !== undefined && typeof raw.allowTrainingProviders !== 'boolean'
-        || raw.consensus !== undefined && typeof raw.consensus !== 'boolean'
-        || raw.enabled !== undefined && typeof raw.enabled !== 'boolean' || raw.terse !== undefined && typeof raw.terse !== 'boolean'
-        || raw.workers !== undefined && (!raw.workers || typeof raw.workers !== 'object' || Array.isArray(raw.workers) || Object.values(raw.workers).some(v => typeof v !== 'boolean'))) throw new Error('Invalid project config');
+        || raw.enabled !== undefined && typeof raw.enabled !== 'boolean') throw new Error('Invalid project config');
     }
     for (const name of ['models', 'thresholds']) {
       for (const dir of [paths.defaultConfigDir, path.join(__dirname, '..', 'defaults'), path.join(paths.quotaBossHome, 'config')]) {
@@ -263,7 +260,7 @@ function report(options = {}) {
   const lines = ['quota-boss ' + packageVersion, 'Node ' + process.versions.node,
     'OS ' + platform + ' ' + process.arch,
     'Hosts detected: ' + ['claude', 'codex'].filter(id => find(id)).map(id => id === 'claude' ? 'claude-code' : id).join(', ').replace(/^$/, 'none'),
-    'Boss mode: ' + (project.enabled ? 'on' : 'off') + '; profile=' + project.profile + '; rules=' + project.rules];
+    'Boss mode: ' + (project.enabled ? 'on' : 'off') + '; profile=' + project.profile];
   for (const [id, provider] of Object.entries(config.providers.providers)) {
     // Custom identifiers can contain personal data; retain their count, not their names.
     const safeId = Object.hasOwn(known, id) ? id : 'custom-provider-' + ++customProvider;
@@ -294,51 +291,4 @@ function report(options = {}) {
   return redactReport(lines.join('\n'), env);
 }
 
-function stats(days = 30, now = Date.now()) {
-  const config = lib.loadConfig();
-  const records = lib.readOutcomes(now, { history: { outcomeDays: Math.min(90, days) } }).filter(e => e.t >= now - days * 86400000);
-  const providers = new Map(), models = new Map(), groups = new Map();
-  for (const e of records) {
-    const pool = config.models.models[e.model]?.pool;
-    const provider = lib.validProviderId(pool) ? pool : 'unknown';
-    providers.set(provider, (providers.get(provider) || 0) + 1);
-    const label = lib.sanitizeLabel(e.model);
-    models.set(label, (models.get(label) || 0) + 1);
-    const key = label + ' / ' + e.category;
-    const value = groups.get(key) || { pass: 0, fail: 0, unavailable: 0, limited: 0 };
-    value[e.result]++;
-    groups.set(key, value);
-  }
-  const lines = ['Stats: last ' + days + ' days (bounded local journals; outcomes retained up to 90 days)', 'Routing split (recorded outcomes):'];
-  const split = (name, data) => { for (const [id, n] of [...data].sort()) lines.push(name + ' ' + id + ': ' + n + ' (' + (100 * n / records.length).toFixed(1) + '%)'); };
-  split('provider', providers); split('model', models);
-  lines.push('Pass rates (unavailable and limited excluded from denominator):');
-  for (const [key, g] of [...groups].sort()) lines.push(key + ': ' + (g.pass + g.fail ? (100 * g.pass / (g.pass + g.fail)).toFixed(1) + '%' : '?') + ' pass=' + g.pass + ' fail=' + g.fail + ' unavailable=' + g.unavailable + ' limited=' + g.limited);
-  const usage = lib.readUsage(now);
-  const totals = new Map();
-  for (const e of usage.entries.filter(e => e.t >= now - days * 86400000)) {
-    const key = e.provider + ' ' + e.unit;
-    totals.set(key, (totals.get(key) || 0) + e.amount);
-  }
-  lines.push('Usage counters' + (usage.truncated ? ' (truncated journal)' : '') + ':');
-  for (const [key, n] of [...totals].sort()) lines.push(key + ': ' + n);
-  lines.push('Latency (median of successful runs, by difficulty):');
-  const runs = latency.readRuns(now).filter(run => run.t >= now - days * 86400000);
-  const latencyGroups = new Map();
-  for (const run of runs) {
-    const key = lib.sanitizeLabel(run.model) + ' / ' + run.tier;
-    const group = latencyGroups.get(key) || [];
-    group.push(run.seconds);
-    latencyGroups.set(key, group);
-  }
-  if (!latencyGroups.size) lines.push('No recorded runs.');
-  else for (const [key, values] of [...latencyGroups].sort()) {
-    values.sort((a, b) => a - b);
-    const middle = Math.floor(values.length / 2);
-    const median = values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
-    lines.push(key + ': ' + median + 's (' + values.length + ' runs)');
-  }
-  if (!records.length) lines.push('No recorded outcomes.');
-  return lines.join('\n');
-}
-module.exports = { report, redactReport, doctor, stats, version, older, openCodeOffers };
+module.exports = { report, redactReport, doctor, version, older, openCodeOffers };

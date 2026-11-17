@@ -38,6 +38,12 @@ function enable(config = {}) {
   lib.saveProject(project, { enabled: true, profile: 'balanced', ...config });
 }
 
+/** The config with the given providers switched off. */
+function without(config, ids) {
+  return { ...config, providers: { ...config.providers, providers: Object.fromEntries(Object.entries(config.providers.providers)
+    .map(([id, p]) => [id, ids.includes(id) ? { ...p, enabled: false } : p])) } };
+}
+
 function limits(c5h = 4, cWeek = 49, x5h = 0, xWeek = 2) {
   return { claude: { five_hour: { used_percentage: c5h }, seven_day: { used_percentage: cWeek } },
     codex: { primary: { used_percent: x5h }, secondary: { used_percent: xWeek } } };
@@ -100,7 +106,9 @@ test('route variants never change home files, including history and oversized us
 });
 
 test('session table prints the unknown boss note exactly once before its rows', () => {
-  enable({ rules: 'full' });
+  // Only a saving Claude gets the full start with the table; a stored rules field is ignored.
+  enable();
+  lib.writeState({ claude: { five_hour: { used_percentage: 90 }, seven_day: { used_percentage: 49 } } });
   const result = invoke(require('../scripts/hook-session').main, JSON.stringify({ cwd: project, model: 'claude-opus-5-6' }));
   assert.equal(result.status, 0);
   assert.ok(Buffer.byteLength(result.stdout) <= require('../scripts/context').HOOK_BUDGET);
@@ -354,20 +362,17 @@ test('emergency excludes Claude for normal and trivial and prefers qualified cri
   const qualifying = route({ ...lib.loadConfig(), thresholds: { ...lib.loadConfig().thresholds, minP: { critical: 0.6 } }, limits: limits(85, 0, 0, 0) });
   assert.equal(select(qualifying, 'critical', 'architecture').pool, 'codex');
   assert.equal(select(result, 'critical', 'research').belowThreshold, true);
-  const bossOnly = route({ ...lib.loadConfig(), limits: limits(85, 0, 0, 0), workers: { codex: false, gpt: false, perplexity: false } });
+  const bossOnly = route({ ...without(lib.loadConfig(), ['codex', 'perplexity']), limits: limits(85, 0, 0, 0) });
   assert.equal(bossOnly.rows.length, 6);
   assert.ok(bossOnly.rows.every(row => row.pool === 'claude' && row.tier === 'critical' && row.via === 'self'));
   assert.ok(bossOnly.rows.every(row => row.price === Infinity && row.utility === 0));
 });
 
-test('exhausted Codex is unavailable, including GPT opinions; worker switches follow categories', () => {
+test('exhausted Codex is unavailable, including GPT opinions; provider switches remove their pools', () => {
   const config = lib.loadConfig();
   const exhausted = route({ ...config, limits: limits(0, 0, 95, 0) });
   assert.ok(exhausted.rows.every(row => row.pool !== 'codex'));
-  const advisors = route({ ...config, limits: limits(85, 0, 0, 0), workers: { codex: false, gpt: true, perplexity: false } });
-  assert.ok(advisors.rows.filter(row => row.pool === 'codex').every(row => ['research', 'review'].includes(row.category)));
-  assert.equal(advisors.options.length, 0);
-  const off = route({ ...config, workers: { codex: false, gpt: false, perplexity: false } });
+  const off = route({ ...without(config, ['codex', 'perplexity']) });
   assert.ok(off.rows.every(row => row.pool === 'claude'));
   assert.equal(off.options.length, 0);
 });

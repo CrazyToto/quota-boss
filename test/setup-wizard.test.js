@@ -13,7 +13,7 @@ test.after(() => fs.rmSync(EMPTY_DIR, { recursive: true, force: true }));
 const provider = (enabled, extra) => ({ enabled, ...extra });
 const baseProviders = () => ({ copilot: provider(false), grok: provider(false), antigravity: provider(false),
   'opencode-free': provider(false, { trainsOnData: true }), 'kilo-free': provider(false, { trainsOnData: true }), codex: provider(true) });
-const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code', workers: { codex: true, gpt: true, perplexity: true }, allowTrainingProviders: false });
+const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code', allowTrainingProviders: false });
 
 /**
  * Plays one setup. Enter takes each default, so `answers` is the list of typed lines in order.
@@ -40,8 +40,8 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
   return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, left: queue };
 }
 
-// Enter on: start, profile, host, 3 own, 3 other, the free offers question, api question.
-const START = [''], FIRST_TWO = ['', '', ''], OWN = ['', '', ''], OTHER_NONE = ['', '', ''], FREE_NONE = [''], NO_API = [''];
+// Enter on: start, profile, host, 2 own (Codex, Perplexity), 3 other, the free offers question, api question.
+const START = [''], FIRST_TWO = ['', '', ''], OWN = ['', ''], OTHER_NONE = ['', '', ''], FREE_NONE = [''], NO_API = [''];
 // Chooses "one by one" (option 4, or 5 when "keep" is listed first), then answers the 10 offers in setup order:
 // 0 Mistral, 1 Zen GLM, 2 Zen DeepSeek, 3 OpenRouter, 4 Cloudflare, then the rest.
 const freeAnswers = (picks, option = '4') => [option, ...Array.from({ length: 10 }, (_, index) => picks[index] ?? '')];
@@ -209,11 +209,11 @@ test('back returns to the previous question and keeps the changed answer', () =>
 });
 
 test('f moves forward and keeps the answer; the summary cannot be skipped', () => {
-  const answers = [...START, 'f', 'f', 'f', 'n', 'b', 'f', '', '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'f', 'y'];
+  const answers = [...START, 'f', 'f', 'f', 'n', 'b', 'f', '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'f', 'y'];
   const { said, commands } = play(answers);
   assert.match(said, /Enter or f = next page, b = previous page/);
   assert.match(said, /one of the shown letters/);
-  assert.deepEqual(commands.slice(1), [['set', 'codex-tasks', 'off']]);
+  assert.deepEqual(commands.slice(1), [['use', 'codex', 'off', '--project']]);
 });
 
 test('logins start only when wanted, and only from the listed tools', () => {
@@ -340,11 +340,13 @@ test('a kept custom API template asks for the provider key from defaultModel', (
 });
 
 for (const host of ['codex', 'generic']) {
+  // On a Codex host its own pool needs no switch, so only the Perplexity screen is left.
+  const own = host === 'codex' ? [''] : OWN;
   for (const enabled of [false, true]) {
     for (const usable of [false, true]) {
       test('Claude switch for ' + host + ', enabled=' + enabled + ', usable=' + usable, () => {
         const providers = { ...baseProviders(), claude: provider(enabled) };
-        const answers = [...START, ...FIRST_TWO, ...OWN, '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'];
+        const answers = [...START, ...FIRST_TWO, ...own, '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'];
         const result = play(answers, { host, providers, programs: { claude: usable ? 'ok' : 'broken' } });
         assert.match(result.said, /Claude models \(Opus, Sonnet, Haiku\)/);
         assert.doesNotMatch(result.said, /Claude always stays on/);
@@ -356,7 +358,7 @@ for (const host of ['codex', 'generic']) {
   }
   test('Claude can be enabled for ' + host + ' only when installation succeeds', () => {
     for (const usable of [false, true]) {
-      const result = play([...START, ...FIRST_TWO, ...OWN, 'y', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'], {
+      const result = play([...START, ...FIRST_TWO, ...own, 'y', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'], {
         host, providers: { ...baseProviders(), claude: provider(false) }, programs: { claude: 'missing' }, afterInstall: { claude: usable ? 'ok' : 'missing' },
       });
       assert.equal(result.commands.some(c => c.join(' ') === 'use claude on'), usable);

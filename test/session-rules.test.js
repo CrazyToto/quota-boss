@@ -8,89 +8,25 @@ const hosts = require('../scripts/hosts');
 const root = path.join(__dirname, '..');
 const consensus = 'use `consensus` before deciding';
 
-test('split adds the large-job rule and always keeps the independent-job rule on every host', () => {
-  const split = 'Split a large job only when', independent = 'Independent jobs run at the same time:';
+test('rules always keep consensus, research and independent jobs, drop the split line, and ignore old switches', () => {
+  const research = 'research and look-ups that need more than about 40 KB read', independent = 'Independent jobs run at the same time:';
   const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
-  assert.match(template, /   Independent jobs run at the same time:.*\n   Split a large job only when/);
-  for (const host of ['claude-code', 'codex', 'generic']) {
-    for (const terse of [false, true]) {
-      const baseline = hosts.rules(host, { rules: 'full', terse });
-      assert.ok(baseline.includes(independent));
-      assert.ok(!baseline.includes(split));
-      for (const value of [undefined, null, false, 'true', 1]) {
-        assert.equal(hosts.rules(host, { rules: 'full', terse, split: value }), baseline);
-      }
-      const enabled = hosts.rules(host, { rules: 'full', terse, split: true });
-      assert.ok(enabled.includes(split));
-      assert.ok(enabled.includes(independent));
-      assert.equal(enabled.split('\n').filter(line => !line.includes(split)).join('\n'), baseline);
-      for (const phrase of ['worktree add <name> --scope <paths> --plan <file>', 'worktree merge <name1> <name2>', 'test doubles for the other package']) assert.ok(enabled.includes(phrase));
-    }
-  }
-});
-
-test('research adds exactly its line to rules on every host and stays independent of split', t => {
-  const marker = 'research and look-ups that need more than about 40 KB read';
-  const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
-  const line = template.split('\n').find(line => line.includes(marker)).trimEnd();
-  assert.match(template, /   Split a large job only when[^\n]*\n   While the mode shows `claude-save` or `claude-emergency`, research and look-ups that need more than about 40 KB read/);
-  const read = lib.readBounded;
+  assert.ok(!template.includes('Split a large job only when'));
   for (const host of lib.HOSTS) {
-    for (const split of [false, true]) {
-      for (const terse of [false, true]) {
-        const project = { rules: 'full', split, terse };
-        // Render the original template to compare the default output byte for byte.
-        const mock = t.mock.method(lib, 'readBounded', (file, size) => {
-          const text = read(file, size);
-          return path.basename(file) === 'RULES.md' ? text.split('\n').filter(line => !line.includes(marker)).join('\n') : text;
-        });
-        const baseline = hosts.rules(host, project);
-        mock.mock.restore();
-        assert.equal(hosts.rules(host, project), baseline);
-        for (const value of [undefined, null, false, 0, 1, 'true', 'on', [], {}]) {
-          assert.equal(hosts.rules(host, { ...project, research: value }), baseline);
-        }
-        const enabled = hosts.rules(host, { ...project, research: true });
-        assert.deepEqual(enabled.split('\n').filter(line => line.includes(marker)), [line]);
-        assert.equal(enabled.split('\n').filter(line => !line.includes(marker)).join('\n'), baseline);
-        assert.equal(enabled.includes('Split a large job only when'), split);
-      }
+    const baseline = hosts.rules(host, { rules: 'full' });
+    for (const marker of [consensus, research, independent]) assert.equal(baseline.split('\n').filter(line => line.includes(marker)).length, 1, host + ': ' + marker);
+    assert.ok(!baseline.includes('Split a large job only when'));
+    for (const old of [{ consensus: false }, { research: false }, { research: true }, { split: true }, { terse: true }, { workers: { codex: false } }]) {
+      assert.equal(hosts.rules(host, { rules: 'full', ...old }), baseline, host + ' ' + JSON.stringify(old));
     }
   }
 });
 
-// Full start text: the tiny default adds the on-demand routing table on Claude Code.
-test('consensus false removes only its line for every host', () => {
-  for (const host of ['claude-code', 'codex', 'generic']) {
-    const baseline = hosts.rules(host, { rules: 'full', rules: 'full' });
-    assert.ok(baseline.includes(consensus));
-    assert.equal(hosts.rules(host, { rules: 'full', consensus: true }), baseline);
-    for (const value of [undefined, null, 0, 'false']) {
-      assert.equal(hosts.rules(host, { rules: 'full', consensus: value }), baseline);
-    }
-    const enabled = hosts.rules(host, { rules: 'full', consensus: true, terse: true });
-    const disabled = hosts.rules(host, { rules: 'full', consensus: false, terse: true });
-    assert.equal(disabled, enabled.split('\n').filter(line => !line.includes(consensus)).join('\n'));
-    const off = hosts.rules(host, { rules: 'full', consensus: false });
-    const expected = baseline.replace(/^.*use `consensus` before deciding.*(?:\n|$)/m, '');
-    assert.equal(off, host === 'claude-code' ? expected.trimEnd() : expected);
-    assert.ok(!off.includes(consensus));
-    if (host === 'claude-code') assert.equal(off, off.trimEnd());
-  }
-});
-
-test('rule filtering preserves neighbours and handles absent or unreadable rules', () => {
+test('rules handle absent or unreadable templates', () => {
   const original = lib.readBounded;
-  let content = 'before\nremove: use `consensus` before deciding\nafter';
-  lib.readBounded = (file, size) => path.basename(file) === 'RULES.md' ? content : original(file, size);
   try {
-    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), 'before\nafter');
-    content = 'before\nremove: use `consensus` before deciding';
-    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), 'before');
-    content = 'before\nafter';
-    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), content);
     lib.readBounded = () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); };
-    assert.equal(hosts.rules('claude-code', { rules: 'full', consensus: false }), '');
+    assert.equal(hosts.rules('claude-code', { rules: 'full' }), '');
     lib.readBounded = () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
     assert.throws(() => hosts.rules('claude-code'), /denied/);
   } finally { lib.readBounded = original; }

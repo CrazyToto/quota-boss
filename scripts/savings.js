@@ -215,7 +215,9 @@ function collect(options) {
   const runs = jsonLines(io.read(path.join(paths.quotaBossHome, 'runs.jsonl')))
     .filter(e => e.ok === true && Number.isFinite(e.seconds) && e.seconds > 0 && typeof e.model === 'string'
       && lib.TIERS.includes(e.tier) && inWindow(e.t, now, Math.min(days, latency.MAX_DAYS)));
-  return { jobs, usage, runs };
+  const outcomes = jsonLines(io.read(paths.outcomesFile || path.join(paths.quotaBossHome, 'outcomes.jsonl')))
+    .filter(e => lib.validOutcome(e) && !e.bench && inWindow(e.t, now, Math.min(days, 90)));
+  return { jobs, usage, runs, outcomes };
 }
 function windowUse(jobs, key) {
   const runs = jobs.map(j => ({ ...j.windows[key], start: j.start, end: j.end }))
@@ -286,7 +288,7 @@ function formatReport(data, options) {
   const scope = options.all ? 'all projects' : 'project ' + lib.sanitizeLabel(path.basename(options.root));
   const lines = ['Quota Boss savings - ' + span(jobs, options) + ', ' + scope];
   const footer = 'Units are relative model prices from local transcripts, not a bill.';
-  if (!jobs.length && !usage.length && !runs.length) return [...lines, 'No sessions found in this window.', footer].join('\n');
+  if (!jobs.length && !usage.length && !runs.length && !(options.details && data.outcomes?.length)) return [...lines, 'No sessions found in this window.', footer].join('\n');
   const total = sum(jobs, 'units'), bosses = jobs.filter(j => j.role === 'boss'), workers = jobs.filter(j => j.role !== 'boss');
   const bossModels = byUnits(grouped(bosses, j => j.model));
   lines.push('');
@@ -354,6 +356,12 @@ function details(data, bosses, workers, total) {
     lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd'].map(unit => group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0) || '-').join(' | ')));
   section('Time per job (all projects): model / tier | count | median time', grouped(runs, e => e.model + ' / ' + e.tier).map(([, group]) =>
     lib.sanitizeLabel(group[0].model) + ' / ' + group[0].tier + ': ' + group.length + ' | ' + time(median(group.map(e => e.seconds)))));
+  const results = grouped(data.outcomes || [], e => lib.sanitizeLabel(e.model) + ' / ' + e.category)
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  section('Results (all projects): model / category | pass rate | pass | fail', results.map(([key, group]) => {
+    const count = result => group.filter(e => e.result === result).length, pass = count('pass'), fail = count('fail');
+    return key + ': ' + (pass + fail ? Math.round(100 * pass / (pass + fail)) + '%' : '?') + ' | ' + pass + ' | ' + fail;
+  }));
   return lines;
 }
 function savings(options = {}) {

@@ -160,13 +160,14 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     // Astra and GPT-6.1 Sol are rated equal here, so the far cheaper one gives the second opinion.
     assert.match(formatTable(r), /option:consensus=GPT-6\.1-Sol,high/);
     assert.ok(r.rows.filter(c => c !== row).every(c => !c.options.includes('consensus')));
-    for (const extra of [{ workers: { codex: false, gpt: false } }, { consensus: false },
+    // A stored consensus or workers field from before 0.2.0 changes nothing.
+    for (const old of [{ consensus: false }, { workers: { codex: false, gpt: false } }]) assert.match(formatTable(route({ ...config, ...old })), /option:consensus=GPT-6\.1-Sol,high/);
+    for (const extra of [{ providers: lib.mergeProviders(config.providers, { providers: { codex: { enabled: false } } }) },
       { limits: { codex: { primary: { used_percent: 100 } } } },
       { caps: { codex: { weekly: 20 } }, limits: { codex: { secondary: { used_percent: 20 } } } },
       { providers: lib.mergeProviders(config.providers, { providers: { codex: { tos: 'avoid' } } }) }]) {
       assert.doesNotMatch(formatTable(route({ ...config, ...extra })), /option:consensus/);
     }
-    assert.match(formatTable(route({ ...config, workers: { codex: false, gpt: true } })), /option:consensus/);
     const unavailable = Object.entries(config.models.models).filter(([, m]) => m.pool === 'codex').map(([model]) =>
       ({ t: 0, model, category: 'mechanical', tier: 'normal', result: 'unavailable' }));
     assert.doesNotMatch(formatTable(route({ ...config, outcomes: unavailable, now: 1 })), /option:consensus/);
@@ -183,15 +184,15 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     const lines = text.split('\n').filter(l => l.includes(' | ') && !l.startsWith('  '));
     assert.ok(lines.every(l => l.indexOf(' | ') === lines[0].indexOf(' | ')));
     assert.match(text, /set profile <quality\|balanced\|frugal>/);
-    assert.match(cli.run(['explain', 'short-answers']), /quota: saves/);
+    assert.throws(() => cli.run(['explain', 'profile']));
     const entries = settings.entries(lib.findProjectConfig(), lib.loadConfig());
-    assert.equal(entries.length, 14);
+    assert.deepEqual(entries.map(e => e.key), ['enabled', 'profile', 'host', 'training', 'statusline', 'context']);
     const listed = Object.keys(defaults.providers).filter(id => defaults.providers[id].kind !== 'local');
     for (const id of listed) assert.match(text, new RegExp('^  ' + id + ' +(on|off) ', 'm'));
     assert.equal(text.split('\n').filter(l => /^  \S+ +(on|off) /.test(l)).length, listed.length);
     for (const { key, help } of entries) {
       assert.ok(text.includes(key));
-      assert.ok(cli.run(['explain', key]).includes(help.title));
+      assert.ok(text.includes(help.what), key);
     }
     for (const h of Object.values(settings.HELP)) {
       assert.deepEqual(Object.keys(h), ['title', 'what', 'quality', 'quota', 'when', 'advanced']);
@@ -207,12 +208,12 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     for (const command of ['training', 'short-answers', 'consensus']) {
       for (const args of [[], ['yes'], ['on', 'extra'], ['off;bad']]) assert.throws(() => cli.run(['set', command, ...args]));
     }
-    for (const args of [['settings', 'extra'], ['explain'], ['explain', 'missing'], ['explain', 'short-answers', 'extra']]) assert.throws(() => cli.run(args));
+    for (const args of [['settings', 'extra'], ['explain'], ['explain', 'missing']]) assert.throws(() => cli.run(args));
     assert.equal((projectValue() !== undefined), false);
     lib.saveProject(project, { enabled: true, rules: 'full', custom: { keep: 42 } });
     cli.run(['use', 'opencode-free', 'on']);
     assert.doesNotMatch(cli.run(['route']), /OpenCode free/);
-    for (const [command, key] of [['training', 'allowTrainingProviders'], ['short-answers', 'terse'], ['consensus', 'consensus']]) {
+    for (const [command, key] of [['training', 'allowTrainingProviders']]) {
       for (const value of ['on', 'off']) {
         const output = cli.run(['set', command, value]);
         assert.equal(output.split('\n').filter(l => l.startsWith('Effect:')).length, 1);
@@ -221,16 +222,16 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       }
     }
     cli.run(['set', 'training', 'on']); assert.match(cli.run(['route', '--explain']), /OpenCode free/);
-    cli.run(['set', 'short-answers', 'on']); assert.match(capture(require('../scripts/hook-session').main), /Keep answers terse:/);
-    cli.run(['set', 'short-answers', 'off']); assert.doesNotMatch(capture(require('../scripts/hook-session').main), /Keep answers terse:/);
+    assert.throws(() => cli.run(['set', 'short-answers', 'on']), /short-answers was removed in 0\.2\.0/);
+    assert.equal(projectValue().custom.keep, 42);
   });
 
   test('every settings mutation reports one computed effect including actual cap and usage', () => {
     lib.atomicWrite(path.join(process.env.CODEX_HOME, 'sessions', 'log.jsonl'), JSON.stringify({ payload: { type: 'token_count',
       rate_limits: { secondary: { used_percent: 5 } } } }) + '\n');
-    for (const args of [['on'], ['off'], ['on', '--host', 'codex'], ['set', 'profile', 'quality'], ['set', 'codex-tasks', 'off'],
+    for (const args of [['on'], ['off'], ['on', '--host', 'codex'], ['set', 'profile', 'quality'], ['use', 'codex', 'off'], ['use', 'codex', 'on'],
       ['use', 'opencode-free', 'on'], ['use', 'opencode-free', 'off'], ['cap', 'codex', 'weekly', '70'],
-      ['set', 'training', 'on'], ['set', 'short-answers', 'on']]) {
+      ['set', 'training', 'on']]) {
       const output = cli.run(args);
       assert.equal(output.split('\n').filter(l => l.startsWith('Effect:')).length, 1);
       assert.match(output, /Suggested task slots by provider:/);
@@ -257,20 +258,19 @@ test.describe('free/local providers, code intelligence, consensus and settings',
   });
 
   test('doctor keeps malformed project options inside its config diagnostic boundary', () => {
-    for (const config of [{ caps: false }, { allowTrainingProviders: 'true' }, { consensus: 'on' }]) {
+    for (const config of [{ caps: false }, { allowTrainingProviders: 'true' }]) {
       lib.saveProject(project, config);
       assert.match(fakeDoctor(false, { platform: 'linux', spawnSync: () => ({ status: 1 }) }), /Config: invalid/);
     }
+    lib.saveProject(project, { consensus: 'on' });
+    assert.doesNotMatch(fakeDoctor(false, { platform: 'linux', spawnSync: () => ({ status: 1 }) }), /Config: invalid/);
   });
 
-  test('training opt-in also governs boss recommendations and critical self fallback', () => {
+  test('training opt-in also governs the critical self fallback', () => {
     const config = lib.loadConfig();
     config.providers.providers.claude.trainsOnData = true;
-    const hosts = require('../scripts/hosts');
-    assert.match(hosts.recommend(config), /codex with/);
-    assert.match(hosts.recommend({ ...config, allowTrainingProviders: true }), /claude-code with/);
-    const result = route({ ...config, workers: { codex: false, gpt: false, perplexity: false },
-      limits: { claude: { five_hour: { used_percentage: 99 } } } });
+    for (const id of ['codex', 'perplexity']) config.providers.providers[id].enabled = false;
+    const result = route({ ...config, limits: { claude: { five_hour: { used_percentage: 99 } } } });
     assert.equal(result.rows.length, 0);
   });
 
@@ -291,7 +291,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.equal(fs.existsSync(path.join(process.env.QUOTA_BOSS_HOME, 'config', 'settings-help.json')), false);
     const installed = require(path.join(process.env.QUOTA_BOSS_HOME, 'scripts', 'quota-boss.js'));
     assert.match(installed.run(['settings']), /Change with/);
-    assert.match(installed.run(['explain', 'training']), /training/);
+    assert.match(installed.run(['settings']), /training/);
     const setupFile = path.join(process.env.CLAUDE_CONFIG_DIR, 'commands', 'boss-setup.md');
     const before = fs.readFileSync(setupFile, 'utf8');
     install(options);

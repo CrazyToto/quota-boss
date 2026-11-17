@@ -56,23 +56,75 @@ test.describe('use', () => {
     assert.deepEqual(lib.findProjectConfig().use.providersOff, []);
   });
 
-  test('only is reversible and raw provider writes never persist filtered flags', () => {
-    run('use', 'perplexity', 'off');
-    run('only', 'claude', 'claude');
-    assert.deepEqual(lib.readJson(lib.useFile()), { only: ['claude'], modelsOff: [] });
+  test('a stored only filter from before 0.2.0 keeps excluding, also training providers, and cannot be set again', () => {
+    lib.writeJson(userFile('providers'), { providers: { 'opencode-free': { enabled: true } } });
+    lib.saveProject(project, { allowTrainingProviders: true });
+    assert.equal(provider('opencode-free').enabled, true);
+    lib.writeJson(lib.useFile(), { only: ['claude', 'codex'], modelsOff: [] });
+    assert.equal(provider('claude').enabled, true);
+    assert.equal(provider('codex').enabled, true);
+    for (const id of ['perplexity', 'grok', 'opencode-free']) assert.equal(provider(id).enabled, false, id + ' stays outside the global filter');
+    lib.saveProject(project, { allowTrainingProviders: true, use: { only: ['claude'] } });
+    assert.equal(provider('codex').enabled, false, 'the project filter narrows further');
+    assert.equal(provider('claude').enabled, true);
+    assert.throws(() => run('only', 'claude'));
+    assert.match(run('use'), /^  codex +off \(only filter\)/m);
+    assert.match(run('use'), /^  perplexity +off \(only filter\)/m);
+  });
+
+  test('use <id> on lets that one provider through a stored only filter, never more', () => {
+    lib.writeJson(lib.useFile(), { only: ['claude'], modelsOff: [] });
+    lib.saveProject(project, { use: { only: ['claude'] } });
+    assert.match(run('use', 'codex', 'on', '--project'), /Still off globally\. Turn it on with: quota-boss use codex on/);
+    assert.deepEqual(lib.findProjectConfig().use.only, ['claude', 'codex']);
+    assert.deepEqual(lib.readUse().only, ['claude']);
     assert.equal(provider('codex').enabled, false);
+    run('use', 'codex', 'on', '--no-test');
+    assert.deepEqual(lib.readUse().only, ['claude', 'codex']);
+    assert.equal(provider('codex').enabled, true);
+    for (const id of ['perplexity', 'grok']) assert.equal(provider(id).enabled, false, id + ' stays outside');
+    assert.match(run('use', 'perplexity', 'on', '--no-test'), /Still off by the project only filter\. Turn it on with: quota-boss use perplexity on --project/);
+    assert.deepEqual(lib.readUse().only, ['claude', 'codex', 'perplexity']);
+    assert.equal(provider('perplexity').enabled, false);
     run('use', 'grok', 'off');
-    assert.deepEqual(Object.keys(lib.readJson(userFile('providers')).providers).sort(), ['grok', 'perplexity']);
-    run('only', 'off');
+    assert.deepEqual(lib.readUse().only, ['claude', 'codex', 'perplexity'], 'off never touches the filter');
+    lib.writeJson(lib.useFile(), { modelsOff: [] });
+    run('use', 'grok', 'on', '--no-test');
+    assert.equal(Object.hasOwn(lib.readJson(lib.useFile()), 'only'), false, 'no filter is created');
+  });
+
+  test('a project use write drops the old worker switches and keeps their effect until turned on', () => {
+    lib.saveProject(project, { workers: { codex: false, gpt: false, perplexity: false } });
+    run('use', 'grok', 'off', '--project');
+    const saved = lib.readProjects()[lib.projectKey(project)];
+    assert.equal(Object.hasOwn(saved, 'workers'), false);
+    assert.deepEqual(saved.use.providersOff, ['codex', 'perplexity', 'grok']);
+    run('use', 'codex', 'on', '--project');
     assert.equal(provider('codex').enabled, true);
     assert.equal(provider('perplexity').enabled, false);
-    assert.equal(provider('grok').enabled, false);
-    assert.equal(lib.readJson(lib.useFile()).only, undefined);
-    run('only', 'codex');
-    run('use', 'grok', 'on', '--no-test');
-    assert.equal(provider('grok').enabled, false);
-    run('only', 'off');
-    assert.equal(provider('grok').enabled, true);
+  });
+
+  test('raw provider writes stay minimal', () => {
+    run('use', 'perplexity', 'off');
+    run('use', 'grok', 'off');
+    assert.deepEqual(Object.keys(lib.readJson(userFile('providers')).providers).sort(), ['grok', 'perplexity']);
+    assert.equal(provider('perplexity').enabled, false);
+    assert.equal(provider('codex').enabled, true);
+    assert.doesNotMatch(run('use'), /only/);
+  });
+
+  test('stored worker switches from before 0.2.0 keep codex and perplexity off for that project; gpt alone is dropped', () => {
+    lib.saveProject(project, { workers: { gpt: false } });
+    assert.equal(provider('codex').enabled, true);
+    assert.deepEqual(lib.findProjectConfig().use.providersOff, []);
+    lib.saveProject(project, { workers: { codex: false, gpt: true, perplexity: true } });
+    assert.equal(provider('codex').enabled, false);
+    assert.equal(provider('perplexity').enabled, true);
+    lib.saveProject(project, { workers: { codex: true, perplexity: false }, use: { providersOff: ['perplexity', 'grok'] } });
+    assert.equal(provider('codex').enabled, true);
+    assert.equal(provider('perplexity').enabled, false);
+    assert.deepEqual(lib.findProjectConfig().use.providersOff, ['perplexity', 'grok']);
+    assert.match(run('use'), /^  perplexity +off \(this project\)/m);
   });
 
   test('global and project model switches preserve model data and exclude delegation', () => {
@@ -107,19 +159,11 @@ test.describe('use', () => {
     run('use', 'codex', 'off');
     assert.match(run('use', 'codex', 'on', '--project'), /Still off globally.*quota-boss use codex on/);
     assert.equal(provider('codex').enabled, false);
-    run('use', 'codex', 'on');
+    run('use', 'codex', 'on', '--no-test');
     assert.equal(provider('codex').enabled, true);
-    run('only', 'claude');
-    assert.match(run('use', 'codex', 'on', '--project'), /quota-boss only off/);
-    assert.equal(provider('codex').enabled, false);
-    run('only', 'off');
-    run('only', 'claude', '--project');
-    assert.match(run('use', 'codex', 'on', '--project'), /quota-boss only off --project/);
-    run('only', 'off', '--project');
+    assert.doesNotMatch(run('use', 'codex', 'on', '--project'), /Still off/);
     assert.equal(provider('codex').enabled, true);
     run('use', 'perplexity', 'off', '--project');
-    run('only', 'claude', '--project');
-    run('only', 'off', '--project');
     assert.equal(provider('perplexity').enabled, false);
     assert.equal(provider('codex').enabled, true);
     process.chdir(temporary);
@@ -129,17 +173,13 @@ test.describe('use', () => {
   test('invalid forms and disabled-only selections fail without writing', () => {
     for (const args of [['use', 'missing', 'off'], ['use', '../x', 'off'], ['use', 'constructor', 'on'],
       ['use', 'grok'], ['use', 'grok', 'yes'], ['use', '--project'], ['use', 'codex', 'off', '--project', '--project'],
-      ['use', 'codex', 'off', 'extra'], ['only'], ['only', 'missing'], ['only', 'grok'], ['only', 'grok', 'local'],
-      ['only', 'gpt-6.1-terra'], ['only', 'off', 'claude'], ['only', '--project', 'claude']]) {
+      ['use', 'codex', 'off', 'extra'], ['only'], ['only', 'claude'], ['only', 'off']]) {
       assert.throws(() => cli.run(args), args.join(' '));
     }
     assert.throws(() => run('use', 'missing', 'on'), /neither a provider id nor a model id.*quota-boss use/);
     assert.equal(fs.existsSync(lib.getPaths().projectsFile), false);
     assert.equal(fs.existsSync(lib.useFile()), false);
     assert.equal(fs.existsSync(userFile('providers')), false);
-    run('only', 'claude', 'grok'); // A disabled provider may be part of a usable selection.
-    assert.equal(provider('claude').enabled, true);
-    assert.equal(provider('grok').enabled, false);
   });
 
   test('use input normalization ignores junk, deduplicates ids and tolerates corrupt JSON', () => {
@@ -174,22 +214,20 @@ test.describe('use', () => {
 
   test('boss model stays available for a full self table, while host-pool disabling keeps existing behavior', () => {
     lib.writeState({ bossModel: 'claude-opus-5-5' });
-    lib.saveProject(project, { enabled: true, host: 'claude-code', workers: { codex: false, gpt: false, perplexity: false } });
+    lib.saveProject(project, { enabled: true, host: 'claude-code' });
+    const others = Object.keys(lib.loadConfig().providers.providers).filter(id => id !== 'claude');
     for (const scope of [[], ['--project']]) {
       assert.match(run('use', 'claude-opus-5-5', 'off', ...scope), /boss itself keeps running on its model; this only stops delegation to it/);
-      run('only', 'claude', ...scope);
+      for (const id of others) if (scope.length || lib.loadConfig().providers.providers[id].kind !== 'local') run('use', id, 'off', ...scope);
       const result = routed();
       assert.equal(result.rows.length, lib.CATEGORIES.length * lib.TIERS.length);
       assert.equal(result.candidates.filter(c => c.via === 'self' && c.model === 'claude-opus-5-5').length, lib.CATEGORIES.length * lib.TIERS.length);
       assert.ok(result.rows.some(r => r.via === 'self' && r.model === 'claude-opus-5-5'));
       assert.ok(result.candidates.filter(c => c.model === 'claude-opus-5-5').every(c => c.via === 'self'));
-      run('only', 'off', ...scope);
+      for (const id of others) if (scope.length || lib.loadConfig().providers.providers[id].kind !== 'local') run('use', id, 'on', ...scope, ...(scope.length ? [] : ['--no-test']));
       run('use', 'claude-opus-5-5', 'on', ...scope);
     }
     assert.match(run('use', 'claude', 'off'), /boss itself keeps running/);
-    assert.ok(routed().candidates.every(c => c.pool !== 'claude'));
-    run('use', 'claude', 'on');
-    assert.match(run('only', 'codex'), /boss itself keeps running/);
     assert.ok(routed().candidates.every(c => c.pool !== 'claude'));
   });
 
@@ -201,25 +239,22 @@ test.describe('use', () => {
     assert.ok(routed().candidates.filter(c => c.model === 'gpt-6.1-terra').every(c => c.via === 'self'));
   });
 
-  test('listing groups providers, explains filters, quota, model switches and worker restrictions', () => {
+  test('listing groups providers, quota, model switches and project switches', () => {
     lib.writeState({ claude: { five_hour: { used_percentage: 25 }, seven_day: { used_percentage: 50 } } });
     lib.saveProject(project, { workers: { codex: false, gpt: false } });
     run('use', 'gpt-6.1-terra', 'off');
-    run('only', 'claude', 'codex');
+    run('use', 'perplexity', 'off');
     run('use', 'codex', 'off', '--project');
     const report = run('use');
-    assert.match(report, /^Subscriptions \(global only: claude, codex\)/);
+    assert.match(report, /^Subscriptions\n/);
     assert.match(report, /Free, API, local and manual/);
     assert.match(report, /^  claude +on +5h 75% left, week 50% left$/m);
     assert.match(report, /^  codex +off \(this project\)/m);
-    assert.match(report, /^  perplexity +off \(only filter\)$/m);
+    assert.match(report, /^  perplexity +off$/m);
     assert.match(report, /^  grok +off$/m);
     assert.match(report, /^      .*gpt-6\.1-sol, gpt-6\.1-terra \(off\)/m);
-    assert.match(report, /set codex-tasks off/);
-    assert.match(report, /set gpt-reviews off/);
+    assert.doesNotMatch(report, /codex-tasks|gpt-reviews|only/);
     assert.match(report, /quota-boss use <provider-id\|model-id> on\|off \[--project\]/);
     assert.ok(report.split('\n').every(line => line.length <= 110));
-    run('only', 'claude', '--project');
-    assert.match(run('use'), /^Subscriptions .*project only: claude/);
   });
 });

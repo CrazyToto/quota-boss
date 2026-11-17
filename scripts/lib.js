@@ -13,7 +13,7 @@ const RATE_LIMIT_MINUTES = 15;
 const PROFILES = ['quality', 'balanced', 'frugal'];
 const HOSTS = ['claude-code', 'codex', 'generic'];
 const DEFAULT_RULES = 'tiny';
-const WORKERS = ['codex', 'gpt', 'perplexity'];
+const LEGACY_WORKERS = ['codex', 'perplexity'];
 const CONTEXT_SUGGEST_DEFAULT = 100000, CONTEXT_SUGGEST_MIN = 20000, CONTEXT_SUGGEST_MAX = 2000000;
 
 /** Resolve runtime paths without accessing credentials. */
@@ -294,8 +294,8 @@ function loadConfig(project = findProjectConfig(), options = {}) {
     return merged;
   };
   const models = load('models');
-  const globalUse = readUse(), projectUse = normalizeUse(project?.use);
-  const off = new Set([...globalUse.modelsOff, ...projectUse.modelsOff]);
+  const globalUse = readUse(), localUse = normalizeUse(project?.use);
+  const off = new Set([...globalUse.modelsOff, ...localUse.modelsOff]);
   // route treats the resolved boss as self, never as a delegate. Keep that identity available.
   const boss = off.size ? delegationBoss(models, project) : null;
   for (const id of off) if (id !== boss && Object.hasOwn(models.models, id) && models.models[id]) {
@@ -318,9 +318,17 @@ function useFile() { return path.join(getPaths().quotaBossHome, 'config', 'use.j
 function normalizeUse(value) {
   const use = object(value);
   const ids = (value, valid) => [...new Set((Array.isArray(value) ? value : []).filter(valid))];
+  // `only` can no longer be set (removed in 0.2.0), but a stored filter keeps excluding until `use <id> on` clears it.
   const only = ids(use.only, validProviderId);
   return { ...(only.length ? { only } : {}),
     providersOff: ids(use.providersOff, validProviderId), modelsOff: ids(use.modelsOff, validUseModelId) };
+}
+/** A project's use filters. A stored worker switch that was off (removed in 0.2.0) keeps its provider off for this project;
+ * workers.gpt alone is dropped. */
+function projectUse(config) {
+  const use = normalizeUse(object(config).use), workers = object(object(config).workers);
+  for (const id of LEGACY_WORKERS) if (workers[id] === false && !use.providersOff.includes(id)) use.providersOff.push(id);
+  return use;
 }
 function readUse() { return normalizeUse(readJson(useFile(), {})); }
 function delegationBoss(models, project) {
@@ -335,22 +343,17 @@ function statuslineFile() { return path.join(getPaths().quotaBossHome, 'config',
 /** Personal choice for the whole machine: keep the Claude and Codex numbers visible where boss mode is off. */
 function showsWithoutBoss() { return object(readJson(statuslineFile(), {})).showWithoutBoss === true; }
 
-/** Normalize project enums and worker switches before using them in context. */
+/** Normalize project enums before using them in context. Settings removed in 0.2.0 (terse, rules, consensus, split,
+ * research, workers) are ignored when stored; Claude Code always starts with tiny rules. */
 function normalizeProject(value) {
   const config = object(value);
-  const workers = object(config.workers);
   return { enabled: config.enabled === true,
     host: HOSTS.includes(config.host) ? config.host : 'claude-code',
-    terse: config.terse === true,
-    rules: ['tiny', 'full'].includes(config.rules) ? config.rules : DEFAULT_RULES,
+    rules: DEFAULT_RULES,
     allowTrainingProviders: config.allowTrainingProviders === true,
-    consensus: config.consensus !== false,
-    split: config.split === true,
-    research: config.research === true,
     contextSuggest: config.contextSuggest === false || Number.isInteger(config.contextSuggest) && config.contextSuggest >= CONTEXT_SUGGEST_MIN && config.contextSuggest <= CONTEXT_SUGGEST_MAX ? config.contextSuggest : CONTEXT_SUGGEST_DEFAULT,
     profile: PROFILES.includes(config.profile) ? config.profile : 'balanced',
-    workers: Object.fromEntries(WORKERS.map(key => [key, workers[key] === undefined || workers[key] === true])),
-    use: normalizeUse(config.use),
+    use: projectUse(config),
     caps: config.caps === undefined ? {} : validateCaps(config.caps) };
 }
 
@@ -815,7 +818,7 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
   if (!Object.hasOwn(object(models?.models), entry.model) && !cache.some(m => m?.slug === entry.model)) {
     const word = String(entry.model).toLowerCase().replace(/[^a-z0-9]+/g, '');
     const near = word.length >= 3 ? Object.keys(object(models?.models)).filter(id => id.replace(/[^a-z0-9]/gi, '').toLowerCase().includes(word)).sort().slice(0, 3) : [];
-    throw new Error('Feedback model must exist in the registry or Codex cache.' + (near.length ? ' Did you mean ' + near.join(' or ') + '?' : ' Run quota-boss models for the ids.'));
+    throw new Error('Feedback model must exist in the registry or Codex cache.' + (near.length ? ' Did you mean ' + near.join(' or ') + '?' : ' Run quota-boss use for the ids.'));
   }
   if (value.effort !== undefined) {
     if (!EFFORT_ORDER.includes(value.effort)) throw new Error('Feedback effort is invalid.');
@@ -956,10 +959,10 @@ function loadProviders(project = {}, options = {}) {
   const paths = getPaths();
   const config = mergeProviders(BUILTIN_PROVIDERS,
     options.userConfig === false ? {} : readProviderConfig(path.join(paths.quotaBossHome, 'config', 'providers.json')), project);
-  const globalUse = readUse(), projectUse = normalizeUse(project.use);
+  const globalUse = readUse(), local = projectUse(project);
   for (const [id, provider] of Object.entries(config.providers)) {
-    if (globalUse.only && !globalUse.only.includes(id) || projectUse.providersOff.includes(id)
-      || projectUse.only && !projectUse.only.includes(id)) provider.enabled = false;
+    if (globalUse.only && !globalUse.only.includes(id) || local.providersOff.includes(id)
+      || local.only && !local.only.includes(id)) provider.enabled = false;
   }
   if (project.host === 'codex' && config.providers.claude?.quota.source === 'claude-statusline') {
     const claude = readState().claude;
@@ -1281,7 +1284,7 @@ function askLine(question) {
   try { return buffer.toString('utf8', 0, fs.readSync(0, buffer, 0, buffer.length, null)).trim(); } catch { return ''; }
 }
 
-module.exports = { cliFingerprint, systemLink, normalizeUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, WORKERS, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

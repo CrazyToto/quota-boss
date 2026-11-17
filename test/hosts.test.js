@@ -114,18 +114,13 @@ test.describe('hosts and diagnostics', () => {
       assert.equal(text.includes('If a table row names'), !claude || !cliWorker);
       if (!claude || !cliWorker) assert.match(text, /rules --host codex and follow that worker's section/);
     };
-    cli.run(['only', 'codex']); check(false, false);
-    cli.run(['only', 'off']);
-    cli.run(['use', 'claude', 'on']);
-    cli.run(['only', 'claude', 'codex']); check(true, false);
-    cli.run(['use', 'grok', 'on', '--no-test']);
-    cli.run(['only', 'off']); check(true, true);
+    cli.run(['use', 'claude', 'off']); check(false, false);
+    cli.run(['use', 'claude', 'on']); check(true, false);
+    cli.run(['use', 'grok', 'on', '--no-test']); check(true, true);
     cli.run(['use', 'claude', 'off', '--project']); check(false, true);
-    cli.run(['only', 'codex', '--project']); check(false, false);
-    cli.run(['only', 'off', '--project']);
-    cli.run(['use', 'claude', 'on', '--project']); check(true, true);
-    cli.run(['use', 'grok', 'off', '--project']);
-    cli.run(['only', 'claude', 'codex', '--project']); check(true, false);
+    cli.run(['use', 'grok', 'off', '--project']); check(false, false);
+    cli.run(['use', 'claude', 'on', '--project']); check(true, false);
+    cli.run(['use', 'grok', 'on', '--project']); check(true, true);
     const generic = hosts.rules('generic');
     cli.run(['use', 'claude', 'off']);
     assert.equal(hosts.rules('generic'), generic);
@@ -156,9 +151,9 @@ test.describe('hosts and diagnostics', () => {
     for (const directory of [project, other]) assert.match(fs.readFileSync(path.join(directory, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
     assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').startsWith('Prefix\n'));
     assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').endsWith('\nSuffix'));
-    cli.run(['only', 'codex']);
+    cli.run(['use', 'claude', 'off']);
     assert.doesNotMatch(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: (claude|cli)-worker$/m);
-    cli.run(['only', 'off']);
+    cli.run(['use', 'claude', 'on']);
     cli.run(['local', 'on', 'tiny']);
     assert.match(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: cli-worker$/m);
     cli.run(['local', 'off']);
@@ -174,25 +169,24 @@ test.describe('hosts and diagnostics', () => {
   test('host CLI forms reject extra, missing, duplicate, and injected arguments before writes', () => {
     for (const args of [['on', '--host'], ['on', '--host', 'bad'], ['on', '--host', 'codex', '--host', 'codex'],
       ['on', '--host=codex'], ['on', 'balanced', 'quality'], ['rules'], ['rules', '--host', 'codex', 'x'],
-      ['rules', '--host', 'codex;evil'], ['boss', 'x'], ['doctor', '--probe', '--probe'], ['doctor', '--bad'],
-      ['stats', '--days', '0'], ['stats', '--days', '366'], ['stats', '--days', '1e2'], ['stats', '--days', '2', 'x']]) {
+      ['rules', '--host', 'codex;evil'], ['boss'], ['doctor', '--probe', '--probe'], ['doctor', '--bad'], ['stats']]) {
       assert.throws(() => cli.run(args), args.join(' '));
       assert.equal((projectValue() !== undefined), false);
       assert.equal(fs.existsSync(path.join(project, 'AGENTS.md')), false);
     }
   });
-  test('rules support every host and terse adds exactly one fixed instruction', () => {
+  test('rules support every host and an old stored terse switch adds nothing', () => {
     lib.saveProject(project, { enabled: true, terse: true, host: 'codex' });
     for (const host of lib.HOSTS) {
       const text = cli.run(['rules', '--host', host]);
-      assert.equal(text.split('Keep answers terse:').length, 2);
+      assert.doesNotMatch(text, /Keep answers terse/);
       assert.match(text, /^\[quota-boss\]/);
       if (host === 'generic') assert.match(text, /cli-run\.js"? --provider/);
     }
     cli.run(['on', '--host', 'codex']);
-    assert.match(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), /Keep answers terse:/);
+    assert.doesNotMatch(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), /Keep answers terse/);
     assert.equal(lib.normalizeProject({ host: 'inject\n', terse: 'true' }).host, 'claude-code');
-    assert.equal(lib.normalizeProject({ terse: 'true' }).terse, false);
+    assert.equal(lib.normalizeProject({ terse: true }).terse, undefined);
   });
   test('Claude hooks stay silent for Codex and generic hosts', () => {
     const original = {input:lib.readInput,out:process.stdout.write}; let output='';
@@ -205,35 +199,6 @@ test.describe('hosts and diagnostics', () => {
       }
     } finally {lib.readInput=original.input;process.stdout.write=original.out;}
     assert.equal(output,'');assert.equal(fs.existsSync(lib.getPaths().stateFile),false);
-  });
-  test('boss scores host-capable enabled models and breaks ties on cost', () => {
-    assert.match(cli.run(['boss']), /claude-code with Opus 5.5 .*boss score 10.0/);
-    const config = lib.loadConfig();
-    config.models.models = {
-      expensive: { pool: 'claude', label: 'Expensive', cost: 10, scores: { architecture: 8, review: 8 } },
-      cheap: { pool: 'codex', label: 'Cheap\n<script>', cost: 2, scores: { architecture: 8, review: 8 } }
-    };
-    assert.match(hosts.recommend(config), /codex with Cheapscript .*boss score 8.0/);
-    const start = Date.UTC(2026, 0, 1), limited = [{ t: start, model: 'cheap', category: 'review', tier: 'normal', result: 'limited' }];
-    assert.match(hosts.recommend(config, limited, start + 60000), /claude-code with Expensive/);
-    config.providers.providers.codex.tos = 'avoid';
-    assert.match(hosts.recommend(config), /claude-code/);
-    config.providers.providers.claude.enabled = false;
-    assert.match(hosts.recommend(config), /No enabled provider/);
-  });
-  test('a boss within half a point of the best wins on price, and the other host is named too', () => {
-    const config = lib.loadConfig();
-    config.models.models = {
-      astra: { pool: 'codex', label: 'Astra', cost: 32, scores: { architecture: 9, review: 9 } },
-      sol: { pool: 'codex', label: 'Sol', cost: 5, scores: { architecture: 9, review: 8 } },
-      opus: { pool: 'claude', label: 'Opus', cost: 10, scores: { architecture: 10, review: 10 } },
-      sonnet: { pool: 'claude', label: 'Sonnet', cost: 5, scores: { architecture: 8, review: 8 } }
-    };
-    const text = hosts.recommend(config);
-    assert.match(text, /^claude-code with Opus \(opus, boss score 10\.0, cost 10\)/);
-    assert.match(text, /other host: codex with Sol \(sol, boss score 8\.6, cost 5\)/);
-    config.providers.providers.claude.enabled = false;
-    assert.doesNotMatch(hosts.recommend(config), /other host/);
   });
   test('doctor without probe runs only fixed local checks and never echoes CLI output or credentials', () => {
     const calls = [];
@@ -258,8 +223,12 @@ test.describe('hosts and diagnostics', () => {
     try {
       assert.match(cli.run(['doctor']), /Install manifest: OK/);
       assert.ok(calls.every(args => args[0] !== 'exec'));
-      for (const config of [{enabled:'true'}, {host:'evil'}, {workers:[]}, {workers:{codex:'yes'}}, {terse:1}]) {
+      for (const config of [{enabled:'true'}, {host:'evil'}]) {
         lib.saveProject(project,config); assert.match(cli.run(['doctor']),/Config: invalid/);
+      }
+      // Fields of settings removed in 0.2.0 are ignored, never an error.
+      for (const config of [{workers:[]}, {workers:{codex:'yes'}}, {terse:1}, {rules:'full'}, {consensus:'no'}, {split:1}, {research:'x'}]) {
+        lib.saveProject(project,config); assert.doesNotMatch(cli.run(['doctor']),/Config: invalid/, JSON.stringify(config));
       }
       lib.saveProject(project,{enabled:true});
       lib.writeJson(path.join(lib.getPaths().quotaBossHome,'config','models.json'),{models:{invalid:{pool:'codex',label:'Bad',cost:1,scores:{review:'inject'}}}});
@@ -283,17 +252,6 @@ test.describe('hosts and diagnostics', () => {
     assert.equal(lib.readOutcomes().length, rated - 1);
     assert.ok(lib.readOutcomes().every(o => o.result === 'unavailable' && o.model !== 'gpt-6.1-sol'));
     assert.doesNotMatch(output, /SECRET|CREDENTIAL/);
-  });
-  test('stats filters by days, reports provider/model split, pass rates and counters', () => {
-    const now = Date.now(), models = lib.loadConfig().models;
-    for (const [result, t] of [['pass', now - 1000], ['fail', now - 2000], ['unavailable', now - 3000], ['pass', now - 40 * 86400000]]) {
-      lib.appendOutcome({ model: 'gpt-6.1-sol', category: 'review', tier: 'normal', result }, models, [], t);
-    }
-    lib.appendUsage('claude', 2, 'calls', lib.loadProviders(), now - 1000);
-    const output = diagnostics.stats(30, now);
-    assert.match(output, /provider codex: 3 \(100.0%\)/); assert.match(output, /model gpt-6.1-sol: 3/);
-    assert.match(output, /review: 50.0% pass=1 fail=1 unavailable=1/); assert.match(output, /claude calls: 2/);
-    assert.match(cli.run(['stats', '--days', '1']), /Stats: last 1 days/);
   });
   test('avoid never enters automatic routes or ladders; invalid tos is rejected', () => {
     const config = lib.loadConfig(); config.providers.providers.claude.tos = 'avoid';

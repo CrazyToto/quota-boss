@@ -12,7 +12,7 @@ const { TEXT } = require('./setup-text');
 const BACK = Symbol('back');
 const WIDTH = 76;
 const OPENCODE = 'opencode-free';
-const OWN = ['workers.codex', 'workers.gpt', 'workers.perplexity'];
+const OWN = ['codex', 'perplexity'];
 const OTHER = ['copilot', 'grok', 'antigravity'];
 const FREE = ['mistral-api', 'zen-glm', 'zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
 const GRAPH = 'graphify';
@@ -76,8 +76,7 @@ const enabledNow = (config, id) => {
 
 /** Which program a choice depends on; null means it needs none. */
 function toolOf(id) {
-  if (id === 'workers.codex' || id === 'workers.gpt') return 'codex';
-  if (id === 'workers.perplexity') return null;
+  if (id === 'perplexity') return null;
   if (Object.hasOwn(tools.REGISTRY, id)) return id;
   return OPENCODE;
 }
@@ -85,7 +84,9 @@ function toolOf(id) {
 const helpOf = id => id === 'claude' ? { name: 'Claude', what: 'Claude models (Opus, Sonnet, Haiku) as workers through the official `claude` CLI', warning: SCRIPTED_CLAUDE_WARNING } : id === GRAPH ? CODE_GRAPH_HELP : PROVIDER_HELP[id];
 const nameOf = id => helpOf(id).name;
 const asksForGraph = w => !lib.detectCodeIntel(w.directory).graphify;
-const choicesOf = w => CHOICES.filter(id => id !== 'claude' || w.state.host !== 'claude-code');
+// The provider of the assistant you work in runs the boss, so the setup does not ask about it.
+const hostPool = w => ({ 'claude-code': 'claude', codex: 'codex' }[w.state.host]);
+const choicesOf = w => CHOICES.filter(id => id !== hostPool(w));
 const chosen = (w, ids) => ids.filter(id => w.state.choices[id]);
 const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id));
 const mayTrain = id => id === 'kilo-free' || PRESETS[id].trains;
@@ -286,14 +287,11 @@ function walk(screens) {
 function buildCommands(w, usable) {
   const { state, project, config } = w;
   const commands = [['on', '--host', state.host, state.profile]];
-  for (const id of OWN) {
-    const worker = id.slice('workers.'.length), want = state.choices[id] && usable(toolOf(id));
-    if (project.workers[worker] !== want) commands.push(['set', { codex: 'codex-tasks', gpt: 'gpt-reviews', perplexity: 'perplexity' }[worker], want ? 'on' : 'off']);
-  }
   if (state.host === 'claude-code' && config.providers.providers.claude && !enabledNow(config, 'claude')) commands.push(['use', 'claude', 'on']);
-  for (const id of [...(state.host === 'claude-code' ? [] : ['claude']), ...OTHER, 'kilo-free']) {
+  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), ...OTHER, 'kilo-free']) {
     const want = state.choices[id] && usable(toolOf(id));
-    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off']);
+    // Codex and Perplexity replace the old per-project worker switches, so they change this project only.
+    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off', ...(OWN.includes(id) ? ['--project'] : [])]);
   }
   for (const id of Object.keys(PRESETS)) {
     const want = state.choices[id] && usable(OPENCODE), present = !!config.providers.providers[id];
@@ -402,8 +400,7 @@ function finish(w) {
 
 function initialState(config, project) {
   const choices = {};
-  for (const id of OWN) choices[id] = project.workers[id.slice('workers.'.length)];
-  for (const id of ['claude', ...OTHER, ...FREE]) choices[id] = enabledNow(config, id);
+  for (const id of ['claude', ...OWN, ...OTHER, ...FREE]) choices[id] = enabledNow(config, id);
   choices[GRAPH] = false;
   return { profile: project.profile, host: project.host, choices, apis: [], training: project.allowTrainingProviders };
 }
@@ -430,7 +427,7 @@ function setup(args, run, deps = {}) {
     choiceScreen(w, 'profile', text.profileTitle, lib.PROFILES, text.profiles),
     choiceScreen(w, 'host', text.hostTitle, lib.HOSTS, text.hosts),
     { ...switchScreen(w, GRAPH, 1), applies: () => asksForGraph(w) },
-    ...OWN.map(id => switchScreen(w, id, 2)),
+    ...OWN.map(id => ({ ...switchScreen(w, id, 2), applies: () => id !== hostPool(w) })),
     { ...switchScreen(w, 'claude', 3), applies: () => w.state.host !== 'claude-code' },
     ...OTHER.map(id => switchScreen(w, id, 3, text.onlyWithPlan)),
     freeScreen(w),
