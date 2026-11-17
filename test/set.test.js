@@ -7,7 +7,7 @@ const path = require('node:path');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 
-const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', split: 'on', training: 'on',
+const choices = { profile: 'frugal', rules: 'tiny', 'short-answers': 'on', consensus: 'off', split: 'on', research: 'on', training: 'on',
   'codex-tasks': 'off', 'gpt-reviews': 'off', perplexity: 'off', statusline: 'always', context: '100000' };
 test.describe('set and public command help', () => {
   let root, cwd, env;
@@ -78,6 +78,21 @@ test.describe('set and public command help', () => {
     }
     assert.throws(() => cli.run(['split', 'on']));
     assert.match(cli.run(['help']), /set split on\|off/);
+  });
+  test('research defaults off, normalizes strictly, and persists both switches with their effects', () => {
+    assert.equal(lib.normalizeProject().research, false);
+    assert.equal(lib.findProjectConfig().research, false);
+    for (const value of [undefined, null, false, 0, 1, 'true', 'on', [], {}]) assert.equal(lib.normalizeProject({ research: value }).research, false);
+    assert.equal(lib.normalizeProject({ research: true }).research, true);
+    assert.match(cli.run(['settings']), /^research\s*\| off\s*\| set research <on\|off>/m);
+    for (const [value, message] of [['on', 'While Claude is saving, research over about 40 KB goes to the research worker; applies from the next session.'],
+      ['off', 'Research is handled like any other job; applies from the next session.']]) {
+      assert.ok(cli.run(['set', 'research', value]).includes(message));
+      assert.equal(lib.findProjectConfig().research, value === 'on');
+      assert.equal(lib.readProjects()[lib.projectKey(process.cwd())].research, value === 'on');
+      assert.match(cli.run(['settings']), new RegExp('^research\\s*\\| ' + value + '\\s*\\|', 'm'));
+    }
+    assert.throws(() => cli.run(['research', 'on']));
   });
   test('help groups public commands and hides worker commands; unknown and empty commands fail with help', () => {
     const help = cli.run(['help']);

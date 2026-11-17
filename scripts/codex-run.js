@@ -5,7 +5,7 @@
 // and records the run duration so routing can learn which models are slow.
 //
 //   node codex-run.js --model gpt-6.1-sol --effort medium --sandbox workspace-write \
-//        [--resume <session-id>] [--category implementation --tier normal] < prompt.txt
+//        [--resume <session-id>] [--category implementation --tier normal] [--search cached|live|disabled] < prompt.txt
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -17,6 +17,7 @@ const { resolveWorkdir } = require('./worktree');
 
 const SANDBOXES = new Set(['read-only', 'workspace-write']); // never danger-full-access
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const SEARCHES = new Set(['cached', 'live', 'disabled']); // Codex web_search modes; unset keeps the user's config
 const MAX_PROMPT = 200 * 1024;
 const MAX_REPORT_LINES = 60;
 const TIMEOUT_MS = 45 * 60 * 1000;
@@ -25,8 +26,8 @@ function parseArgs(argv) {
   const options = { effort: 'medium', sandbox: 'read-only' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i], value = argv[i + 1];
-    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier', '--cwd'].includes(key) || value === undefined || key === '--cwd' && (!value || value.startsWith('--'))) {
-      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] [--cwd <dir>] < prompt');
+    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier', '--cwd', '--search'].includes(key) || value === undefined || key === '--cwd' && (!value || value.startsWith('--'))) {
+      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] [--cwd <dir>] [--search cached|live|disabled] < prompt');
     }
     options[key.slice(2)] = value;
   }
@@ -36,6 +37,7 @@ function parseArgs(argv) {
   if (options.resume !== undefined && !/^[A-Za-z0-9-]{8,64}$/.test(options.resume)) throw new Error('Invalid --resume id.');
   if (options.category !== undefined && !lib.CATEGORIES.includes(options.category)) throw new Error('Invalid --category.');
   if (options.tier !== undefined && !lib.TIERS.includes(options.tier)) throw new Error('Invalid --tier.');
+  if (options.search !== undefined && !SEARCHES.has(options.search)) throw new Error('Invalid --search (cached, live or disabled).');
   return options;
 }
 
@@ -73,6 +75,7 @@ function spawnPlan(invocation, args, env = process.env, platform = process.platf
 function buildArgs(options, lastFile) {
   const common = ['-m', options.model, '-c', 'model_reasoning_effort=' + options.effort,
     '-c', 'approval_policy=never', '-c', 'sandbox_mode=' + options.sandbox,
+    ...(options.search ? ['-c', 'web_search=' + options.search] : []),
     '--skip-git-repo-check', '--json', '-o', lastFile];
   return options.resume ? ['exec', 'resume', ...common, options.resume, '-'] : ['exec', ...common, '-'];
 }

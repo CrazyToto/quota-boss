@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark with optional split on/off on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--split on|off] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--split on|off] [--research on|off] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--split on|off] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--rules tiny|full] [--split on|off] [--research on|off] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 const { find: findTranscript, analyze: analyzeTranscript } = require('./transcript');
 function parseArm(value) {
@@ -29,6 +29,8 @@ const rules = args.rules === undefined ? null : args.rules;
 if (rules !== null && !['tiny', 'full'].includes(rules)) { console.error(USAGE); process.exit(2); }
 const split = args.split === undefined ? null : args.split;
 if (split !== null && (!['on', 'off'].includes(split) || mode !== 'on')) { console.error(USAGE); process.exit(2); }
+const research = args.research === undefined ? null : args.research;
+if (research !== null && (!['on', 'off'].includes(research) || mode !== 'on')) { console.error(USAGE); process.exit(2); }
 // A simulated Claude 5h use typical for the mode, so the router prices Claude as it would at that use.
 const modeEnv = claudeMode ? { QUOTA_BOSS_CLAUDE_5H: String({ normal: 10, save: 75, emergency: 90 }[claudeMode]) } : {};
 const reps = Number(args.reps || 1);
@@ -41,7 +43,7 @@ const task = args.task;
 if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
 const model = args.model || (host === 'claude' ? 'opus' : 'gpt-6.1-sol');
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
-const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`) + (rules ? '-' + rules : '') + (split === null ? '' : split === 'on' ? '-split' : '-nosplit');
+const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`) + (rules ? '-' + rules : '') + (split === null ? '' : split === 'on' ? '-split' : '-nosplit') + (research === null ? '' : research === 'on' ? '-research' : '-noresearch');
 const n = args.n || '1';
 if (!Number.isInteger(Number(n)) || Number(n) < 1) throw new Error('n must be a positive integer');
 const out = path.resolve(args.out || path.join(os.tmpdir(), 'quota-boss-bench'));
@@ -62,7 +64,9 @@ git('init', '-q', '.');
 git('add', '-A');
 git('-c', 'user.name=bench', '-c', 'user.email=bench@example.invalid', 'commit', '-qm', 'base');
 
-const prompt = prompts[task] + ' Reply in one short sentence.';
+// --hint appends one sentence for a probe run (for example a forced delegation); it is kept in the result line.
+const hint = args.hint === undefined ? null : String(args.hint);
+const prompt = prompts[task] + (hint ? ' ' + hint : '') + ' Reply in one short sentence.';
 
 const quota = (...a) => execute(process.execPath, [qb, ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: host === 'codex' ? model : '', ...modeEnv } });
 let previousProfile;
@@ -81,6 +85,10 @@ try {
     const set = quota('set', 'split', split);
     if (set.status !== 0) throw new Error('quota-boss split setup failed: ' + (set.stdout + set.stderr).slice(0, 300));
   }
+  if (research !== null) {
+    const set = quota('set', 'research', research);
+    if (set.status !== 0) throw new Error('quota-boss research setup failed: ' + (set.stdout + set.stderr).slice(0, 300));
+  }
 }
 
 // The boss may log feedback during the run; QUOTA_BOSS_BENCH tags it (see below).
@@ -97,7 +105,8 @@ const started = Date.now();
 let run;
 if (host === 'claude') {
   const cli = ['-p', '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits',
-    '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Read Edit Write Glob Grep Agent',
+    // Common shell helpers too, the same for every arm: denied `cd <run dir> && ...` or `| tail` calls cost boss turns in every arm (v2-s4: up to 5 per run).
+    '--allowedTools', 'Bash(node:*) Bash(git:*) Bash(npm:*) Bash(cd:*) Bash(cat:*) Bash(ls:*) Bash(head:*) Bash(tail:*) Bash(grep:*) Bash(wc:*) Bash(mkdir:*) Bash(printf:*) Bash(echo:*) PowerShell(node:*) PowerShell(git:*) PowerShell(Select-Object:*) Read Edit Write Glob Grep Agent',
     // A scheduled wakeup keeps a -p run alive until the timeout after the answer is done.
     '--disallowedTools', 'ScheduleWakeup', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
@@ -170,7 +179,7 @@ const count = name => { const m = String(own.stdout || '').match(new RegExp(`(?:
 const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
-  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, rules, split, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
+  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, rules, split, research, hint, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
   ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');

@@ -29,6 +29,36 @@ test('split adds the large-job rule and always keeps the independent-job rule on
   }
 });
 
+test('research adds exactly its line to rules on every host and stays independent of split', t => {
+  const marker = 'research and look-ups that need more than about 40 KB read';
+  const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
+  const line = template.split('\n').find(line => line.includes(marker)).trimEnd();
+  assert.match(template, /   Split a large job only when[^\n]*\n   While the mode shows `claude-save` or `claude-emergency`, research and look-ups that need more than about 40 KB read/);
+  const read = lib.readBounded;
+  for (const host of lib.HOSTS) {
+    for (const split of [false, true]) {
+      for (const terse of [false, true]) {
+        const project = { rules: 'full', split, terse };
+        // Render the original template to compare the default output byte for byte.
+        const mock = t.mock.method(lib, 'readBounded', (file, size) => {
+          const text = read(file, size);
+          return path.basename(file) === 'RULES.md' ? text.split('\n').filter(line => !line.includes(marker)).join('\n') : text;
+        });
+        const baseline = hosts.rules(host, project);
+        mock.mock.restore();
+        assert.equal(hosts.rules(host, project), baseline);
+        for (const value of [undefined, null, false, 0, 1, 'true', 'on', [], {}]) {
+          assert.equal(hosts.rules(host, { ...project, research: value }), baseline);
+        }
+        const enabled = hosts.rules(host, { ...project, research: true });
+        assert.deepEqual(enabled.split('\n').filter(line => line.includes(marker)), [line]);
+        assert.equal(enabled.split('\n').filter(line => !line.includes(marker)).join('\n'), baseline);
+        assert.equal(enabled.includes('Split a large job only when'), split);
+      }
+    }
+  }
+});
+
 // Full start text: the tiny default adds the on-demand routing table on Claude Code.
 test('consensus false removes only its line for every host', () => {
   for (const host of ['claude-code', 'codex', 'generic']) {

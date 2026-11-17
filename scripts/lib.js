@@ -346,6 +346,7 @@ function normalizeProject(value) {
     allowTrainingProviders: config.allowTrainingProviders === true,
     consensus: config.consensus !== false,
     split: config.split === true,
+    research: config.research === true,
     contextSuggest: config.contextSuggest === false || Number.isInteger(config.contextSuggest) && config.contextSuggest >= CONTEXT_SUGGEST_MIN && config.contextSuggest <= CONTEXT_SUGGEST_MAX ? config.contextSuggest : CONTEXT_SUGGEST_DEFAULT,
     profile: PROFILES.includes(config.profile) ? config.profile : 'balanced',
     workers: Object.fromEntries(WORKERS.map(key => [key, workers[key] === undefined || workers[key] === true])),

@@ -260,3 +260,24 @@ checks).
 In both split runs the rule was in the session, but the boss judged the modules too dependent on each other and sent
 one worker, as with split off; the gap in time is spread between runs, not the feature. The bench was stopped there, so
 split stays off by default until a task where the boss actually splits shows a gain.
+
+### Claude Code: research by read volume (2026-11-17)
+
+Same host and boss (Opus), tiny rules. The research task asks 8 questions over about 80 KB of local docs; hidden checks
+verify the answers and that every cited file exists (not that the citation supports the claim). `quota-boss set research
+on` adds a rule that, while Claude is saving, hands research over about 40 KB to the research worker (`gpt-advisor` on
+Codex), which returns one line per claim with source and date. Mean of 3 runs each, all 9/9.
+
+| Run | Claude mode | Delegated | Claude USD | Codex USD | Seconds |
+| --- | --- | --- | --- | --- | --- |
+| research off | normal | 0/3 | 0.388 | 0 | 57 |
+| rule in the short start text | normal | 0/3 | 0.378 | 0 | 44 |
+| forced by the prompt | normal | 3/3 | 0.286 | 0.088 | 97 |
+| research off | save | 0/3 | 0.374 | 0 | 39 |
+| research on | save | 1/3 | 0.348 | 0.034 | 50 |
+
+Delegated research uses about 25% less Claude at the same quality, but adds about 0.09 Codex and takes about twice as
+long. Left to choose, the boss read the docs itself in 5 of 6 runs, even with quota to spare, so the rule now applies
+only while Claude is saving and not when the worker's own pool is tight. Research stays off by default. Kept for
+everyone: the claim, source and date report form of `gpt-advisor` and `researcher`, and `codex-run --search
+cached|live|disabled`.

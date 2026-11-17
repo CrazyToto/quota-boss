@@ -29,6 +29,7 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 | `caps` | Limit the percentage of each provider window available for delegation and raise its routing price as usage approaches that cap. | → | saved | Set a lower cap to reserve quota for other work; project off preserves any global cap. |
 | `consensus` | Offer an independent read-only Codex answer before critical architecture or security decisions with real trade-offs. | ↑ | used | Keep it on for important trade-offs; it uses an extra GPT answer and never edits files. |
 | `split` | Let a large job with disjoint files and a fixed interface run as two scoped worker copies at the same time. | → | same | Turn it on to finish large delegated jobs sooner; applies from the next session. |
+| `research` | While Claude is saving, send research and look-ups over about 40 KB to the research worker instead of the boss reading them. | → | saved | Turn it on to spend less Claude on large docs and web look-ups when Claude runs low; they take about twice as long; applies from the next session. |
 | `statusline` | Show quota numbers everywhere or only with boss mode. | → | same | Show quota numbers everywhere or only with boss mode. |
 | `context` | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. | → | same | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. |
 <!-- settings-help:end -->
@@ -36,7 +37,7 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 `quota-boss set profile quality|balanced|frugal` chooses the profile.
 `quota-boss set codex-tasks on|off`, `quota-boss set gpt-reviews on|off`, and `quota-boss set perplexity on|off` control workers.
 `quota-boss set context <tokens>|off` sets the handoff suggestion threshold and controls the check that stops a message once after an hour or more away from a large Claude Code session, before paying for its expired cache.
-`quota-boss set training on|off`, `quota-boss set short-answers on|off`, `quota-boss set consensus on|off`, and `quota-boss set split on|off` change project switches. `quota-boss set rules tiny|full` selects Claude Code session rules.
+`quota-boss set training on|off`, `quota-boss set short-answers on|off`, `quota-boss set consensus on|off`, `quota-boss set split on|off` and `quota-boss set research on|off` change project switches. `quota-boss set rules tiny|full` selects Claude Code session rules.
 The status line shows only in projects with boss mode on. `/boss set statusline always` keeps the Claude and Codex numbers
 visible everywhere, and `/boss set statusline boss` goes back to the default. This choice applies to all projects.
 Training providers default to off. Usage journals compact under a lock above 256 KiB, preserving all active-window

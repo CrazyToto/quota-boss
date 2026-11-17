@@ -103,6 +103,14 @@
     "when": "Turn it on to finish large delegated jobs sooner; applies from the next session.",
     "advanced": true
   },
+  "research": {
+    "title": "Research by read volume",
+    "what": "While Claude is saving, send research and look-ups over about 40 KB to the research worker instead of the boss reading them.",
+    "quality": "same",
+    "quota": "saves",
+    "when": "Turn it on to spend less Claude on large docs and web look-ups when Claude runs low; they take about twice as long; applies from the next session.",
+    "advanced": true
+  },
   "statusline": {
     "title": "Status line visibility",
     "what": "Show quota numbers everywhere or only with boss mode.",

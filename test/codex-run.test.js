@@ -47,6 +47,14 @@ test('buildArgs never enables approvals bypass and puts resume ids after options
   assert.deepEqual(resumed.slice(-2), ['0199aaaa-bbbb', '-']);
 });
 
+test('--search sets the Codex web_search mode and rejects other values', () => {
+  const live = run.buildArgs(run.parseArgs(['--model', 'gpt-6.1-terra', '--search', 'live']), 'out.md');
+  assert.ok(live.includes('web_search=live'));
+  assert.ok(!run.buildArgs(run.parseArgs(['--model', 'gpt-6.1-terra']), 'out.md').some(a => a.startsWith('web_search')));
+  assert.throws(() => run.parseArgs(['--model', 'gpt-6.1-terra', '--search', 'on']), /Invalid --search/);
+  assert.throws(() => run.parseArgs(['--model', 'gpt-6.1-terra', '--search']), /Usage/);
+});
+
 test('successful run prints one status line with session id, truncates the report and records the duration', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-codex-run-'));
   const home = path.join(dir, 'home');

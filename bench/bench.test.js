@@ -374,3 +374,46 @@ test('failed split setup restores profile and does not run host', t => {
   assert.ok(calls.some(a=>a.slice(1).join(' ')==='set profile quality'));
   assert.ok(!fs.existsSync(path.join(d,'results.jsonl')));
 });
+
+test('research flag labels and records runs and configures after rules', t => {
+  for (const research of ['on', 'off', null]) {
+    const d = temporary(t), calls = [];
+    const fake = (command, args) => {
+      calls.push(args);
+      if (args.includes('settings')) return { status: 0, stdout: 'profile | balanced | change' };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    main(['--host','claude','--arm','on:quality','--task','small','--rules','tiny','--out',d,...(research ? ['--research',research] : [])],fake);
+    const row=JSON.parse(fs.readFileSync(path.join(d,'results.jsonl'),'utf8'));
+    assert.equal(row.research,research);
+    assert.equal(row.label,'claude-opus-on:quality-tiny'+(research === null ? '' : research === 'on' ? '-research' : '-noresearch'));
+    const index=calls.findIndex(a=>a.slice(1).join(' ')===`set research ${research}`);
+    if(research) { assert.ok(index>0); assert.equal(calls[index-1].slice(1).join(' '),'set rules tiny'); }
+    else assert.equal(index,-1);
+  }
+});
+
+test('invalid research flags and off arm exit 2 before executing', () => {
+  const exit=process.exit, error=console.error;
+  process.exit=code=>{throw Object.assign(new Error('exit'),{code});};
+  console.error=()=>{};
+  try {
+    for(const [arm,research] of [['off','on'],['off','off'],['on',''],['on','ON'],['on','bad'],['on',undefined]]) {
+      assert.throws(()=>main(['--host','claude','--arm',arm,'--task','small','--research',...(research === undefined ? [] : [research])],()=>{throw new Error('must not execute');}),e=>e.code===2);
+    }
+  } finally { process.exit=exit; console.error=error; }
+});
+
+test('failed research setup restores profile and does not run host', t => {
+  const d=temporary(t), calls=[];
+  const fake=(command,args)=>{
+    calls.push(args);
+    assert.notEqual(command,'claude');
+    if(args.includes('settings')) return {status:0,stdout:'profile | quality | change'};
+    if(args.slice(1).join(' ')==='set research on') return {status:1,stdout:'',stderr:'failed research'};
+    return {status:0,stdout:'',stderr:''};
+  };
+  assert.throws(()=>main(['--host','claude','--arm','on','--task','small','--research','on','--out',d],fake),/research setup failed/);
+  assert.ok(calls.some(a=>a.slice(1).join(' ')==='set profile quality'));
+  assert.ok(!fs.existsSync(path.join(d,'results.jsonl')));
+});
