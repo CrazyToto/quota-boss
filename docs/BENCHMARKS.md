@@ -243,7 +243,7 @@ runs, 47 s (45, 47, 48), 0.281 (0.277, 0.280, 0.286), against 0.284 and 46 s bef
 
 ### Claude Code: the split setting (2026-11-17)
 
-Same host and boss, tiny rules, `--claude-mode save`. `quota-boss set split on` adds a rule that lets the boss split a
+Same host and boss, tiny rules, `--claude-mode save`. The former `quota-boss set split on` (removed in 0.2.0, since it showed no gain) added a rule that lets the boss split a
 large job into two scoped worker copies (`worktree add <name> --scope <paths> --plan <file>`, then one
 `worktree merge` of both). The new xlarge task is the large task plus an orders module and two CLI commands (44 hidden
 checks).
@@ -264,8 +264,8 @@ split stays off by default until a task where the boss actually splits shows a g
 ### Claude Code: research by read volume (2026-11-17)
 
 Same host and boss (Opus), tiny rules. The research task asks 8 questions over about 80 KB of local docs; hidden checks
-verify the answers and that every cited file exists (not that the citation supports the claim). `quota-boss set research
-on` adds a rule that, while Claude is saving, hands research over about 40 KB to the research worker (`gpt-advisor` on
+verify the answers and that every cited file exists (not that the citation supports the claim). The former `quota-boss set research
+on` (always on since 0.2.0) added a rule that, while Claude is saving, hands research over about 40 KB to the research worker (`gpt-advisor` on
 Codex), which returns one line per claim with source and date. Mean of 3 runs each, all 9/9.
 
 | Run | Claude mode | Delegated | Claude USD | Codex USD | Seconds |
