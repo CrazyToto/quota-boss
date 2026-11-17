@@ -146,7 +146,8 @@ would cost more than it saves. The numbers so far:
 |---|---|
 | Benchmark, large task with the Claude 5-hour limit 75% used (Opus boss) | **About a third less Claude usage** than without boss mode, with the same hidden test results. Codex did the build; the run took about twice as long. |
 | Benchmark, medium task with the Claude 5-hour limit 75% used | Handing it to Codex saved no Claude, so the boss now keeps jobs of this size. |
-| Benchmark, small to large tasks with quota to spare (Opus boss) | The boss keeps the work: about the same cost as without boss mode (-2% to +3%), same results. |
+| Benchmark, small to large tasks and a read-heavy change with quota to spare (Opus boss) | The boss keeps the work: about the same cost as without boss mode (-2% to +3%), same results. |
+| Benchmark, nine questions over an 80 KB manual with quota to spare | **10% less Claude usage** with the same answers, about 20 s slower: the boss reads the sections it needs instead of the whole saved output. |
 | Benchmark, Codex as the boss, small to large tasks | No extra cost at any size, same results. |
 | Real work in this repository over 9 days (`quota-boss savings`) | Workers did 14% of the work. Estimate: **29% less Claude usage** than Opus doing everything, about 1.4 times the work per Claude limit. |
 
