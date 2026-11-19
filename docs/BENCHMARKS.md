@@ -346,3 +346,15 @@ Small and docs were done by the boss for the same reason.
 Boss on cost about 10% more on small, 3% more on docs and 15% more on mixed than boss off, from the longer rules
 prompt, with no delegation to make up for it. Junie Lite has to prove itself on jobs larger than the two-turn rule; the
 new free trial rule gives untested free routes such jobs.
+
+Large task, same day, Claude 5-hour limit about 60% used, two runs per arm (USD from the session logs):
+
+| Arm | Run 1 Claude | Run 2 Claude | Run 2 Codex | Hidden tests |
+|---|---|---|---|---|
+| Boss off | 0.622 | 0.736 | 0 | 32/32 both |
+| Boss on | 0.887 | 0.553 | 0.130 | 32/32 both |
+
+In run 1 the boss did the whole task itself and paid for the longer rules. In run 2 it handed the code to Codex and
+used 25% less Claude than the mean of boss off. With two runs per arm this is within noise: the earlier saving of about
+a third (Claude limit 75% used) is not confirmed at 60%. Boss mode pays off when it delegates, so the next work is on
+making delegation of large jobs reliable, not on new free offers.
