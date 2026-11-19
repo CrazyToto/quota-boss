@@ -211,6 +211,16 @@ test('worker gate denies absent or pre-compaction markers, and allows markers af
   }
 });
 
+test('worker gate denial stays under the Claude Code hook text limit when the rules are long', t => {
+  t.mock.method(Date, 'now', () => 1800000000000);
+  enable({ rules: 'tiny' });
+  t.mock.method(hosts, 'rules', () => 'x'.repeat(12000));
+  const result = invoke(agent.main, agentInput(transcript([])));
+  assert.ok(result.stdout.length < 10000, 'denial is ' + result.stdout.length + ' characters');
+  const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+  assert.match(reason, /scripts\/quota-boss\.js" rules --host claude-code, then send this job again/);
+});
+
 test('read guard turns a whole read of a large saved output into a targeted one', () => {
   const file = transcript([]);
   const results = path.join(temporary, 'transcript', 'tool-results');

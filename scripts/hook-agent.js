@@ -4,6 +4,7 @@ const path = require('node:path');
 const lib = require('./lib');
 const hosts = require('./hosts');
 const TAIL_BYTES = 8 * 1024 * 1024;
+const DENY_LIMIT = 9850; // JSON-escaped reason; the wrapper adds under 100 characters
 
 /** A marker from before compaction no longer counts. Never read more than the tail. */
 function loaded(file, deadline) {
@@ -68,7 +69,10 @@ function main() {
     const agents = fs.readdirSync(path.join(__dirname, '..', 'agents'), { withFileTypes: true })
       .filter(entry => entry.isFile() && entry.name.endsWith('.md')).map(entry => entry.name.slice(0, -3));
     if (!agents.includes(input?.tool_input?.subagent_type) || loaded(input.transcript_path, deadline)) return;
-    const reason = hosts.rules('claude-code', project) + '\nSend this job again in the handover form from these rules.';
+    let reason = hosts.rules('claude-code', project) + '\nSend this job again in the handover form from these rules.';
+    // Claude Code caps model-visible hook text at 10,000 characters; a long install path can push the rules past it.
+    if (JSON.stringify(reason).length > DENY_LIMIT) reason = 'Load the boss rules first: run node "' + lib.substituteHome('{{QUOTA_BOSS_HOME}}')
+      + '/scripts/quota-boss.js" rules --host claude-code, then send this job again in the handover form from these rules.';
     if (Date.now() > deadline) return;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
   } catch { /* Hook failures must not interrupt Claude Code. */ }
@@ -77,4 +81,4 @@ if (require.main === module) {
   process.stdout.on('error', () => {});
   main();
 }
-module.exports = { main, loaded, savedOutputReason, TAIL_BYTES, SAVED_OUTPUT_BYTES };
+module.exports = { main, loaded, savedOutputReason, TAIL_BYTES, SAVED_OUTPUT_BYTES, DENY_LIMIT };
