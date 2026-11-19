@@ -242,3 +242,9 @@ get an account suspended. This is a summary from November 2026, not legal advice
   licenses too). Turn it off in a JetBrains IDE under Settings | Appearance & Behavior | System Settings | Data Sharing.
 - **OpenCode** is for API keys only. Never use a subscription login there.
 - **Free plans** can be limited, for example to testing, and some may train on your data. Check before relying on one.
+
+## Send a provider report
+
+Run `quota-boss providers report <id>` with your signed-in provider CLI.
+Use `--model <registry-id>` to test one model. The self-test and coding task each make a CLI call that can count against your limit.
+Open the issue link, name your plan, and paste or attach `quota-boss-report-<id>.md`.

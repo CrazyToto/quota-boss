@@ -23,8 +23,9 @@ do it,<br>across the subscriptions you already pay for and the free AI offers yo
 Quota Boss is a harness around **Claude Code** or **Codex**: it adds the rules, the workers and the live quota numbers
 that turn your agent into an orchestrator. Your best model plans, decides and checks the results. Everything else goes
 to a cheaper model on one of your subscriptions (**Claude**, **ChatGPT / Codex**, **GitHub Copilot**, **Grok**,
-**Google Antigravity / Gemini**), to **Perplexity** for research, or to a free offer or local model you have switched
-on.
+**Google Antigravity / Gemini**, **JetBrains AI**), to **Perplexity** for research, or to a free offer such as
+**Junie Lite** or a local model you have switched on. When a free route is about as likely to succeed as a paid
+worker, it gets the job, so your paid limits last longer.
 
 - **It saves Claude where it counts.** On a large benchmark task with the Claude 5-hour limit 75% used, the boss used
   about a third less Claude for the same hidden test results ([numbers](#does-it-pay-off)).
@@ -161,15 +162,17 @@ in [bench/](bench/README.md), and `quota-boss savings` shows the numbers for you
 
 | Kind | Examples | How it is used |
 |---|---|---|
-| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini) | Through each provider's official CLI, signed in as you |
+| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
-| Free API offers | Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai, Kilo | Off until you choose them; each shows its limit and data warning first |
+| Free CLI offers | Junie Lite, Kilo | Junie Lite is on by default: one yes installs Junie, opens the login and tests it |
+| Free API offers | Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
 | Local models | Ollama | `/boss-local` |
 | Anything else | Any API with a key | `/boss-add-api` |
 
-Claude and ChatGPT / Codex are tested end to end. Copilot, Grok and Antigravity are built from their official
-documentation and stay off until you turn them on; Grok has not been run by the maintainer yet, and Antigravity
-carries an account warning because of Google's terms.
+Claude, ChatGPT / Codex and Junie Lite are tested end to end. Copilot, Grok, Antigravity and JetBrains AI are built
+from their official documentation and stay off until you turn them on; Grok has not been run by the maintainer yet, and
+Antigravity carries an account warning because of Google's terms. Every provider gets work only after its self-test
+passes on your machine; setup runs it for you.
 
 Free offers can take simple work instead of your paid quota. Some of them train on what you send, so those stay off
 unless you allow them for a project. Details are in [docs/PROVIDERS.md](docs/PROVIDERS.md).
@@ -235,8 +238,11 @@ and routes around it.
 
 ## Contributing
 
-Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). Good first contributions are better model
-scores, a worker for another CLI, and routing experiments with tests.
+Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). The most useful one needs no code: if you
+have a plan the maintainer lacks (Grok, JetBrains AI, Antigravity, a paid Copilot plan), run
+`quota-boss providers report <id>` and attach the file it writes to the issue it opens. Those numbers go into the
+shipped routing table for everyone. Better model scores, a worker for another CLI and routing experiments with tests
+are welcome too.
 
 ## Credits
 

@@ -4,6 +4,10 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `quota-boss providers report <id>`: runs the self-test and one small coding task with hidden checks for each model of a provider, saves a redacted Markdown report and offers to open a prefilled GitHub issue, so people with plans the maintainer lacks can send real numbers for the routing table.
+
 ### Changed
 
 - Free first: outside CRITICAL work, a free route (a free or local provider at cost 0) takes a job from a paid worker when it is about as likely to succeed (within 0.02, or 0.05 while that worker's pool is tight). Normal work goes free only after the free route has 3 verified passes; trivial work goes free at once. The boss doing a job itself is never replaced, and the paid worker stays the next ladder step.

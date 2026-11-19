@@ -376,8 +376,12 @@ function runKeyLogin(provider, options) {
   return d.attach(d.find('opencode'), ['auth', 'login', '-p', provider]);
 }
 
+// A query string only for GitHub's new-issue page, and only with URL-encoded values, so a prefilled report can open.
+// The URL goes to the opener as one argument and never through a shell.
+const PAGE = /^https:\/\/[a-z0-9.-]+\/[a-zA-Z0-9._\/-]*$/;
+const ISSUE_PAGE = /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/issues\/new\?[A-Za-z0-9._~%=&+-]{1,7000}$/;
 function openPage(url, options) {
-  if (typeof url !== 'string' || !/^https:\/\/[a-z0-9.-]+\/[a-zA-Z0-9._\/-]*$/.test(url)) return false;
+  if (typeof url !== 'string' || !(PAGE.test(url) || ISSUE_PAGE.test(url))) return false;
   try {
     const d = context(options);
     const command = d.platform === 'win32' ? 'rundll32' : d.platform === 'darwin' ? 'open' : 'xdg-open';

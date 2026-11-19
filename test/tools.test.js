@@ -317,6 +317,11 @@ test('key pages reject unsafe URLs and use rundll32 on Windows', () => {
   assert.equal(tools.openPage('https://example.com/" key', options), false);
   assert.equal(tools.openPage('https://example.com/key', options), true);
   assert.deepEqual(calls[0][1], ['url.dll,FileProtocolHandler', 'https://example.com/key']);
+  const issue = 'https://github.com/CrazyToto/quota-boss/issues/new?template=provider_report.md&title=Provider%20report&body=a%0Ab';
+  assert.equal(tools.openPage(issue, options), true);
+  assert.deepEqual(calls.at(-1)[1], ['url.dll,FileProtocolHandler', issue]);
+  for (const bad of ['https://example.com/x?a=1', 'https://github.com/a/b/issues/new?body=a b', 'https://github.com/a/b/issues/new?x="&calc',
+    'https://github.com/a/b/issues/new?' + 'a'.repeat(7001)]) assert.equal(tools.openPage(bad, options), false);
 });
 
 test('Graphify installs under its official package name and registers its skill, with no shell', () => {

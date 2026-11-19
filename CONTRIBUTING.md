@@ -22,6 +22,11 @@ Thanks for helping! The most valuable contributions right now:
 Host adapters and local diagnostics are specified in [docs/HOSTS.md](docs/HOSTS.md). Add fixture-based
 tests for new output formats; keep doctor tests on fake CLI responses and reserve quota probes for explicit `--probe`.
 
+## Send a provider report
+
+Run `quota-boss providers report <id>` with your signed-in provider CLI.
+Open the issue link and name your plan. Paste or attach `quota-boss-report-<id>.md`.
+
 ## Changelog entries
 
 Record each change with `node tools/release.js add patch Fixed "Describe the change."`.

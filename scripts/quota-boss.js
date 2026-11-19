@@ -27,7 +27,7 @@ const USAGES = {
   'settings': 'settings',
   'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio] [--context <tokens>] [category] [tier]',
   'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
-  'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]]',
+  'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]|report <id> [--model <registry-id>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
   'usage': 'usage <id> <amount> <calls|tokens|usd>',
   'timing': 'timing <model> <category|-> <tier|-> <seconds> ok|fail',
@@ -43,7 +43,7 @@ const USAGES = {
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n\nReports:\n  savings [--details]              what delegation saved\n  route                            which model gets which kind of job right now';
+const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers report <id>            run provider checks and prepare an issue\n\nReports:\n  savings [--details]              what delegation saved\n  route                            which model gets which kind of job right now';
 const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
@@ -227,7 +227,7 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
   }
   return output + (provider && !project ? '' : refreshCodexAgents());
 }
-function providerCommand(command, rest) {
+function providerCommand(command, rest, options) {
   const active = lib.findProjectConfig();
   const config = lib.loadConfig(active);
   const userFile = path.join(lib.getPaths().quotaBossHome, 'config', 'providers.json');
@@ -248,6 +248,11 @@ function providerCommand(command, rest) {
       flags[rest[i]] = rest[i + 1];
     }
     return require('./self-test').selfTest(rest[1], { config, model: flags['--model'], effort: flags['--effort'] });
+  }
+  if (command === 'providers' && rest[0] === 'report') {
+    if (rest.length !== 2 && (rest.length !== 4 || rest[2] !== '--model')) throw new Error(usage(command));
+    checkId(rest[1]);
+    return require('./provider-report').providerReport(rest[1], { ...options, config, model: rest[3] });
   }
   if (command === 'providers' && rest[0] === 'guide' && rest.length === 1) {
     return providerHelp.guide(config);
@@ -400,7 +405,7 @@ function run(args = process.argv.slice(2), options) {
     const savings = require('./savings');
     return savings.savings(savings.parseArgs(rest, usage(command)));
   }
-  if (['providers', 'cap', 'usage', 'timing'].includes(command)) return providerCommand(command, rest);
+  if (['providers', 'cap', 'usage', 'timing'].includes(command)) return providerCommand(command, rest, options);
   const active = lib.findProjectConfig();
   let project = lib.normalizeProject(active);
   if (command === 'on') {
