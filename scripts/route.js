@@ -203,6 +203,20 @@ function probabilityOrder(a, b, previousPool) {
     || (a.pool === b.pool && familyKey(a.model) === familyKey(b.model) ? newerFirst(a.model, b.model) : 0) || a.model.localeCompare(b.model);
 }
 
+// A model without a score for a category takes the score of its newest rated predecessor in the same pool and family.
+// Unrated models would otherwise never be routed and never earn a score; logged failures and a benched score still decide.
+function inheritScores(id, model, all = {}) {
+  const older = Object.entries(all).filter(([other, m]) => other !== id && m?.pool === model.pool && familyKey(other) === familyKey(id)
+    && newerFirst(id, other) < 0).sort(([a], [b]) => newerFirst(a, b));
+  const scores = { ...model.scores };
+  for (const category of CATEGORIES) {
+    if (Number.isFinite(scores[category])) continue;
+    const source = older.find(([, m]) => Number.isFinite(m.scores?.[category]));
+    if (source) scores[category] = source[1].scores[category];
+  }
+  return scores;
+}
+
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
 function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {},
   host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
@@ -233,7 +247,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
     && (m.cliModel === undefined || validCliModel(m.cliModel))
     // An older Codex CLI does not offer a newer release: a model missing from its cache while the cache lists others of its family is skipped.
     && (m.pool !== 'codex' || (host === 'codex' && id === bossModel) || !codexMissing(m.cliModel || id)))
-    .map(([id, model]) => ({ ...model, id, passes: learned.filter(e => e.model === id && e.result === 'pass').length,
+    .map(([id, model]) => ({ ...model, id, scores: inheritScores(id, model, models.models), passes: learned.filter(e => e.model === id && e.result === 'pass').length,
       normalPasses: learned.filter(e => e.model === id && e.result === 'pass' && ['normal', 'critical'].includes(e.tier)).length }));
   const boss = bossModelId(bossModel, registry, bossPool);
   const rows = [];
@@ -354,10 +368,11 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       // A newer model of the same family rated at least as high replaces its predecessor, even when the predecessor has
       // more logged passes. The boss's own model stays: handing work to its successor would cost a handover.
       const rated = c => registry.find(model => model.id === c.model)?.scores?.[category] ?? 0;
-      // Only a successor in the same pool and above minP replaces it, so repeated failures bring the predecessor back.
+      // Only a successor in the same pool that is above minP, or at least as likely to pass, replaces it, so repeated failures
+      // bring the predecessor back.
       // The second opinion has no minP and passes floor 0.
       const successor = (c, list, floor = minimum) => list.find(o => o !== c && o.pool === c.pool && familyKey(o.model) === familyKey(c.model)
-        && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c) && (o.P >= floor || c.P < floor));
+        && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c) && (o.P >= floor || o.P >= c.P));
       const open = evaluated.filter(c => !c.reason);
       for (const c of open) {
         const newer = c.via !== 'self' && successor(c, open);

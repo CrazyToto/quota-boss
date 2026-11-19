@@ -174,6 +174,18 @@ test('logged passes do not keep a predecessor, but the boss model and a stronger
   assert.ok(!row.belowThreshold);
 });
 
+test('an unrated successor inherits its predecessor scores until logged results say otherwise', () => {
+  const old = { pool: 'codex', label: 'Old', cost: 1, scores: { implementation: 9 }, efforts: ['medium'] };
+  const models = { categories: ['implementation'], models: { 'gpt-6.1-sol': old, 'gpt-6.2-sol': { ...old, label: 'New', scores: {} } } };
+  const base = { thresholds: { relayCost: { normal: 0.000001 } }, limits: limits(0, 0, 0, 0), now: 20 };
+  const fresh = route({ ...base, models });
+  assert.equal(select(fresh, 'normal', 'implementation').model, 'gpt-6.2-sol');
+  assert.match(formatExplain(fresh, 'implementation', 'normal'), /Old .*lost: replaced by New/);
+  const failures = Array.from({ length: 12 }, (_, t) => ({ t, model: 'gpt-6.2-sol', category: 'implementation', tier: 'critical', result: 'fail' }));
+  const strict = route({ ...base, models, outcomes: failures, thresholds: { ...base.thresholds, minP: { critical: 0.7 } } });
+  assert.notEqual(select(strict, 'critical', 'implementation').model, 'gpt-6.2-sol', 'repeated failures bring the predecessor back');
+});
+
 test('a Codex model missing from the Codex model cache while its family is listed is not routed', () => {
   const config = lib.loadConfig();
   const used = models => route({ ...config, limits: limits(10, 10, 0, 0), codexModels: models }).rows.map(row => row.model);
