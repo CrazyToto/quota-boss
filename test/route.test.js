@@ -297,6 +297,15 @@ test('free first: an equally rated free relay beats direct Haiku on trivial jobs
   assert.equal(after(dayOld).via, 'haiku-worker');
   assert.equal(after(dayOld).reason, 'won: highest utility (2% ties: P, then previous pool)');
   assert.equal(after({ 'relayed|mechanical': { n: 1 } }).via, 'cli-worker:kilo-free');
+  // A pass in another category does not lift that: a fail here without a pass here keeps free first closed.
+  const twoCats = { ...models, categories: ['mechanical', 'research'], models: { ...models.models,
+    'claude-haiku-5-5': { ...models.models['claude-haiku-5-5'], scores: { mechanical: 8, research: 8 } },
+    relayed: { ...models.models.relayed, scores: { mechanical: 8, research: 8 } } } };
+  const seen = (result, category) => ({ t: later - 60000, model: 'relayed', category, tier: 'trivial', result });
+  // The fail is in the lasting ledger only (its outcome aged out), so the score here is unchanged.
+  const mixed = route({ models: twoCats, providers, now: later, trials: dayOld, outcomes: [seen('pass', 'research')], limits: limits(0, 0, 0, 0) });
+  assert.equal(select(mixed, 'trivial', 'mechanical').via, 'haiku-worker');
+  assert.equal(select(mixed, 'trivial', 'research').via, 'cli-worker:kilo-free');
   // A margin of 0 needs the free route to be at least as likely, and a free route below the margin loses.
   const weaker = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 6 } } } };
   assert.equal(select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0), thresholds: { freeFirst: { trialMargin: 0 } } }), 'trivial', 'mechanical').via, 'haiku-worker');

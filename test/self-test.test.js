@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const lib = require('../scripts/lib');
-const { selfTest, evidenceStatus } = require('../scripts/self-test');
+const { selfTest, evidenceStatus, providerEvidence } = require('../scripts/self-test');
 const cli = require('../scripts/quota-boss');
 
 test.describe('provider self-tests', () => {
@@ -158,6 +158,9 @@ test.describe('provider self-tests', () => {
   });
   test('display counts enabled models only and identifies untested providers', () => {
     assert.equal(evidenceStatus('trial', config.models), 'untested: quota-boss providers test trial');
+    // A free or local provider needs no self-test; a passed one still shows its pass.
+    for (const kind of ['free', 'local']) assert.equal(providerEvidence('trial', { kind }, config.models, {}), 'no self-test needed: earns work with verified passes');
+    assert.equal(providerEvidence('trial', { kind: 'subscription' }, config.models, {}), 'untested: quota-boss providers test trial');
     assert.equal(evidenceStatus('trial', config.models, { tiny: { result: 'pass' } }), 'self-test passed (1 of 1 models)');
   });
   test('an effort placeholder with no model levels uses the CLI default effort', () => {

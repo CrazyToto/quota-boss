@@ -223,7 +223,7 @@ function doctor(probe = false, options = {}) {
     }
     lines.push(...newerCodexModels(config.models.models, lib.readCodexModels()));
     for (const [id, p] of Object.entries(config.providers.providers)) if (p.enabled !== false && p.evidence === 'docs')
-      lines.push(id + ': ' + require('./self-test').evidenceStatus(id, config.models, state.selfTests, p.cli?.command));
+      lines.push(id + ': ' + require('./self-test').providerEvidence(id, p, config.models, state.selfTests));
   }
   if (!probe) lines.push('Probes skipped (use --probe to spend quota).');
   else if (config) {

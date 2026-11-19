@@ -22,6 +22,12 @@ function evidenceStatus(id, models = {}, selfTests = {}, command = null, find = 
   if (valid.length) return 'self-test passed (' + valid.length + ' of ' + ids.length + ' models)';
   return passed.length ? 'self-test stale (CLI changed): quota-boss providers test ' + id : 'untested: quota-boss providers test ' + id;
 }
+/** Evidence line for a docs-only provider: a free or local one needs no self-test, it earns work with verified passes. */
+function providerEvidence(id, provider, models, selfTests, find = lib.findExecutable) {
+  const status = evidenceStatus(id, models, selfTests, provider?.cli?.command, find);
+  return ['free', 'local'].includes(provider?.kind) && !status.startsWith('self-test passed')
+    ? 'no self-test needed: earns work with verified passes' : status;
+}
 function failure(result, output, correct) {
   if (result.error?.code === 'ENOENT') return 'not installed';
   if (result.error?.code === 'ETIMEDOUT') return 'timed out';
@@ -102,4 +108,4 @@ function selfTest(id, options = {}) {
   if (failed) process.exitCode = 1;
   return lines.join('\n');
 }
-module.exports = { selfTest, evidenceStatus, validSelfTest };
+module.exports = { selfTest, evidenceStatus, providerEvidence, validSelfTest };
