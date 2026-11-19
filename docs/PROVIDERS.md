@@ -193,7 +193,7 @@ otherwise the adapter uses an estimated daily call counter. Configure `claude.qu
 
 OpenCode free is a disabled example marked trainsOnData: true; enabling it also requires
 `quota-boss set training on` for each project. Ollama is an advanced option marked trainsOnData: false, separate from `/boss-setup`.
-Kilo Free is also off by default. Setup can install its CLI; no account or key was needed in testing. Its limit is not published, and free models may change or be rate limited. Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
+Kilo Free is also off by default. Setup can install its CLI; no account or key was needed in testing. Kilo allows 200 anonymous free requests per hour per IP address. Free models may change. See [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication). Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
 All three have zero-cost, conservatively scored models; routing uses max(cost, 0.2) to avoid division by zero.
 Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: the setup asks once for all of them, only those that do not train on your data, or one by one. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
 Example scores and training flags are conservative configuration declarations; check the selected service/model terms before changing them.

@@ -18,7 +18,7 @@ const OWN = ['codex', 'perplexity'];
 const LITE = 'junie-lite';
 const JUNIE = 'junie';
 const OTHER = ['copilot', 'grok', 'antigravity', 'jetbrains'];
-const FREE = ['mistral-api', 'zen-glm', 'zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
+const FREE = ['mistral-api', 'zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
 const GRAPH = 'graphify';
 const graph = require('./graph');
 const newProviders = require('./new-providers');
@@ -94,7 +94,8 @@ const asksForGraph = w => !lib.detectCodeIntel(w.directory).graphify;
 const hostPool = w => ({ 'claude-code': 'claude', codex: 'codex' }[w.state.host]);
 const choicesOf = w => CHOICES.filter(id => id !== hostPool(w));
 const chosen = (w, ids) => ids.filter(id => w.state.choices[id]);
-const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id));
+const retiredZen = config => config.providers.providers['zen-glm']?.custom === true && enabledNow(config, 'zen-glm');
+const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id) && !(id === 'zen-glm' && retiredZen(w.config)));
 const mayTrain = id => id === 'kilo-free' || PRESETS[id].trains;
 const keyStored = (stored, name, provider) => stored.includes(name.toLowerCase()) || stored.includes(provider.toLowerCase());
 
@@ -157,7 +158,7 @@ const freeGroups = w => ({ all: FREE, 'no-training': FREE.filter(id => !mayTrain
 
 function freeGroup(w, title, ids) {
   w.io.say(title);
-  for (const id of ids) w.io.say((keyless(id) ? '  ' : '* ') + nameOf(id).padEnd(23) + (id === 'kilo-free' ? 'no key, no published limit' : PRESETS[id].gets));
+  for (const id of ids) w.io.say((keyless(id) ? '  ' : '* ') + nameOf(id).padEnd(23) + (id === 'kilo-free' ? 'no key, 200 requests/hour per IP address' : PRESETS[id].gets));
   w.io.say('');
 }
 
@@ -256,6 +257,7 @@ function summaryScreen(w) {
     frame(w, 6);
     const on = [...chosen(w, choicesOf(w)).map(id => nameOf(id)), ...w.state.apis.map(api => api.id)];
     const off = choicesOf(w).filter(id => !w.state.choices[id] && (id !== GRAPH || asksForGraph(w))).map(id => nameOf(id));
+    if (retiredZen(w.config)) off.push('zen-glm');
     const blocked = w.state.training ? [] : trainers(w);
     say(w, [w.text.profile + ': ' + w.state.profile, w.text.assistant + ': ' + w.state.host, w.text.turnedOn + ': ' + (on.join(', ') || w.text.none),
       w.text.turnedOff + ': ' + (off.join(', ') || w.text.none), w.text.training + ': ' + (w.state.training ? w.text.on : w.text.off)]);
@@ -325,6 +327,7 @@ function buildCommands(w, usable) {
     if (want && !enabledNow(config, id)) commands.push(['add-api', id]);
     if (!want && present) commands.push(['remove-api', id]);
   }
+  if (retiredZen(config)) commands.push(['remove-api', 'zen-glm']);
   if (usable(OPENCODE)) {
     for (const api of state.apis) commands.push(['add-api', api.id, api.model, '--trains', api.trains ? 'yes' : 'no', ...(api.free ? ['--free'] : [])]);
   }

@@ -20,6 +20,17 @@ function snap({ profile = 'balanced', host = 'claude-code', c5h = 10, cWeek = 20
 const fails = (model, n, result = 'fail', age = DAY) => Array.from({ length: n }, (_, i) => ({ t: NOW - age - i * 1000, model, result }));
 const ids = list => list.map(s => s.id);
 
+test('the retired Zen GLM registration gets a removal suggestion', () => {
+  const input = snap();
+  const providers = input.config.providers.providers;
+  providers['zen-glm'] = { enabled: false, cli: { defaultModel: 'opencode/glm-5.3-flash-free' } };
+  assert.deepEqual(suggestions(input, NOW), [{
+    id: 'retired:zen-glm', text: 'OpenCode retired the free Zen GLM model', command: 'remove-api zen-glm',
+  }]);
+  providers['zen-glm'].cli.defaultModel = 'opencode/deepseek-v4.1-flash-free';
+  assert.deepEqual(suggestions(input, NOW), []);
+});
+
 test('rule 1: Claude week at 80% suggests frugal, 79% does not', () => {
   const [s] = suggestions(snap({ cWeek: 85 }), NOW);
   assert.deepEqual(s, { id: 'profile-frugal', text: 'Claude week is 85% used', command: 'set profile frugal' });

@@ -9,6 +9,7 @@ const { spawnSync } = require('node:child_process');
 const { check, format, command } = require('../scripts/free-models');
 const { PRESETS } = require('../scripts/add-api');
 const zero = { cost: { input: 0, output: 0 } };
+const zenFree = { ...zero, tool_call: true };
 const paid = { cost: { input: 1, output: 2 } };
 const offer = (id, extra = {}) => ({ id, pricing: { prompt: '0', completion: '0' }, context_length: 64000, supported_parameters: ['tools'], ...extra });
 
@@ -28,8 +29,18 @@ test('preset status, account tiers, extra models and first slash splitting', () 
   assert.equal(check(presets, charged, { data: [offer('nvidia/a:free')] }).presets[1].status, 'ok');
 });
 
+test('a deprecated preset is retired and counts as needing attention', () => {
+  const presets = { zen: { model: 'opencode/old', keyless: true } };
+  const result = check(presets, { opencode: { models: { old: { ...paid, status: 'deprecated' } } } });
+  assert.deepEqual(result.presets, [{ id: 'zen', model: 'opencode/old', status: 'retired' }]);
+  assert.equal(result.attention, 1);
+  assert.match(format(result), /retired\s+zen opencode\/old/);
+});
+
 test('candidate filters exclude paid, short, tool-less and covered models', () => {
-  const dev = { opencode: { models: { yes: zero, paid, covered: zero, unknown: {}, string: { cost: { input: '0', output: '0' } } } }, other: { models: { no: zero } } };
+  const dev = { opencode: { models: { yes: zenFree, paid: { ...paid, tool_call: true }, covered: zenFree,
+    retired: { ...zenFree, status: 'deprecated' }, noTools: zero, falseTools: { ...zero, tool_call: false },
+    stringTools: { ...zero, tool_call: 'true' }, unknown: {}, string: { tool_call: true, cost: { input: '0', output: '0' } } } }, other: { models: { no: zero } } };
   const router = { data: [offer('yes:free'), offer('covered:free'), offer('paid:free', { pricing: { prompt: '1', completion: '0' } }),
     offer('short:free', { context_length: 63999 }), offer('no-tools:free', { supported_parameters: [] }), offer('plain'),
     offer('invalid:free', { pricing: { prompt: '', completion: '0' } }), offer('string:free', { context_length: '64000' })] };
@@ -39,9 +50,9 @@ test('candidate filters exclude paid, short, tool-less and covered models', () =
 });
 
 test('sort, cap and sanitize all printed fields', () => {
-  const models = Object.fromEntries(Array.from({ length: 17 }, (_, i) => ['m' + String(i).padStart(2, '0'), { ...zero, limit: { context: 64000 } }]));
-  models['bad\n`\u001b'] = { ...zero, limit: { context: 128000 } };
-  models['z'.repeat(200)] = zero;
+  const models = Object.fromEntries(Array.from({ length: 17 }, (_, i) => ['m' + String(i).padStart(2, '0'), { ...zenFree, limit: { context: 64000 } }]));
+  models['bad\n`\u001b'] = { ...zenFree, limit: { context: 128000 } };
+  models['z'.repeat(200)] = zenFree;
   const result = check({ 'bad\n`': { model: 'missing/evil\n`\u0000' } }, { opencode: { models } }, { data: Array.from({ length: 17 }, (_, i) => offer('m' + i + ':free')) });
   assert.equal(result.zen[0].context, 128000);
   assert.equal(result.zen[1].model, 'opencode/m00');
@@ -51,7 +62,7 @@ test('sort, cap and sanitize all printed fields', () => {
   assert.match(text, /\(2 more\)/);
   assert.doesNotMatch(text, /[`\u001b\u0000]/);
   assert.match(text, /bad\?\? missing\/evil\?\?\?/);
-  assert.ok(format(check({}, { opencode: { models: { ['z'.repeat(200)]: zero } } })).includes('opencode/' + 'z'.repeat(111) + '  0k ctx'));
+  assert.ok(format(check({}, { opencode: { models: { ['z'.repeat(200)]: zenFree } } })).includes('opencode/' + 'z'.repeat(111) + '  0k ctx'));
 });
 
 test('malformed entries are ignored without crashing', () => {

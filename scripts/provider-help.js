@@ -54,7 +54,7 @@ const PROVIDER_HELP = Object.freeze({
     catch: 'Free models may train on your prompts and code, and what is offered changes often.', needs: 'The OpenCode program, which setup installs.' },
   'kilo-free': { group: free, name: 'Kilo Free', what: 'Kilo Auto Free through the Kilo CLI for small coding tasks.',
     on: 'Small tasks cost none of your paid limits.', off: 'Small tasks use your paid limits instead.',
-    catch: 'Free models may change or be rate limited. No limit is published.',
+    catch: 'Kilo allows 200 anonymous free requests per hour per IP address. See https://kilo.ai/docs/gateway/authentication. Free models may change.',
     needs: 'The Kilo CLI, which setup installs. No account or key was needed in testing.',
     warning: 'Kilo says Auto Free may route to providers that log prompts and outputs and use them to improve their services. Do not send personal or confidential data.' },
   'openrouter-free': { group: free, preset: true, name: 'OpenRouter Free', what: 'OpenRouter\'s free models, added through the OpenCode program.',
@@ -84,11 +84,6 @@ const PROVIDER_HELP = Object.freeze({
     catch: 'Weak on hard tasks, and the limit is not confirmed by NVIDIA.',
     needs: 'A free NVIDIA developer account and the OpenCode program, which setup installs.',
     warning: 'Reported as meant for prototyping and evaluation only, so do not use it for production work. ' + UNCONFIRMED_TRAINING },
-  'zen-glm': { group: free, preset: true, name: 'OpenCode Zen GLM',
-    what: 'The free GLM-5.3-Flash model on OpenCode Zen, through the OpenCode program. OpenCode says its provider keeps no data and does not train on it.',
-    on: 'Free calls for small tasks, with no key to create.', off: 'Small tasks use your paid limits instead.',
-    catch: 'Free only for a limited time, so it can disappear, and no limit is published. Weak on hard tasks.',
-    needs: 'The OpenCode program, which setup installs. No account or key.' },
   'zen-deepseek': { group: free, preset: true, name: 'OpenCode Zen DeepSeek',
     what: 'The free DeepSeek V4.1 Flash model on OpenCode Zen, through the OpenCode program. OpenCode says its provider keeps no data and does not train on it.',
     on: 'Free calls for small tasks, with no key to create.', off: 'Small tasks use your paid limits instead.',
@@ -136,9 +131,13 @@ function guide(config) {
   return lines.join('\n');
 }
 
+// Benched by the maintainer, but still gated: the self-test also proves the CLI and login work on this machine.
+const MAINTAINER_TESTED = new Set(['junie-lite']);
 function evidenceNotice(id) {
-  return require('./lib').BUILTIN_PROVIDERS.providers[id]?.evidence === 'docs'
-    ? "Not run end to end by the maintainer yet, built from the vendor's documentation. Quota Boss gives it no work until quota-boss providers test " + id + ' passes.' : '';
+  if (require('./lib').BUILTIN_PROVIDERS.providers[id]?.evidence !== 'docs') return '';
+  return (MAINTAINER_TESTED.has(id) ? 'Tested end to end by the maintainer.'
+    : "Not run end to end by the maintainer yet, built from the vendor's documentation.")
+    + ' Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.';
 }
 
 /** The sentence added after a provider switch, so every change says what it means. */

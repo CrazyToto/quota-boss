@@ -78,11 +78,11 @@ request, and SambaNova asks for a payment method.
 | Gemini API (needs OpenCode) | choose it in the setup | not confirmed | yes, and humans may read it |
 | NVIDIA NIM (needs OpenCode) | choose it in the setup | about 40 requests/minute (reported) | treated as yes |
 | Z.ai GLM-4.7-Flash (needs OpenCode) | choose it in the setup | none published | treated as yes |
-| OpenCode Zen GLM and DeepSeek (needs OpenCode, no key) | choose them in the setup | none published, free for a limited time | no |
+| OpenCode Zen DeepSeek (needs OpenCode, no key) | choose it in the setup | none published, free for a limited time | no |
 | OpenCode's default free model | `quota-boss use opencode-free on` | varies | yes |
-| Kilo Auto Free (needs Kilo CLI, no key) | choose it in the setup or `quota-boss use kilo-free on` | none published; may be rate limited | yes; providers may log prompts and outputs for improvement, so do not send personal or confidential data |
+| Kilo Auto Free (needs Kilo CLI, no key) | choose it in the setup or `quota-boss use kilo-free on` | 200 anonymous requests per hour per IP address | yes; providers may log prompts and outputs for improvement, so do not send personal or confidential data |
 
-No account at all: in the setup, the free-offers question has the answer **no-key**. It turns on only OpenCode Zen GLM, OpenCode Zen DeepSeek and Kilo Free, so there is nothing to sign up for. The setup marks every offer that needs a key with a star.
+No account at all: in the setup, the free-offers question has the answer **no-key**. It turns on only OpenCode Zen DeepSeek and Kilo Free, so there is nothing to sign up for. The setup marks every offer that needs a key with a star.
 
 ### Any other API
 

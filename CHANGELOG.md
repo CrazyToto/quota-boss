@@ -4,6 +4,24 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Free first: outside CRITICAL work, a free route (a free or local provider at cost 0) takes a job from a paid worker when it is about as likely to succeed (within 0.02, or 0.05 while that worker's pool is tight). Normal work goes free only after the free route has 3 verified passes; trivial work goes free at once. The boss doing a job itself is never replaced, and the paid worker stays the next ladder step.
+
+- One yes turns a provider on completely. The update question, setup and `quota-boss use <id> on` in a terminal install the official CLI (vendor install scripts too, with the command shown first), start the login in its own window, wait up to 5 minutes for it and run the self-test. A bare `use <id> on` asks once more before running a vendor install script. Outside a terminal, `use` only switches the provider and says how to finish.
+
+- After an update, every Claude Code session start asks about new providers until you answer, also after `/clear` or a compaction. The boss asks you one yes/no question and records either answer.
+
+- Kilo Free's limit is now named: 200 anonymous requests per hour per IP address, from Kilo's gateway docs.
+
+- The models.dev audit (`tools/free-models.js`) marks a preset whose model is deprecated as `retired`, and lists only Zen models that are not deprecated and support tool calls.
+
+### Removed
+
+- The OpenCode Zen GLM preset (`zen-glm`). OpenCode retired the free GLM-5.3-Flash model on 2026-11-18. If you added it, setup removes it and a session start suggests `quota-boss remove-api zen-glm`. OpenCode Zen DeepSeek stays.
+
+- The `JUNIE_API_KEY` note in the provider texts. Junie still never sees an inherited key.
+
 ## [0.3.1] - 2026-11-19
 
 ### Changed

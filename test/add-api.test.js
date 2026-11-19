@@ -84,14 +84,25 @@ test('every preset has a limit and matching preset help', () => {
 
 test('a keyless preset asks for no key and needs no training permission', () => {
   const dir = home();
-  const result = cli(dir, 'add-api', 'zen-glm');
+  const result = cli(dir, 'add-api', 'zen-deepseek');
   assert.equal(result.status, 0, result.stderr);
   assert.doesNotMatch(result.stdout, /auth login|allow-training|undefined/);
-  const provider = saved(dir, 'providers').providers['zen-glm'];
+  const provider = saved(dir, 'providers').providers['zen-deepseek'];
   assert.deepEqual(provider.cli.args, ['run', '-m', '{model}', '{prompt}']);
-  assert.equal(provider.cli.defaultModel, 'opencode/glm-5.3-flash-free');
+  assert.equal(provider.cli.defaultModel, 'opencode/deepseek-v4.1-flash-free');
   assert.equal(provider.trainsOnData, false);
-  assert.equal(saved(dir, 'models').models['zen-glm-api'].cost, 0);
+  assert.equal(saved(dir, 'models').models['zen-deepseek-api'].cost, 0);
+});
+
+test('a retired Zen GLM registration can be removed without its preset', () => {
+  const dir = home();
+  assert.equal(Object.hasOwn(PRESETS, 'zen-glm'), false);
+  const added = cli(dir, 'add-api', 'zen-glm', 'opencode/glm-5.3-flash-free', '--trains', 'no', '--free');
+  assert.equal(added.status, 0, added.stderr);
+  const removed = cli(dir, 'remove-api', 'zen-glm');
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(saved(dir, 'providers').providers['zen-glm'], undefined);
+  assert.equal(saved(dir, 'models').models['zen-glm-api'], undefined);
 });
 
 test('Z.ai asks for its key on its own page and stays behind the training gate', () => {
@@ -105,11 +116,11 @@ test('Z.ai asks for its key on its own page and stays behind the training gate',
 
 test('a rate-limited offer is paused, found by provider id and not counted as a failure', () => {
   const dir = home();
-  assert.equal(cli(dir, 'add-api', 'zen-glm').status, 0);
-  const result = cli(dir, 'feedback', 'zen-glm', 'mechanical', 'trivial', 'limited');
+  assert.equal(cli(dir, 'add-api', 'zen-deepseek').status, 0);
+  const result = cli(dir, 'feedback', 'zen-deepseek', 'mechanical', 'trivial', 'limited');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /zen-glm-api mechanical trivial limited/);
-  assert.match(cli(dir, 'route', '--explain', 'mechanical', 'trivial').stdout, /OpenCode Zen GLM .*rate limited \(paused for 15 minutes\)/);
+  assert.match(result.stdout, /zen-deepseek-api mechanical trivial limited/);
+  assert.match(cli(dir, 'route', '--explain', 'mechanical', 'trivial').stdout, /OpenCode Zen DeepSeek .*rate limited \(paused for 15 minutes\)/);
 });
 
 test('a rate limit ends after 15 minutes', () => {
@@ -136,7 +147,7 @@ test('doctor names offers with a missing key or a retired model, using one local
   const providers = { good: offer('mistral/codestral-latest'), gone: offer('opencode/old-free'), nokey: offer('groq/x'),
     vibe: { enabled: true, cli: { command: 'vibe', args: ['--prompt', '{prompt}'] } }, off: { ...offer('groq/y'), enabled: false } };
   let calls = 0;
-  const list = () => { calls++; return { status: 0, stdout: 'mistral/codestral-latest\nopencode/glm-5.3-flash-free\n' }; };
+  const list = () => { calls++; return { status: 0, stdout: 'mistral/codestral-latest\nopencode/deepseek-v4.1-flash-free\n' }; };
   assert.deepEqual(openCodeOffers(providers, list), ['OpenCode offer good: OK',
     'OpenCode offer gone: model no longer offered, remove it with: quota-boss remove-api gone',
     'OpenCode offer nokey: no key stored, add one with: opencode auth login -p groq']);
@@ -146,7 +157,7 @@ test('doctor names offers with a missing key or a retired model, using one local
   for (const stdout of ['', 'Update available\nno models here\n']) {
     assert.deepEqual(openCodeOffers({ nokey: providers.nokey }, () => ({ status: 0, stdout })), ['OpenCode offers: could not check. Is OpenCode installed?']);
   }
-  assert.deepEqual(openCodeOffers({ zen: offer('opencode/glm-5.3-flash-free') }, () => ({ status: 0, stdout: 'mistral/codestral-latest\n' })),
+  assert.deepEqual(openCodeOffers({ zen: offer('opencode/deepseek-v4.1-flash-free') }, () => ({ status: 0, stdout: 'mistral/codestral-latest\n' })),
     ['OpenCode offer zen: not listed by OpenCode, check with: opencode models']);
 });
 

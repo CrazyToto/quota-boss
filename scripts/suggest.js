@@ -23,6 +23,10 @@ function suggestions(snap, now = Date.now()) {
     const project = snap?.project ?? {}, config = snap?.config ?? {}, limits = snap?.limits ?? {};
     if (!Number.isFinite(now)) return [];
     const out = [];
+    const providers = config.providers?.providers ?? {}, models = config.models?.models ?? {};
+    if (providers['zen-glm']?.cli?.defaultModel === 'opencode/glm-5.3-flash-free') {
+      out.push({ id: 'retired:zen-glm', text: 'OpenCode retired the free Zen GLM model', command: 'remove-api zen-glm' });
+    }
     const claude = lib.providerWindows('claude', limits);
     const week = used(claude.weekly, now);
     if (week !== undefined && week >= 80 && project.profile !== 'frugal') {
@@ -36,7 +40,6 @@ function suggestions(snap, now = Date.now()) {
     // Ask about unanswered providers added by an update.
     const added = newProviders.suggestion(snap?.newProviders);
     if (added) out.push(added);
-    const providers = config.providers?.providers ?? {}, models = config.models?.models ?? {};
     const own = hostPool(project.host);
     const candidate = id => ID.test(id) && id !== 'claude' && id !== own && Object.hasOwn(providers, id) && providers[id]?.enabled !== false;
     const off = (id, text) => {

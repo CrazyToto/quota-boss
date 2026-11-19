@@ -42,9 +42,9 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
 
 // Enter on: start, profile, host, 2 own (Codex, Perplexity), 5 other (Junie Lite first, then 4 plans), the free offers question, api question.
 const START = [''], FIRST_TWO = ['', '', ''], OWN = ['', ''], OTHER_NONE = ['', '', '', '', ''], FREE_NONE = [''], NO_API = [''];
-// Chooses "one by one" (option 4, or 5 when "keep" is listed first), then answers the 10 offers in setup order:
-// 0 Mistral, 1 Zen GLM, 2 Zen DeepSeek, 3 OpenRouter, 4 Cloudflare, then the rest.
-const freeAnswers = (picks, option = '4') => [option, ...Array.from({ length: 10 }, (_, index) => picks[index] ?? '')];
+// Chooses "one by one" (option 4, or 5 when "keep" is listed first), then answers the 9 offers in setup order:
+// 0 Mistral, 1 Zen DeepSeek, 2 OpenRouter, 3 Cloudflare, then the rest.
+const freeAnswers = (picks, option = '4') => [option, ...Array.from({ length: 9 }, (_, index) => picks[index] ?? '')];
 const MISTRAL = freeAnswers({ 0: 'y' });
 const flow = (other, free, rest) => [...START, ...FIRST_TWO, ...OWN, ...other, ...free, ...NO_API, ...rest];
 
@@ -81,20 +81,20 @@ test('a provider whose program is missing afterwards stays off and says why', ()
 test('an API offer is only added when OpenCode is really there, and names the program', () => {
   const free = freeAnswers({ 1: 'y' });
   const ok = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode-free': 'missing' }, afterInstall: { 'opencode-free': 'ok' } });
-  assert.deepEqual(ok.commands.slice(1), [['add-api', 'zen-glm']]);
-  assert.match(ok.said, /OpenCode \(needed for OpenCode Zen GLM\)/);
+  assert.deepEqual(ok.commands.slice(1), [['add-api', 'zen-deepseek']]);
+  assert.match(ok.said, /OpenCode \(needed for OpenCode Zen DeepSeek\)/);
   const failed = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode-free': 'missing' }, afterInstall: { 'opencode-free': 'missing' } });
   assert.deepEqual(failed.commands.slice(1), []);
 });
 
 test('Kilo uses its own CLI, needs no login, and stays off if install fails', () => {
-  const free = freeAnswers({ 9: 'y' });
+  const free = freeAnswers({ 8: 'y' });
   const options = { programs: { 'kilo-free': 'missing', 'opencode-free': 'missing' }, afterInstall: { 'kilo-free': 'ok' } };
   const ok = play(flow(OTHER_NONE, free, ['y', 'y']), options);
   assert.deepEqual(ok.installs, ['kilo-free']);
   assert.ok(ok.commands.some(c => c.join(' ') === 'use kilo-free on'));
   assert.ok(ok.commands.some(c => c.join(' ') === 'set training on'));
-  assert.match(ok.said, /Kilo Free.*no key, no published limit/);
+  assert.match(ok.said, /Kilo Free.*no key, 200 requests\/hour per IP address/);
   assert.match(ok.said, /log prompts/);
   assert.match(ok.said, /outputs/);
   assert.doesNotMatch(ok.said, /Key 1 of|Login 1 of/);
@@ -105,9 +105,22 @@ test('Kilo uses its own CLI, needs no login, and stays off if install fails', ()
 });
 
 test('turning an added offer off removes it', () => {
-  const providers = { ...baseProviders(), 'zen-glm': provider(true, { custom: true }) };
-  const { commands } = play(flow(OTHER_NONE, freeAnswers({ 1: 'n' }, '5'), ['y']), { providers });
+  const providers = { ...baseProviders(), 'zen-deepseek': provider(true, { custom: true }) };
+  const { commands } = play(flow(OTHER_NONE, freeAnswers({ 1: 'n' }), ['y']), { providers });
+  assert.deepEqual(commands.slice(1), [['remove-api', 'zen-deepseek']]);
+});
+
+test('setup plans to remove the retired Zen GLM provider on confirmation', () => {
+  const providers = { ...baseProviders(), 'zen-glm': provider(true, {
+    custom: true, cli: { command: 'opencode', defaultModel: 'opencode/glm-5.3-flash-free' },
+  }) };
+  const options = { providers, programs: { 'opencode-free': 'missing' } };
+  const { commands, said, installs } = play(flow(OTHER_NONE, FREE_NONE, ['y']), options);
   assert.deepEqual(commands.slice(1), [['remove-api', 'zen-glm']]);
+  assert.match(said, /zen-glm/);
+  assert.doesNotMatch(said, /Key 1 of/);
+  assert.deepEqual(installs, []);
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['n']), options).commands, []);
 });
 
 test('one answer turns on every free offer, and offers left without a key are removed again', () => {
@@ -124,43 +137,40 @@ test('one answer turns on every free offer, and offers left without a key are re
 
 test('the no-training group adds only offers that do not train and asks no training question', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['1'], ['y']), { stored: ['1 credentials'] });
-  assert.deepEqual(commands.slice(1), [['add-api', 'zen-glm'], ['add-api', 'zen-deepseek']]);
+  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
   assert.doesNotMatch(said, /Allow them in this folder/);
-  assert.match(said, /Free offers ready to use: OpenCode Zen GLM, OpenCode Zen DeepSeek\./);
+  assert.match(said, /Free offers ready to use: OpenCode Zen DeepSeek\./);
 });
 
 test('the no-key group adds only offers that need no key or account and marks the others', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['5'], ['y', 'y', 'y']), { stored: ['1 credentials'] });
   const added = commands.filter(c => c[0] === 'add-api').map(c => c[1]);
-  assert.deepEqual(added, ['zen-glm', 'zen-deepseek']);
+  assert.deepEqual(added, ['zen-deepseek']);
   assert.ok(commands.some(c => c.includes('kilo-free')), JSON.stringify(commands));
   assert.ok(!commands.some(c => c[0] === 'add-api' && ['mistral-api', 'openrouter-free', 'gemini-api'].includes(c[1])));
   assert.match(said, /Only the ones without a key or account/);
   assert.match(said, /\n\* Mistral {16}about 1 billion tokens a month/);
-  assert.match(said, /\n {2}OpenCode Zen GLM {7}no key/);
+  assert.match(said, /\n {2}OpenCode Zen DeepSeek {2}no key/);
   assert.match(said, /\n {2}Kilo Free {14}no key/);
   assert.match(said, /\* needs a free key from that site/);
-  assert.match(said, /Free offers ready to use: OpenCode Zen GLM, OpenCode Zen DeepSeek, Kilo/);
+  assert.match(said, /Free offers ready to use: OpenCode Zen DeepSeek, Kilo/);
   assert.doesNotMatch(said, /Left out because no key was entered/);
 });
 
 test('a free offer whose registration fails is not reported as ready', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['1'], ['y']), {
     stored: ['1 credentials'],
-    runError: args => args[0] === 'add-api' && args[1] === 'zen-glm' ? new Error('Provider config is busy; retry.') : null,
+    runError: args => args[0] === 'add-api' && args[1] === 'zen-deepseek' ? new Error('Provider config is busy; retry.') : null,
   });
-  assert.deepEqual(commands.slice(1), [['add-api', 'zen-glm'], ['add-api', 'zen-deepseek']]);
-  assert.match(said, /Could not apply add-api zen-glm: Provider config is busy; retry\./);
-  const ready = said.match(/Free offers ready to use: [^\n]+/);
-  assert.ok(ready);
-  assert.match(ready[0], /OpenCode Zen DeepSeek/);
-  assert.doesNotMatch(ready[0], /OpenCode Zen GLM/);
+  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
+  assert.match(said, /Could not apply add-api zen-deepseek: Provider config is busy; retry\./);
+  assert.doesNotMatch(said, /Free offers ready to use:/);
 });
 
 test('the free screen only lists what you get, in two groups, and the warnings wait for the training question', () => {
   const { said } = play(flow(OTHER_NONE, ['2'], ['n', 'y', ...Array(7).fill('n')]), { stored: ['1 credentials'] });
   const screen = said.slice(said.indexOf('What you get for free'), said.indexOf('Choose a number (Enter = none)', said.indexOf('What you get for free')));
-  assert.match(screen, /Does not train on your data\n {2}OpenCode Zen GLM {7}no key, no published limit, free for now/);
+  assert.match(screen, /Does not train on your data\n {2}OpenCode Zen DeepSeek {2}no key, no published limit, free for now/);
   assert.match(screen, /May train on your data, or does not say\n\* Mistral {16}about 1 billion tokens a month, 2 requests a minute/);
   assert.ok(screen.indexOf('OpenCode Zen DeepSeek') < screen.indexOf('May train'));
   assert.doesNotMatch(screen, /Groq|SambaNova/);
@@ -181,11 +191,11 @@ test('a failed key check removes nothing and reports the open key', () => {
 });
 
 test('a mixed selection is kept on Enter and the per-offer screens stay hidden', () => {
-  const providers = { ...baseProviders(), 'zen-glm': provider(true, { custom: true }) };
-  const { said, commands } = play(flow(OTHER_NONE, [''], ['y']), { providers });
-  assert.match(said, /Keep what is on now: OpenCode Zen GLM/);
+  const providers = { ...baseProviders(), 'mistral-api': provider(true, { custom: true }) };
+  const { said, commands } = play(flow(OTHER_NONE, [''], ['y']), { providers, stored: ['mistral'] });
+  assert.match(said, /Keep what is on now: Mistral/);
   assert.deepEqual(commands.slice(1), []);
-  assert.doesNotMatch(said, /OpenCode Zen GLM \(on\)/);
+  assert.doesNotMatch(said, /Mistral \(on\)/);
 });
 
 test('the setup asks for more APIs, re-asks bad input and needs a stated training answer', () => {
@@ -235,7 +245,7 @@ test('confirmed setup starts required logins without asking again', () => {
 });
 
 test('chosen presets get one key screen each, in order, with their pages', () => {
-  const free = freeAnswers({ 0: 'y', 3: 'y' });
+  const free = freeAnswers({ 0: 'y', 2: 'y' });
   const { said, keyed, opened } = play(flow(OTHER_NONE, free, ['n', 'y', 'y']));
   assert.deepEqual(opened, ['https://admin.mistral.ai/organization/api-keys', 'https://openrouter.ai/settings/keys']);
   assert.deepEqual(keyed, ['mistral', 'openrouter']);
@@ -244,15 +254,15 @@ test('chosen presets get one key screen each, in order, with their pages', () =>
 });
 
 test('a key screen says what that service needs beyond a key', () => {
-  const { said, opened } = play(flow(OTHER_NONE, freeAnswers({ 3: 'y', 4: 'y' }), ['n', 'y', 'y', 'y']));
+  const { said, opened } = play(flow(OTHER_NONE, freeAnswers({ 2: 'y', 3: 'y' }), ['n', 'y', 'y', 'y']));
   assert.match(said, /Key 1 of 2: OpenRouter Free[\s\S]*A balance of 0 is normal/);
   assert.match(said, /Key 2 of 2: Cloudflare Workers AI[\s\S]*Use REST API[\s\S]*Account ID[\s\S]*Create a Workers AI API Token/);
   assert.deepEqual(opened, ['https://openrouter.ai/settings/keys', 'https://dash.cloudflare.com/']);
 });
 
 test('OpenCode Zen is added without a key screen or a training question', () => {
-  const { said, keyed, opened, commands } = play(flow(OTHER_NONE, freeAnswers({ 1: 'y', 2: 'y' }), ['y']));
-  assert.deepEqual(commands.slice(1), [['add-api', 'zen-glm'], ['add-api', 'zen-deepseek']]);
+  const { said, keyed, opened, commands } = play(flow(OTHER_NONE, freeAnswers({ 1: 'y' }), ['y']));
+  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
   assert.deepEqual(keyed, []);
   assert.deepEqual(opened, []);
   assert.doesNotMatch(said, /Allow them in this folder/);

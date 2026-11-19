@@ -29,6 +29,7 @@ function check(presets, modelsDev, openRouter) {
       const listed = Object.hasOwn(models, modelId) && object(models[modelId]) ? models[modelId] : null;
       const preferred = provider === 'openrouter' ? router.get(modelId) : null;
       let status = listed || preferred ? 'ok' : 'missing';
+      if (listed?.status === 'deprecated') status = 'retired';
       if (status === 'ok' && (preset.keyless === true || entry.keyless === true || modelId.endsWith(':free'))) {
         const cost = listed?.cost;
         const paid = preferred ? [preferred.pricing?.prompt, preferred.pricing?.completion].some(value => price(value) !== null && price(value) !== 0)
@@ -41,7 +42,8 @@ function check(presets, modelsDev, openRouter) {
   const zen = [], openrouter = [];
   const zenModels = object(dev.opencode) && object(dev.opencode.models) ? dev.opencode.models : {};
   for (const [id, model] of Object.entries(zenModels)) {
-    if (object(model) && object(model.cost) && model.cost.input === 0 && model.cost.output === 0 && !covered.has('opencode/' + id)) {
+    if (object(model) && model.status !== 'deprecated' && model.tool_call === true
+      && object(model.cost) && model.cost.input === 0 && model.cost.output === 0 && !covered.has('opencode/' + id)) {
       zen.push({ model: 'opencode/' + id, context: context(model.limit?.context) });
     }
   }
