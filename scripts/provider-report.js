@@ -102,8 +102,16 @@ function providerReport(id, options = {}) {
     const summary = selfTest(id, { config, model: key, platform, env, findExecutable: find, spawnSync,
       timeout: Math.min(options.timeout ?? 180000, 180000) });
     const passed = summary.split('\n').at(-1).startsWith('PASS ');
-    const task = codingTask(provider.cli, model, executable, { platform, env, find, spawnSync,
-      timeout: Math.min(options.timeout ?? 300000, 300000) });
+    // A limit, timeout or missing login makes the second call fail the same way: skip it, and pause a limited model
+    // through the same 15-minute exclusion the worker path uses.
+    const blocked = /: (rate limited|timed out|not signed in|not installed)$/.exec(summary)?.[1];
+    if (blocked === 'rate limited') {
+      try { (options.appendOutcome || lib.appendOutcome)({ model: key, category: 'mechanical', tier: 'trivial', result: 'limited' }, config.models, [], Date.now()); }
+      catch { /* the report still prints */ }
+    }
+    const task = blocked ? { passed: 0, seconds: '-', reported: '-', error: 'none' }
+      : codingTask(provider.cli, model, executable, { platform, env, find, spawnSync,
+        timeout: Math.min(options.timeout ?? 300000, 300000) });
     const selfError = passed ? 'none' : summary.endsWith(': timed out') ? 'timeout'
       : summary.endsWith(': rate limited') ? 'limit' : 'exit code';
     const error = task.error === 'none' ? selfError : task.error;

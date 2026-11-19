@@ -108,3 +108,15 @@ test('unknown providers and providers without a CLI fail before running anything
   assert.throws(() => cli.run(['providers', 'report', 'toString'], options), /Unknown provider id/);
   assert.throws(() => cli.run(['providers', 'report', 'manual'], options), /Provider has no CLI/);
 });
+
+test('a rate-limited self-test skips the coding task and pauses the model', t => {
+  const { options, read, taskCalls } = fixture(t, 'pass');
+  const spawn = options.spawnSync, outcomes = [];
+  options.spawnSync = (file, args, opts) => /[a-f0-9]{48}/.test(args.join(' '))
+    ? { status: 1, stdout: '', stderr: 'HTTP 429 Too Many Requests' } : spawn(file, args, opts);
+  options.appendOutcome = outcome => outcomes.push(outcome);
+  providerReport('grok', options);
+  assert.equal(taskCalls.length, 0, 'no second call after a limit');
+  assert.deepEqual(outcomes.map(o => [o.model, o.result]), [['example', 'limited']]);
+  assert.match(read(), /example \| FAIL \| 0\/4 \| - \| - \| limit/);
+});
