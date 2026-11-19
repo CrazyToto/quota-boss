@@ -184,6 +184,24 @@ test('an unrated successor inherits its predecessor scores until logged results 
   const failures = Array.from({ length: 12 }, (_, t) => ({ t, model: 'gpt-6.2-sol', category: 'implementation', tier: 'critical', result: 'fail' }));
   const strict = route({ ...base, models, outcomes: failures, thresholds: { ...base.thresholds, minP: { critical: 0.7 } } });
   assert.notEqual(select(strict, 'critical', 'implementation').model, 'gpt-6.2-sol', 'repeated failures bring the predecessor back');
+  const passes = failures.map(o => ({ ...o, model: 'gpt-6.1-sol', result: 'pass' }));
+  const both = route({ ...base, models, outcomes: passes, thresholds: { ...base.thresholds, minP: { critical: 0.99 } } });
+  assert.equal(select(both, 'critical', 'implementation').model, 'gpt-6.2-sol', 'below minP, predecessor passes alone do not keep it');
+  // Above minP, the successor's own failure still brings the likelier predecessor back.
+  const one = [{ t: 1, model: 'gpt-6.2-sol', category: 'implementation', tier: 'normal', result: 'fail' }];
+  const loose = route({ ...base, models, outcomes: one, thresholds: { ...base.thresholds, minP: { normal: 0.55 } } });
+  assert.equal(select(loose, 'normal', 'implementation').model, 'gpt-6.1-sol');
+  // A replaced successor cannot remove the predecessor for a newer model that fails the check itself.
+  const chain = { ...models, models: { ...models.models, 'gpt-6.3-sol': { ...old, label: 'Newest', scores: { implementation: 10 } } } };
+  const mixed = [...passes, { t: 15, model: 'gpt-6.3-sol', category: 'implementation', tier: 'normal', result: 'fail' }];
+  const chained = route({ ...base, models: chain, outcomes: mixed, thresholds: { ...base.thresholds, minP: { critical: 0.99 } } });
+  assert.equal(select(chained, 'critical', 'implementation').model, 'gpt-6.1-sol');
+  // The second opinion skips a successor whose own failures make it less likely than its predecessor.
+  const archModels = { categories: ['architecture'], models: { 'gpt-6.1-sol': { ...old, scores: { architecture: 9 } }, 'gpt-6.2-sol': { ...old, label: 'New', scores: {} },
+    'claude-opus-5-5': { pool: 'claude', label: 'Opus', cost: 1, scores: { architecture: 10 } } } };
+  const archFails = failures.map(o => ({ ...o, category: 'architecture' }));
+  const arch = select(route({ ...base, models: archModels, outcomes: archFails }), 'critical', 'architecture');
+  assert.equal(arch.consensus?.model, 'gpt-6.1-sol');
 });
 
 test('a Codex model missing from the Codex model cache while its family is listed is not routed', () => {

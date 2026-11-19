@@ -312,7 +312,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const seconds = medianSeconds(runs, model.id, category, tier);
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
-          inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, price, thinEvidence, jobCost,
+          inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, prior: successProbability(model, category, tier, [], thresholds, now, effort), price, thinEvidence, jobCost,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
           seconds,
@@ -368,16 +368,21 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       // A newer model of the same family rated at least as high replaces its predecessor, even when the predecessor has
       // more logged passes. The boss's own model stays: handing work to its successor would cost a handover.
       const rated = c => registry.find(model => model.id === c.model)?.scores?.[category] ?? 0;
-      // Only a successor in the same pool that is above minP, or at least as likely to pass, replaces it, so repeated failures
-      // bring the predecessor back.
-      // The second opinion has no minP and passes floor 0.
-      const successor = (c, list, floor = minimum) => list.find(o => o !== c && o.pool === c.pool && familyKey(o.model) === familyKey(c.model)
-        && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c) && (o.P >= floor || o.P >= c.P));
-      const open = evaluated.filter(c => !c.reason);
-      for (const c of open) {
-        const newer = c.via !== 'self' && successor(c, open);
-        if (newer) c.reason = 'lost: replaced by ' + newer.label;
-      }
+      // A successor in the same pool replaces it unless its own logged failures pulled it below its registry prior while
+      // the predecessor is likelier; passes of the predecessor alone never keep it. A successor below minP does not push
+      // out a predecessor above it. Only a successor that is not replaced itself counts, so 6.3 cannot remove 6.1 through
+      // 6.2. The second opinion has no minP and passes floor 0.
+      const replacements = (list, floor = minimum) => {
+        const replaced = new Map();
+        for (const c of [...list].sort((a, b) => newerFirst(a.model, b.model))) {
+          const newer = c.via !== 'self' && list.find(o => o !== c && !replaced.has(o) && o.pool === c.pool
+            && familyKey(o.model) === familyKey(c.model) && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c)
+            && (o.P >= c.P || o.P >= o.prior) && (o.P >= floor || c.P < floor));
+          if (newer) replaced.set(c, newer);
+        }
+        return replaced;
+      };
+      for (const [c, newer] of replacements(evaluated.filter(c => !c.reason))) c.reason = 'lost: replaced by ' + newer.label;
       let usable = evaluated.filter(c => !c.reason);
       let qualified = usable.filter(c => c.P >= minimum);
       // Only the boss's own critical work may consume an emergency pool, and only as a last resort.
@@ -429,7 +434,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)
             && settings.host !== 'generic') : [];
-        const advisor = advisors.length ? advisors.filter(c => !successor(c, advisors, 0)).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
+        const outdated = replacements(advisors, 0);
+        const advisor = advisors.length ? advisors.filter(c => !outdated.has(c)).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
         rows.push({ ...winner, belowThreshold, ladder, options: advisor ? ['consensus'] : [],
           ...(advisor ? { consensus: { model: advisor.model, label: advisor.label, effort: 'high' } } : {}) });
       } else if (needs.length || contextTokens !== null) {

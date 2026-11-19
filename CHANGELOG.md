@@ -4,6 +4,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-19
+
 ### Changed
 
 - The Codex `AGENTS.md` block holds only the short boot lines, as on Claude Code. A Codex boss runs `quota-boss rules --host codex` before its first delegation, review or CRITICAL change. With the full rules in every turn, boss on cost 25-35% more than boss off.
@@ -12,7 +14,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Fixed
 
-- Routing kept GPT-6.1-Sol for research once it had logged passes, although the equally rated GPT-6.2-Sol is available. A newer model of the same family rated at least as high now replaces its predecessor in every row; the running boss model stays. A successor below the minimum success rate does not push out a predecessor above it, and when both are below it, the one more likely to pass stays.
+- Routing kept GPT-6.1-Sol for research once it had logged passes, although the equally rated GPT-6.2-Sol is available. A newer model of the same family rated at least as high now replaces its predecessor in every row; the running boss model stays. The predecessor comes back only when the successor's own logged failures pull it below its starting value and the predecessor is more likely to pass; passes of the predecessor alone never keep it. A successor below the minimum success rate does not push out a predecessor above it, and a successor that is replaced itself cannot push out an older model. The second opinion follows the same rule.
 
 ## [0.3.0] - 2026-11-19
 
