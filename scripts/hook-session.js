@@ -58,7 +58,7 @@ function main() {
     // Above the host's limit only a short preview reaches the boss, so the table and the notes wait for the first prompt
     // when they do not fit beside the rules.
     const late = size([...fixed, table]) > context.HOOK_BUDGET;
-    if (context.deferTable(project, input?.cwd, late) && late) table = '[quota-boss] The routing table arrives with the user\'s first message.';
+    if (context.deferTable(project, input?.cwd, late, input?.session_id) && late) table = '[quota-boss] The routing table arrives with the user\'s first message.';
     const notes = context.sessionStartText(project, input?.source, input?.cwd, now, context.HOOK_BUDGET - size([...fixed, table]) - 1);
     const advice = tips([...fixed, table, notes]);
     process.stdout.write([fixed[0], fixed[1], notes, table, fixed[2], advice].filter(Boolean).join('\n') + '\n');

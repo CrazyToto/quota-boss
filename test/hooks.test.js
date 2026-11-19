@@ -191,7 +191,11 @@ function denied(file) {
   const result = invoke(agent.main, agentInput(file));
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
-  const expected = hosts.rules('claude-code', lib.findProjectConfig()) + '\nSend this job again in the handover form from these rules.';
+  let expected = hosts.rules('claude-code', lib.findProjectConfig()) + '\nSend this job again in the handover form from these rules.';
+  // The temp install path changes the rules' length, so expect whichever form the limit allows for this path.
+  if (JSON.stringify(expected).length > agent.DENY_LIMIT) expected = 'Load the boss rules first: run node "' + lib.substituteHome('{{QUOTA_BOSS_HOME}}')
+    + '/scripts/quota-boss.js" rules --host claude-code, then send this job again in the handover form from these rules.';
+  assert.ok(JSON.stringify(result.stdout).length < 10000);
   assert.deepEqual(JSON.parse(result.stdout), { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: expected } });
 }
 test('worker gate denies absent or pre-compaction markers, and allows markers after either boundary', t => {
@@ -694,6 +698,18 @@ test('the handoff pointers stay within the room they are given', () => {
   assert.match(context.sessionStartText(config, 'startup', project, Date.now(), 1000), /A recent handoff exists/);
   assert.equal(context.sessionStartText(config, 'clear', project, Date.now(), 20), '');
   assert.deepEqual(Object.values(lib.readState().pendingHandoffs).length, 1, 'the notes still arrive with the first prompt');
+});
+
+
+test('a deferred routing table belongs to the session that deferred it', () => {
+  const context = require('../scripts/context');
+  enable();
+  lib.writeState({});
+  assert.equal(context.deferTable(project, project, true, 'session-a'), true);
+  assert.equal(context.deferTable(project, project, false, 'session-b'), false, 'another session takes nothing');
+  assert.equal(context.deferTable(project, project, false, 'session-a'), true);
+  assert.equal(context.deferTable(project, project, false, 'session-a'), false, 'delivered once');
+  assert.deepEqual(lib.readState().pendingTables, {});
 });
 
 });

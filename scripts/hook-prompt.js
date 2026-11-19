@@ -52,7 +52,7 @@ function main() {
       });
     }
     // What did not fit into the session start beside the rules arrives here, once.
-    if (context.deferTable(project, input?.cwd, false) && !tableShown) lines.push(table());
+    if (context.deferTable(project, input?.cwd, false, input?.session_id) && !tableShown) lines.push(table());
     const notes = context.pendingHandoffText(project, input?.cwd, context.HOOK_BUDGET - Buffer.byteLength(lines.join('\n')) - 2, now);
     if (notes) lines.push(notes);
     process.stdout.write(lines.join('\n') + '\n');

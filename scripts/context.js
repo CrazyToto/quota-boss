@@ -217,9 +217,11 @@ function sessionStartText(project, source, cwd, now = Date.now(), room = Infinit
   return fits ? notes : within('[quota-boss] Notes from the previous session arrive with the user\'s first message.');
 }
 
-/** Remember that the routing table did not fit into the session start, or collect that reminder with the first prompt. */
-function deferTable(project, cwd, pending) {
-  const id = projectId(project, cwd);
+/** Remember that the routing table did not fit into the session start, or collect that reminder with the first prompt.
+ * Keyed by session too, so another session's first prompt in the same project does not take this session's table. */
+function deferTable(project, cwd, pending, session) {
+  const base = projectId(project, cwd);
+  const id = base && (validSession(session) ? base + ':' + session : base);
   if (!id || !pending && !object(lib.readState().pendingTables)[id]) return false;
   lib.updateState(current => ({ pendingTables: Object.fromEntries([...withoutKey(current.pendingTables, id), ...(pending ? [[id, true]] : [])]) }));
   return true;
