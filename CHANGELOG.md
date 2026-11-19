@@ -22,6 +22,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - A CLI template with an inline `--model={model}` directly before `--effort={effort}` lost its model flag when no effort was given, so `jetbrains` calls without `--effort` failed with "cannot select a model".
 
+- The second opinion for critical architecture picked GPT-6.1-Sol over the equally rated GPT-6.2-Sol once 6.1 had logged passes. A newer model of the same family rated at least as high now replaces its predecessor there.
+
 ### Changed
 
 - Junie runs with JSON output and without its update check. cli-run reads Junie's JSON result from a temp file: a refused JetBrains license (code 492) is reported as unavailable instead of "exit 1", limits as limited, and the report shows the tokens and the model Junie really ran. The self-test names a refused license too.
