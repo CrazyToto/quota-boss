@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
 const consensus = 'use `consensus` before deciding';
 
 test('rules always keep consensus, research and independent jobs, drop the split line, and ignore old switches', () => {
-  const research = 'research and look-ups that need more than about 40 KB read', independent = 'Independent jobs run at the same time:';
+  const research = 'research and look-ups over about 40 KB', independent = 'Independent jobs run at the same time:';
   const template = fs.readFileSync(path.join(root, 'templates/RULES.md'), 'utf8');
   assert.ok(!template.includes('Split a large job only when'));
   for (const host of lib.HOSTS) {
@@ -133,7 +133,8 @@ test('core delegation instructions survive every host and terse mode', () => {
     'so hand that work down',
     'Do CRITICAL work yourself unless the table says otherwise',
     'Never downgrade CRITICAL work just to save quota',
-    'Delegate if it needs six or more turns',
+    'Delegate if it needs many edits',
+    'Do a non-CRITICAL job yourself only when',
     'Always pass the effort the table shows',
     'Verify every worker result before telling the user something is done',
     'counter-review from the other model family',
