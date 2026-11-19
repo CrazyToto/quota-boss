@@ -1,6 +1,6 @@
 # Routing algorithm (v2)
 
-Providers with `evidence: "docs"` receive no work until that model has passed `quota-boss providers test <pool>`. Critical work also requires three verified `pass` outcomes for that model in retained history (`probationPasses` overrides the count). Log every verified result with `feedback`, including jobs performed outside the routing table; a file-write self-test does not end probation.
+Providers with `evidence: "docs"` receive no work until that model has passed `quota-boss providers test <pool>`. Normal work requires three verified `pass` outcomes for that model in retained history (`probationPasses` overrides the count). Critical work needs three passes that are normal or critical tier. Log every verified result with `feedback`, including jobs performed outside the routing table; a file-write self-test does not end probation.
 
 
 Goal: for every sub-task pick the model that gives the **best chance of a correct result per unit of

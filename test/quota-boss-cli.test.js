@@ -81,6 +81,26 @@ function invoke(main, input = '', args = []) {
 const cli = require('../scripts/quota-boss');
 
 function command(args) { return invoke(cli.main, '', args); }
+
+test('--help prints help to stdout and exits 0', () => {
+  const result = command(['--help']);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+  assert.ok(result.stdout.includes('Quota Boss help'));
+  assert.ok(result.stdout.includes('verify'));
+  assert.ok(result.stdout.includes('feedback'));
+  assert.ok(result.stdout.includes('worktree'));
+  assert.ok(result.stdout.includes('graph'));
+  assert.ok(result.stdout.includes('providers'));
+  assert.ok(result.stdout.includes('--explain'));
+  assert.ok(result.stdout.includes('--size'));
+});
+
+test('-h is an alias for --help', () => {
+  const result = command(['-h']);
+  assert.equal(result.status, 0);
+  assert.ok(result.stdout.includes('Quota Boss help'));
+});
 function config() { return lib.readProjects()[lib.projectKey(project)]; }
 
 test('on, profile and off persist only in the current project', () => {

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" alt="" width="88" height="88">
+<img src="https://raw.githubusercontent.com/CrazyToto/quota-boss/main/docs/assets/logo.svg" alt="" width="88" height="88">
 
 # Quota Boss
 
@@ -16,7 +16,7 @@ do it,<br>across the subscriptions you already pay for and the free AI offers yo
 
 [Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Documentation](#documentation) · [Website](https://quota-boss.neocities.org)
 
-![A real Claude Code session: boss mode on, one feature task, the Opus boss hands the code to GPT-6.1-Sol through Codex, re-runs the tests and says who did what (waiting parts sped up)](docs/assets/demo.gif)
+![A real Claude Code session: boss mode on, one feature task, the Opus boss hands the code to GPT-6.1-Sol through Codex, re-runs the tests and says who did what (waiting parts sped up)](https://raw.githubusercontent.com/CrazyToto/quota-boss/main/docs/assets/demo.gif)
 
 </div>
 
@@ -32,8 +32,8 @@ its own results decide after that.
   about a third less Claude for the same hidden test results ([numbers](#does-it-pay-off)).
 - **It picks the model for each job.** Every pick weighs how important the task is, how good each model is at that
   kind of work, and how much quota you have left.
-- **It knows your limits live.** The 5-hour and weekly limits of Claude and Codex are on screen with every prompt, and
-  a subscription that is running low gets less work.
+- **It knows your limits live.** On Claude Code the 5-hour and weekly limits are on screen with every prompt; Codex
+  gets the routing table and quota at session start. A subscription that is running low gets less work.
 - **It uses only the providers' official programs, signed in as you.** It never reads your keys or tokens, shares
   accounts or automates websites.
 
@@ -157,7 +157,7 @@ would cost more than it saves. The numbers so far:
 
 Most is handed down when a job is large and your Claude limit runs low. The benchmarks are small: two to five runs
 per row, in short sessions. All numbers and the method are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md), the harness is
-in [bench/](bench/README.md), and `quota-boss savings` shows the numbers for your own work.
+in [bench/](https://github.com/CrazyToto/quota-boss/blob/main/bench/README.md), and `quota-boss savings` shows the numbers for your own work.
 
 ## Providers and free offers
 
@@ -239,7 +239,7 @@ and routes around it.
 
 ## Contributing
 
-Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). The most useful one needs no code: if you
+Contributions are welcome; start with [CONTRIBUTING.md](https://github.com/CrazyToto/quota-boss/blob/main/CONTRIBUTING.md). The most useful one needs no code: if you
 have a plan the maintainer lacks (Grok, JetBrains AI, Antigravity, a paid Copilot plan), run
 `quota-boss providers report <id>` and attach the file it writes to the issue it opens. Those numbers go into the
 shipped routing table for everyone. Better model scores, a worker for another CLI and routing experiments with tests
