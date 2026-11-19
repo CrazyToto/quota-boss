@@ -366,6 +366,8 @@ test('free trial: the lasting ledger keeps a used or failed trial closed and a r
   // I2: used-up trials stay closed when the rolling history no longer holds them; other categories are untouched.
   assert.equal(pick({ 'relayed|mechanical': { n: 3 }, 'other|mechanical': { n: 3 } }).via, 'haiku-worker');
   assert.equal(pick({ 'relayed|research': { n: 3, failed: clock - 1 }, 'other|research': { n: 3 } }).trial, true);
+  // A fail stamped in the future (clock skew) still counts as recent, so the retry stays on Haiku.
+  assert.equal(pick({ [first.model + '|mechanical']: { n: 1, failed: clock + 600000 } }).via, 'haiku-worker');
   // Malformed ledgers count as empty.
   for (const bad of [null, [], 'x', { 'relayed|mechanical': 'x' }, { 'relayed|mechanical': { n: 'many', failed: 'yes' } }]) assert.equal(pick(bad).trial, true);
 });

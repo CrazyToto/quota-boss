@@ -435,7 +435,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const failedAt = c => Number.isFinite(c.ledger.failed) ? c.ledger.failed : null;
         // A free route that failed in this category within the hour means a retry may be under way: it goes to the
         // route that would have won, not to the next trial. New trials open again after that.
-        const retry = evaluated.some(c => c.free && failedAt(c) !== null && now - failedAt(c) >= 0 && now - failedAt(c) < 3600000);
+        const retry = evaluated.some(c => c.free && failedAt(c) !== null && failedAt(c) > now - 3600000);
         const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
           && count(c) < probation && !c.tried.some(e => e.result === 'fail') && failedAt(c) === null;
         const trial = retry ? null : eligible.filter(open)

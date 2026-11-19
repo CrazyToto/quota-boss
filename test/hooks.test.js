@@ -129,6 +129,7 @@ test('tiny startup falls back to the marked full start while the Claude pool is 
   assert.match(result.stdout, /critical: architecture=/);
   assert.match(result.stdout, /Claude 5h 80%/);
   assert.match(result.stdout, /previous-session notes/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "templates", "BOOT.md"), "utf8"), /Do a non-CRITICAL edit yourself when it changes about 30 lines or fewer/, "the tiny start keeps the size rule");
   assert.doesNotMatch(result.stdout, /Do a non-CRITICAL edit yourself when it changes/);
   assert.equal(result.stdout.split('critical: architecture=').length, 2);
   // The marker in the start text lets the first worker call through.
