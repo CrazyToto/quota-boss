@@ -386,7 +386,7 @@ test('free trial: the lasting ledger keeps a used or failed trial closed and a r
   // Malformed ledgers count as empty.
   for (const bad of [null, [], 'x', { 'relayed|mechanical': 'x' }, { 'relayed|mechanical': { n: 'many', failed: 'yes' } }]) assert.equal(pick(bad).trial, true);
 });
-test('free trial reaches a docs-evidence provider only with a passed self-test on the same CLI', () => {
+test('a free docs-evidence provider gets a trial without a self-test, and a paid one still needs it', () => {
   const junie = lib.BUILTIN_PROVIDERS.providers['junie-lite'];
   const providers = { ...lib.BUILTIN_PROVIDERS, providers: { ...lib.BUILTIN_PROVIDERS.providers, 'junie-lite': { ...junie, enabled: true } } };
   const models = { categories: ['mechanical'], models: {
@@ -397,12 +397,18 @@ test('free trial reaches a docs-evidence provider only with a passed self-test o
   const cli = lib.cliFingerprint('junie', findExecutable);
   const pick = selfTests => route({ models, providers, selfTests, findExecutable, now: clock, limits: limits(0, 0, 0, 0) }).rows
     .find(row => row.tier === 'trivial' && row.category === 'mechanical');
-  assert.equal(pick({}).via, 'haiku-worker', 'no self-test, no trial');
-  assert.equal(pick({ 'junie-lite': { result: 'pass', at: clock, cli: { ...cli, size: -1 } } }).via, 'haiku-worker', 'a changed CLI needs a new self-test');
-  const trial = pick({ 'junie-lite': { result: 'pass', at: clock, cli } });
-  assert.equal(trial.via, 'cli-worker:junie-lite');
-  assert.equal(trial.trial, true);
-  assert.deepEqual(trial.ladder.map(step => step.via), ['cli-worker:junie-lite', 'haiku-worker']);
+  for (const selfTests of [{}, { 'junie-lite': { result: 'pass', at: clock, cli: { ...cli, size: -1 } } }, { 'junie-lite': { result: 'pass', at: clock, cli } }]) {
+    const trial = pick(selfTests);
+    assert.equal(trial.via, 'cli-worker:junie-lite');
+    assert.equal(trial.trial, true);
+    assert.deepEqual(trial.ladder.map(step => step.via), ['cli-worker:junie-lite', 'haiku-worker']);
+  }
+  // The same provider as a paid subscription needs a passed self-test on the same CLI.
+  const paid = { ...providers, providers: { ...providers.providers, 'junie-lite': { ...junie, enabled: true, kind: 'subscription' } } };
+  const paidPick = selfTests => route({ models, providers: paid, selfTests, findExecutable, now: clock, limits: limits(0, 0, 0, 0) }).rows
+    .find(row => row.tier === 'trivial' && row.category === 'mechanical');
+  assert.equal(paidPick({}).via, 'haiku-worker', 'no self-test, no work');
+  assert.equal(paidPick({ 'junie-lite': { result: 'pass', at: clock, cli: { ...cli, size: -1 } } }).via, 'haiku-worker', 'a changed CLI needs a new self-test');
 });
 
 

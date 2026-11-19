@@ -1,5 +1,6 @@
 {
   "probationPasses": 3,
+  "freeProbationPasses": 1,
   "savings": {
     "claude": {
       "input": 1,

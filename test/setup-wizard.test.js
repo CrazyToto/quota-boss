@@ -459,6 +459,13 @@ test('a provider that needs a self-test is turned on without one and tested afte
   assert.deepEqual(inline.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test'], ['providers', 'test', 'junie-lite']]);
 });
 
+test('a free docs provider is turned on without a self-test and setup spends no call on one', () => {
+  const free = () => ({ ...baseProviders(), 'junie-lite': provider(false, { kind: 'free', evidence: 'docs', cli: { command: 'junie' } }), jetbrains: provider(false) });
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: free() }).commands.slice(1), [['use', 'junie-lite', 'on']]);
+  const on = { ...free(), 'junie-lite': provider(true, { kind: 'free', evidence: 'docs', cli: { command: 'junie' } }) };
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: on, selfTestPassed: () => false }).commands.slice(1), []);
+});
+
 test('a provider an update turned on without a self-test is tested by setup; one that passed is not', () => {
   const on = () => ({ ...baseProviders(), 'junie-lite': provider(true, { evidence: 'docs', cli: { command: 'junie' } }), jetbrains: provider(false) });
   const waiting = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: on(), selfTestPassed: () => false });

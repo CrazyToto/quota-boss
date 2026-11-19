@@ -205,7 +205,9 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
   if (changedOff) output += '\nThe boss itself keeps running on its model; this only stops delegation to it.';
   if (provider && !project && action === 'on' && raw.providers[id].cli) {
     const definition = raw.providers[id];
-    const gated = definition.evidence === 'docs';
+    // A free provider proves itself with real trivial work, so turning it on spends no calls on a self-test.
+    const free = ['free', 'local'].includes(definition.kind);
+    const gated = definition.evidence === 'docs' && !free;
     if (noTest) return output + (gated ? '\nSelf-test skipped: run quota-boss providers test ' + id + ' before it gets work.' : '');
     const tool = tools.enabledIds({ providers: { providers: { [id]: { ...definition, enabled: true } } } })[0];
     if (!interactive) return output + '\nTo finish, run quota-boss use ' + id + ' on in a terminal.';
@@ -218,7 +220,7 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
       return models.length > 0 && models.every(([key]) => validSelfTest(tests?.[key], cli));
     };
     const test = changed => {
-      if ((!gated && !changed) || !models.length || definition.tos === 'avoid' || (!changed && verified())) return;
+      if (free || (!gated && !changed) || !models.length || definition.tos === 'avoid' || (!changed && verified())) return;
       say('Running the self-test (real calls that count against the limit). Skip with --no-test.');
       output += '\n' + selfTest(id, { ...toolsOptions, findExecutable: toolsOptions?.find, config: enabled });
     };

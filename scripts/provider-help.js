@@ -123,13 +123,17 @@ function guide(config) {
   return lines.join('\n');
 }
 
-// Benched by the maintainer, but still gated: the self-test also proves the CLI and login work on this machine.
+// Benched by the maintainer. A paid docs-only provider stays gated by its self-test, which also proves the CLI and
+// login work on this machine; a free one proves itself with its first real trivial jobs.
 const MAINTAINER_TESTED = new Set(['junie-lite']);
 function evidenceNotice(id) {
-  if (require('./lib').BUILTIN_PROVIDERS.providers[id]?.evidence !== 'docs') return '';
+  const provider = require('./lib').BUILTIN_PROVIDERS.providers[id];
+  if (provider?.evidence !== 'docs') return '';
   return (MAINTAINER_TESTED.has(id) ? 'Tested end to end by the maintainer.'
     : "Not run end to end by the maintainer yet, built from the vendor's documentation.")
-    + ' Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.';
+    + (['free', 'local'].includes(provider.kind)
+      ? ' It starts with small jobs, and one verified pass opens routine work.'
+      : ' Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.');
 }
 
 /** The sentence added after a provider switch, so every change says what it means. */

@@ -291,7 +291,9 @@ function walk(screens) {
   }
 }
 
-const needsTest = (config, id) => config.providers.providers[id]?.evidence === 'docs' && !!config.providers.providers[id]?.cli;
+// A free provider proves itself with real trivial work, so setup spends no calls on a self-test for it.
+const needsTest = (config, id) => config.providers.providers[id]?.evidence === 'docs' && !!config.providers.providers[id]?.cli
+  && !['free', 'local'].includes(config.providers.providers[id]?.kind);
 
 /** Test new or newly logged-in CLIs and docs-only providers still awaiting a pass. */
 function selfTests(w, commands, failedOn, open, usable, changed) {

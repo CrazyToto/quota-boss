@@ -69,12 +69,13 @@ test('the Codex host description leaves the worker warning to its switch', () =>
   assert.equal(require('../scripts/setup-text').TEXT.hosts.codex, 'You work in Codex.');
 });
 
-test('docs-only providers explain the self-test gate when enabled', () => {
+test('docs-only providers explain the self-test gate when enabled, a free one how it earns work', () => {
   for (const id of ['grok', 'antigravity', 'junie-lite', 'jetbrains']) {
     for (const text of [help.switchEffect(id, true)]) {
       assert.ok(text.includes(id === 'junie-lite' ? 'Tested end to end by the maintainer.'
         : "Not run end to end by the maintainer yet, built from the vendor's documentation."));
-      assert.ok(text.includes('Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.'));
+      assert.ok(text.includes(id === 'junie-lite' ? 'It starts with small jobs, and one verified pass opens routine work.'
+        : 'Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.'));
     }
     assert.doesNotMatch(help.switchEffect(id, false), /end to end/);
   }

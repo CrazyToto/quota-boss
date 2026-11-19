@@ -753,7 +753,7 @@ test('providers new since the last version: a fresh install knows all, an update
   assert.deepEqual(added.pending(), [], 'an update from an unknown version asks about nothing');
 });
 
-test('an update yes installs, logs in and tests, and no saves off without spawning', t => {
+test('an update yes installs and logs in free Junie Lite without a self-test call, and no saves off without spawning', t => {
   const f = fixture(t), lib = require('../scripts/lib'), added = require('../scripts/new-providers');
   const previous = process.env.QUOTA_BOSS_HOME, previousExit = process.exitCode;
   process.env.QUOTA_BOSS_HOME = f.home;
@@ -797,8 +797,9 @@ test('an update yes installs, logs in and tests, and no saves off without spawni
     events.push(question.startsWith('Turn on Junie Lite') ? 'yes' : 'no');
     return events.at(-1) === 'yes' ? 'y' : 'n';
   } });
-  assert.deepEqual(events, ['yes', 'install', 'login', 'test', 'no'], messages.join('\n'));
-  assert.match(messages.join('\n'), /PASS junie-lite/);
+  // A free provider proves itself with real work: no self-test call after the login.
+  assert.deepEqual(events, ['yes', 'install', 'login', 'no'], messages.join('\n'));
+  assert.doesNotMatch(messages.join('\n'), /self-test/i);
   assert.equal(lib.loadConfig({}).providers.providers['junie-lite'].enabled, true);
   assert.equal(lib.loadConfig({}).providers.providers.jetbrains.enabled, false);
   assert.deepEqual(added.pending(), []);

@@ -198,16 +198,27 @@ test('docs-only probation has exact normal and critical tier boundaries', () => 
   assert.equal(candidate(params, 'critical').reason, 'probation: unrated, no public evidence for critical');
 });
 
-test('free and local routes need verified passes before normal work, like docs-only providers', () => {
-  for (const kind of ['free', 'local']) {
-    const params = fixture('real');
+test('free and local routes earn normal work with one verified pass and need no self-test', () => {
+  for (const evidence of ['real', 'docs']) for (const kind of ['free', 'local']) {
+    const params = fixture(evidence);
     params.providers.providers.trial.kind = kind;
     params.models.models.tiny.cost = 0;
-    assert.equal(candidate(params, 'normal').reason, 'probation: 3 more verified trivial+ passes needed for normal');
-    assert.ok(!candidate(params, 'trivial').reason.startsWith('probation'));
-    params.outcomes = [pass('trivial'), pass('trivial', { t: now - 1 }), pass('trivial', { t: now - 2 })];
+    params.selfTests = {};
+    assert.equal(candidate(params, 'normal').reason, 'probation: 1 more verified trivial+ passes needed for normal');
+    assert.match(candidate(params, 'trivial').reason, /^won:/);
+    assert.equal(candidate(params, 'trivial').thinEvidence, true);
+    params.outcomes = [pass('trivial')];
     assert.ok(!candidate(params, 'normal').reason?.startsWith('probation'));
+    assert.equal(candidate(params, 'normal').thinEvidence, false);
+    // Critical work still needs the full probation in normal passes.
+    assert.equal(candidate(params, 'critical').reason, 'probation: 3 more verified normal passes needed for critical');
+    params.thresholds = { freeProbationPasses: 2 };
+    assert.equal(candidate(params, 'normal').reason, 'probation: 1 more verified trivial+ passes needed for normal');
   }
+  // A paid docs-only provider still needs its self-test.
+  const docs = fixture('docs');
+  docs.selfTests = {};
+  assert.match(candidate(docs, 'trivial').reason, /^self-test needed/);
   const paid = fixture('real');
   assert.ok(!candidate(paid, 'normal').reason?.startsWith('probation'));
 });

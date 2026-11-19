@@ -278,13 +278,16 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           : contextTokens !== null && (!Number.isInteger(model.contextTokens) || model.contextTokens < contextTokens)
             ? 'context unknown or too small' : '';
         const probation = positive(thresholds.probationPasses, 3);
+        // A free route proves itself with real work: no self-test first, and one verified pass opens normal work.
+        const isFree = model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool;
+        const normalProbation = isFree ? positive(thresholds.freeProbationPasses, 1) : probation;
         const rated = CATEGORIES.some(category => Number.isFinite(model.scores?.[category]));
         let reason = '';
         if (capabilityReason) reason = capabilityReason;
         else if (provider.worker === 'cli-worker' && !provider.cli?.command) reason = 'no CLI configured';
         else if ((provider.evidence === 'docs' || provider.worker === 'cli-worker') && !fingerprint(model.pool)) reason = 'CLI not installed';
-        else if (provider.evidence === 'docs' && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
-        else if (provider.evidence === 'docs' && !validSelfTest(selfTests?.[model.id], fingerprint(model.pool)))
+        else if (provider.evidence === 'docs' && !isFree && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
+        else if (provider.evidence === 'docs' && !isFree && !validSelfTest(selfTests?.[model.id], fingerprint(model.pool)))
           reason = 'self-test needed (CLI changed): quota-boss providers test ' + model.pool;
         else if (provider.trainsOnData === true && !settings.allowTrainingProviders) reason = 'training provider blocked (allowTrainingProviders is off)';
         else if (unavailable.has(model.id)) reason = 'unavailable (24h exclusion)';
@@ -305,13 +308,13 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             reason = 'probation: ' + (probation - model.normalPasses) + ' more verified normal passes needed for critical';
           // Docs-only providers and free or local routes earn normal work with verified passes, never on registry scores alone.
           else if ((provider.evidence === 'docs' || model.cost === 0 && ['free', 'local'].includes(provider.kind) && model.pool !== bossPool)
-            && tier === 'normal' && model.passes < probation)
-            reason = 'probation: ' + (probation - model.passes) + ' more verified trivial+ passes needed for normal';
+            && tier === 'normal' && model.passes < normalProbation)
+            reason = 'probation: ' + (normalProbation - model.passes) + ' more verified trivial+ passes needed for normal';
           else if (provider.tos === 'avoid') reason = 'provider tos avoid';
           else if (model.pool === bossPool && !self && hostSaving) reason = 'host pool saving';
           else if (!Number.isFinite(price)) reason = model.pool === 'claude' ? 'pool emergency' : 'pool exhausted';
         }
-        const thinEvidence = !['claude', 'codex'].includes(model.pool) && model.passes < positive(thresholds.probationPasses, 3);
+        const thinEvidence = !['claude', 'codex'].includes(model.pool) && model.passes < normalProbation;
         const seconds = medianSeconds(runs, model.id, category, tier);
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,

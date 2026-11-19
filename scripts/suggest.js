@@ -105,7 +105,7 @@ function gather(project, config, now = Date.now()) {
   const missing = Object.entries(providers).filter(([id, p]) => p?.enabled !== false && id !== 'claude' && id !== own
     && typeof p?.cli?.command === 'string' && !lib.findExecutable(p.cli.command)).map(([id]) => id);
   const selfTests = lib.readState().selfTests, { evidenceStatus } = require('./self-test');
-  const untested = Object.entries(providers).filter(([id, p]) => p?.enabled !== false && p?.evidence === 'docs' && typeof p?.cli?.command === 'string'
+  const untested = Object.entries(providers).filter(([id, p]) => p?.enabled !== false && p?.evidence === 'docs' && !['free', 'local'].includes(p?.kind) && typeof p?.cli?.command === 'string'
     && Object.values(config.models?.models ?? {}).some(m => m?.pool === id && m.enabled !== false)
     && !missing.includes(id) && !evidenceStatus(id, config.models, selfTests, p.cli.command).startsWith('self-test passed')).map(([id]) => id);
   return { project, config, limits, outcomes: lib.readOutcomes(now, config.thresholds), missing, untested, newProviders: newProviders.pending() };
