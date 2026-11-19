@@ -6,13 +6,13 @@
 const path = require('node:path');
 const lib = require('./lib');
 const tools = require('./tools');
-const { PRESETS, RETIRED, MODEL_PATTERN } = require('./add-api');
+const { PRESETS, MODEL_PATTERN } = require('./add-api');
 const { PROVIDER_HELP, CODE_GRAPH_HELP, UNCONFIRMED_TRAINING, SCRIPTED_CLAUDE_WARNING } = require('./provider-help');
 const { TEXT } = require('./setup-text');
 
 const BACK = Symbol('back');
 const WIDTH = 76;
-const OPENCODE = 'opencode-free';
+const OPENCODE = 'opencode';
 const OWN = ['codex', 'perplexity'];
 // Free and practically unlimited, so it is the one choice that starts on.
 const LITE = 'junie-lite';
@@ -94,15 +94,8 @@ const asksForGraph = w => !lib.detectCodeIntel(w.directory).graphify;
 const hostPool = w => ({ 'claude-code': 'claude', codex: 'codex' }[w.state.host]);
 const choicesOf = w => CHOICES.filter(id => id !== hostPool(w));
 const chosen = (w, ids) => ids.filter(id => w.state.choices[id]);
-// The same test as the session-start suggestion, so setup and suggest never disagree about a retired offer.
-const retiredApis = config => RETIRED.filter(({ id, matches }) => {
-  const provider = config.providers.providers[id];
-  return provider?.custom === true && matches(provider) && enabledNow(config, id);
-});
-const keptApis = w => {
-  const retired = retiredApis(w.config).map(({ id }) => id);
-  return Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id) && !retired.includes(id));
-};
+const retiredApis = config => config.providers.retired ?? [];
+const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id));
 const mayTrain = id => id === 'kilo-free' || PRESETS[id].trains;
 const keyStored = (stored, name, provider) => stored.includes(name.toLowerCase()) || stored.includes(provider.toLowerCase());
 
@@ -488,7 +481,7 @@ function setup(args, run, deps = {}) {
   ]);
   if (!w.confirmed) return text.aborted;
   // Every provider the setup showed is answered, so no update asks about it again.
-  (deps.markKnown || newProviders.markKnown)([...CHOICES, OPENCODE].filter(id => Object.hasOwn(config.providers.providers, id)));
+  (deps.markKnown || newProviders.markKnown)(CHOICES.filter(id => Object.hasOwn(config.providers.providers, id)));
   finish(w);
   return '';
 }

@@ -44,12 +44,12 @@ test('registry only holds fixed commands, and no entry runs through a shell', ()
 
 test('check reports missing, outdated and current tools in one list', () => {
   const m = machine({ have: { npm: '11.0.0', codex: '0.100.0', claude: '2.0.0' }, latest: { '@openai/codex': '0.167.0' } });
-  const items = tools.check(['codex', 'claude', 'opencode-free'], m.options);
+  const items = tools.check(['codex', 'claude', 'opencode'], m.options);
   assert.deepEqual(items.map(i => i.state), ['outdated', 'ok', 'missing']);
-  assert.deepEqual(tools.installable(items).map(i => i.id), ['codex', 'opencode-free']);
+  assert.deepEqual(tools.installable(items).map(i => i.id), ['codex', 'opencode']);
   const text = tools.report(items);
   assert.match(text, /codex: outdated \(0\.100\.0 -> 0\.167\.0\) \| npm install -g @openai\/codex@latest --registry=https:\/\/registry\.npmjs\.org\/ \| https:/);
-  assert.match(text, /Installable: codex opencode-free/);
+  assert.match(text, /Installable: codex opencode/);
   assert.ok(!m.calls.some(c => c[0] === 'npm' && c[2] === '@anthropic-ai/claude-code'), 'Claude updates itself');
 });
 
@@ -165,7 +165,7 @@ test('winget is trusted only when its alias points at Microsoft\'s app folder', 
 
 test('every API added through OpenCode needs the one OpenCode CLI', () => {
   const ids = tools.enabledIds({ providers: { providers: { groq: { cli: { command: 'opencode' } }, acme: { cli: { command: 'opencode' } }, off: { enabled: false, cli: { command: 'opencode' } } } } });
-  assert.deepEqual(ids, ['opencode-free']);
+  assert.deepEqual(ids, ['opencode']);
 });
 
 test('Kilo resolves to its own npm CLI and needs no login', () => {
@@ -183,9 +183,9 @@ test('Kilo resolves to its own npm CLI and needs no login', () => {
 test('install runs only needed tools, continues after a failure and reports each one', () => {
   const m = machine({ have: { npm: '11.0.0', claude: '2.0.0' }, failInstall: ['@openai'],
     latest: { 'opencode-ai': '1.19.5' }, installs: { opencode: { match: 'opencode-ai', version: '1.19.5' } } });
-  const out = tools.install(['codex', 'opencode-free', 'claude'], m.options).split('\n');
+  const out = tools.install(['codex', 'opencode', 'claude'], m.options).split('\n');
   assert.match(out[0], /codex: FAILED \(EACCES: permission denied\)/);
-  assert.equal(out[1], '- opencode-free: installed (1.19.5)');
+  assert.equal(out[1], '- opencode: installed (1.19.5)');
   assert.equal(out[2], '- claude: skipped (ok)');
   assert.equal(m.calls.filter(c => c[0] === 'npm' && c[1] === 'install').length, 2);
 });
@@ -198,10 +198,10 @@ test('install says so when an older copy still wins on PATH', () => {
 test('logins distinguish logged in, logged out, optional and missing tools', () => {
   const m = machine({ have: { codex: '1.0.0', claude: '2.0.0', opencode: '1.0.0' },
     status: { codex: 'Logged in using ChatGPT\n', claude: '{ "loggedIn": false }' } });
-  const out = tools.logins(['codex', 'claude', 'opencode-free'], m.options).split('\n');
+  const out = tools.logins(['codex', 'claude', 'opencode'], m.options).split('\n');
   assert.equal(out[0], '- codex: logged in');
   assert.equal(out[1], '- claude: NOT logged in, run: claude auth login');
-  assert.match(out[2], /opencode-free: cannot be checked automatically; only if needed, run: opencode auth login/);
+  assert.match(out[2], /opencode: cannot be checked automatically; only if needed, run: opencode auth login/);
   assert.equal(out.length, 3);
 });
 
@@ -235,12 +235,12 @@ test('installer asks once for everything and installs nothing without a yes', ()
   const run = answer => {
     const m = machine({ have: { npm: '11.0.0' }, installs: { codex: { match: '@openai', version: '1.0.0' } } });
     const asked = [], said = [];
-    offerTools({ ask: q => { asked.push(q); return answer; }, say: t => said.push(t), interactive: true, options: m.options, config: config(['codex', 'opencode-free']) });
+    offerTools({ ask: q => { asked.push(q); return answer; }, say: t => said.push(t), interactive: true, options: m.options, config: config(['codex', 'opencode']) });
     return { asked, said: said.join('\n'), installs: m.calls.filter(c => c[0] === 'npm' && c[1] === 'install').length };
   };
   const no = run('');
   assert.equal(no.asked.length, 1);
-  assert.match(no.asked[0], /codex, opencode-free/);
+  assert.match(no.asked[0], /codex, opencode/);
   assert.equal(no.installs, 0);
   assert.match(no.said, /Nothing installed/);
   assert.equal(run('y').installs, 2);
@@ -367,7 +367,7 @@ test('non-uv tool installed but not found yet shows generic message', () => {
     return { status: 0, stdout: '', stderr: '' };
   };
   const options = { platform: 'linux', env: {}, find, spawnSync };
-  assert.match(tools.install(['opencode-free'], options), /installed; open a new terminal if it is not found yet/);
+  assert.match(tools.install(['opencode'], options), /installed; open a new terminal if it is not found yet/);
 });
 
 test('Junie is one paste-only CLI for both JetBrains providers, logged in with the JetBrains account', () => {

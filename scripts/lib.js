@@ -294,13 +294,6 @@ function loadConfig(project = findProjectConfig(), options = {}) {
     return merged;
   };
   const models = load('models');
-  const globalUse = readUse(), localUse = normalizeUse(project?.use);
-  const off = new Set([...globalUse.modelsOff, ...localUse.modelsOff]);
-  // route treats the resolved boss as self, never as a delegate. Keep that identity available.
-  const boss = off.size ? delegationBoss(models, project) : null;
-  for (const id of off) if (id !== boss && Object.hasOwn(models.models, id) && models.models[id]) {
-    models.models[id] = { ...models.models[id], enabled: false };
-  }
   let providers, warning;
   try { providers = loadProviders(project); }
   catch (error) {
@@ -308,6 +301,18 @@ function loadConfig(project = findProjectConfig(), options = {}) {
     warning = '[quota-boss] WARNING: the provider config is invalid (' + String(error?.message ?? error).replace(/[^\x20-\x7e]/g, '').slice(0, 160)
       + '). The table uses only the built-in providers until it is fixed. Run: quota-boss doctor';
     providers = loadProviders({ ...project, caps: undefined, providers: undefined }, { userConfig: false });
+  }
+  for (const [id, model] of Object.entries(models.models)) {
+    if (inactiveLegacyPool(model?.pool, providers.providers) || id === 'opencode-free-example' && model?.pool === 'opencode-free') {
+      delete models.models[id];
+    }
+  }
+  const globalUse = readUse(), localUse = normalizeUse(project?.use);
+  const off = new Set([...globalUse.modelsOff, ...localUse.modelsOff]);
+  // route treats the resolved boss as self, never as a delegate. Keep that identity available.
+  const boss = off.size ? delegationBoss(models, project) : null;
+  for (const id of off) if (id !== boss && Object.hasOwn(models.models, id) && models.models[id]) {
+    models.models[id] = { ...models.models[id], enabled: false };
   }
   return { models, thresholds: load('thresholds'), providers, ...(warning ? { warning } : {}) };
 }
@@ -857,6 +862,28 @@ function rateLimitedModels(outcomes = [], now = 0, thresholds = {}) {
 const PROVIDER_ID = /^[a-z][a-z0-9-]{1,31}$/;
 const QUOTA_WINDOWS = { fiveHour: 300, daily: 1440, weekly: 10080, monthly: 44640 };
 const USAGE_UNITS = ['calls', 'tokens', 'usd'];
+const ZEN_GLM_MODEL = 'opencode/glm-5.3-flash-free';
+const MISTRAL_RETIREMENT = 'Mistral ended free API access';
+const RETIRED = [
+  { id: 'zen-glm', reason: 'OpenCode retired the free Zen GLM model', matches: provider => {
+    const cli = provider.cli;
+    return cli?.defaultModel === ZEN_GLM_MODEL || Array.isArray(cli?.args) && cli.args.some((arg, index) =>
+      (arg === '-m' || arg === '--model') && cli.args[index + 1] === ZEN_GLM_MODEL);
+  } },
+  ...['mistral-api', 'mistral'].map(id => ({ id, reason: MISTRAL_RETIREMENT, matches: provider => provider.kind !== 'api' })),
+];
+function retiredProviders(providers) {
+  return RETIRED.filter(({ id, matches }) => providers?.[id] && matches(providers[id])).map(({ id, reason }) => ({ id, reason }));
+}
+
+// Old installs may have copied the full example or saved just a switch against it.
+function obsoleteProvider(id, provider) {
+  return id === 'opencode-free' && provider?.custom !== true || id === 'openrouter' && !provider?.cli && provider?.custom !== true;
+}
+function inactiveLegacyPool(id, providers) {
+  return (obsoleteProvider(id) || RETIRED.some(entry => entry.id === id)) && !Object.hasOwn(providers, id);
+}
+
 // Installed defaults stay separate from the editable user config, including across CLI invocations.
 const BUILTIN_PROVIDERS = readProviderConfig(fs.existsSync(path.join(__dirname, '..', 'defaults', 'providers.json'))
   ? path.join(__dirname, '..', 'defaults', 'providers.json') : path.join(__dirname, '..', 'config', 'providers.json'));
@@ -957,11 +984,15 @@ function mergeProviders(base, override = {}, project = {}) {
     providers[id] = { ...object(providers[id]), ...value };
   }
   const caps = tightenCaps(mergeCaps(base.caps ?? {}, override.caps ?? {}), project.caps ?? {});
+  const retired = retiredProviders(providers);
+  for (const { id } of retired) delete providers[id];
+  for (const id of Object.keys(providers)) if (obsoleteProvider(id, providers[id])) delete providers[id];
+  for (const id of Object.keys(caps)) if (inactiveLegacyPool(id, providers)) delete caps[id];
   for (const p of Object.values(providers)) {
     if (p.trainsOnData === undefined) p.trainsOnData = false;
     if (p.tos === undefined) p.tos = p.kind === 'api' ? 'api' : 'official-cli';
   }
-  return validateProviders({ providers, caps });
+  return validateProviders({ providers, caps, ...(retired.length ? { retired } : {}) });
 }
 function readProviderConfig(file) {
   try { return requireObject(JSON.parse(readBounded(file, 1024 * 1024)), 'Provider config'); }
@@ -1352,7 +1383,7 @@ function askLine(question) {
   try { return buffer.toString('utf8', 0, fs.readSync(0, buffer, 0, buffer.length, null)).trim(); } catch { return ''; }
 }
 
-module.exports = { NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { setup } = require('../scripts/setup-wizard');
+const { retiredProviders } = require('../scripts/lib');
 const { TEXT } = require('../scripts/setup-text');
 const { PROVIDER_HELP } = require('../scripts/provider-help');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
@@ -12,7 +13,7 @@ test.after(() => fs.rmSync(EMPTY_DIR, { recursive: true, force: true }));
 
 const provider = (enabled, extra) => ({ enabled, ...extra });
 const baseProviders = () => ({ copilot: provider(false), grok: provider(false), antigravity: provider(false),
-  'opencode-free': provider(false, { trainsOnData: true }), 'kilo-free': provider(false, { trainsOnData: true }), codex: provider(true) });
+  'kilo-free': provider(false, { trainsOnData: true }), codex: provider(true) });
 const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code', allowTrainingProviders: false });
 
 /**
@@ -33,8 +34,11 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
     runKeyLogin: provider => keyed.push(provider),
     openPage: url => opened.push(url),
   };
+  const retired = retiredProviders(providers);
+  const activeProviders = { ...providers };
+  for (const { id } of retired) delete activeProviders[id];
   const result = setup([], args => { commands.push(args); const error = runError?.(args); if (error) throw error; return ''; }, {
-    interactive: true, tools: fake, options: { wait: () => {} }, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
+    interactive: true, tools: fake, options: { wait: () => {} }, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers: activeProviders, retired } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
     ask: question => { said.push(question); return queue.length ? queue.shift() : ''; }, say: line => said.push(line), clear: () => {},
   });
   return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, marked, left: queue };
@@ -60,7 +64,7 @@ test('a confirmed setup marks every shown provider as offered, an aborted one ma
   const aborted = play(flow(OTHER_NONE, FREE_NONE, ['n']), { providers });
   assert.deepEqual(aborted.marked, []);
   const confirmed = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers });
-  assert.deepEqual([...confirmed.marked].sort(), ['antigravity', 'codex', 'copilot', 'grok', 'jetbrains', 'junie-lite', 'kilo-free', 'opencode-free']);
+  assert.deepEqual([...confirmed.marked].sort(), ['antigravity', 'codex', 'copilot', 'grok', 'jetbrains', 'junie-lite', 'kilo-free']);
 });
 
 test('one yes installs what the choices need and turns them on', () => {
@@ -80,16 +84,16 @@ test('a provider whose program is missing afterwards stays off and says why', ()
 
 test('an API offer is only added when OpenCode is really there, and names the program', () => {
   const free = freeAnswers({ 0: 'y' });
-  const ok = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode-free': 'missing' }, afterInstall: { 'opencode-free': 'ok' } });
+  const ok = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode': 'missing' }, afterInstall: { 'opencode': 'ok' } });
   assert.deepEqual(ok.commands.slice(1), [['add-api', 'zen-deepseek']]);
   assert.match(ok.said, /OpenCode \(needed for OpenCode Zen DeepSeek\)/);
-  const failed = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode-free': 'missing' }, afterInstall: { 'opencode-free': 'missing' } });
+  const failed = play(flow(OTHER_NONE, free, ['y']), { programs: { 'opencode': 'missing' }, afterInstall: { 'opencode': 'missing' } });
   assert.deepEqual(failed.commands.slice(1), []);
 });
 
 test('Kilo uses its own CLI, needs no login, and stays off if install fails', () => {
   const free = freeAnswers({ 7: 'y' });
-  const options = { programs: { 'kilo-free': 'missing', 'opencode-free': 'missing' }, afterInstall: { 'kilo-free': 'ok' } };
+  const options = { programs: { 'kilo-free': 'missing', 'opencode': 'missing' }, afterInstall: { 'kilo-free': 'ok' } };
   const ok = play(flow(OTHER_NONE, free, ['y', 'y']), options);
   assert.deepEqual(ok.installs, ['kilo-free']);
   assert.ok(ok.commands.some(c => c.join(' ') === 'use kilo-free on'));
@@ -114,7 +118,7 @@ test('setup plans to remove the retired Zen GLM provider on confirmation', () =>
   const providers = { ...baseProviders(), 'zen-glm': provider(true, {
     custom: true, cli: { command: 'opencode', defaultModel: 'opencode/glm-5.3-flash-free' },
   }) };
-  const options = { providers, programs: { 'opencode-free': 'missing' } };
+  const options = { providers, programs: { 'opencode': 'missing' } };
   const { commands, said, installs } = play(flow(OTHER_NONE, FREE_NONE, ['y']), options);
   assert.deepEqual(commands.slice(1), [['remove-api', 'zen-glm']]);
   assert.match(said, /zen-glm/);
@@ -123,15 +127,16 @@ test('setup plans to remove the retired Zen GLM provider on confirmation', () =>
   assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['n']), options).commands, []);
 });
 
-test('setup removes Mistral with Zen GLM after confirmation', () => {
+test('setup removes both legacy Mistral pools with Zen GLM after confirmation', () => {
   const providers = { ...baseProviders(),
     'mistral-api': provider(true, { custom: true, kind: 'free', trainsOnData: true, cli: { defaultModel: 'mistral/codestral-latest' } }),
+    mistral: provider(false, { kind: 'free' }),
     'zen-glm': provider(true, { custom: true, kind: 'free', cli: { defaultModel: 'opencode/glm-5.3-flash-free' } }),
   };
-  const options = { providers, stored: ['mistral'], programs: { 'opencode-free': 'missing' } };
+  const options = { providers, stored: ['mistral'], programs: { 'opencode': 'missing' } };
   const { commands, said, installs, keyed } = play(flow(OTHER_NONE, FREE_NONE, ['y']), options);
-  assert.deepEqual(commands.slice(1), [['remove-api', 'zen-glm'], ['remove-api', 'mistral-api']]);
-  assert.match(said, /zen-glm, mistral-api/);
+  assert.deepEqual(commands.slice(1), [['remove-api', 'zen-glm'], ['remove-api', 'mistral-api'], ['remove-api', 'mistral']]);
+  assert.match(said, /zen-glm, mistral-api, mistral/);
   assert.doesNotMatch(said, /Already added:.*mistral-api|Key 1 of|Allow them in this folder/);
   assert.deepEqual(installs, []);
   assert.deepEqual(keyed, []);
@@ -258,7 +263,7 @@ test('f moves forward and keeps the answer; the summary cannot be skipped', () =
 
 test('confirmed setup starts required logins without asking again', () => {
   const pending = [{ id: 'copilot', command: 'copilot', checkable: false, optional: false }, { id: 'codex', command: 'codex login', checkable: true, optional: false },
-    { id: 'opencode-free', command: 'opencode auth login', checkable: false, optional: true }];
+    { id: 'opencode', command: 'opencode auth login', checkable: false, optional: true }];
   const { logged, said, left } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { pending });
   assert.deepEqual(logged, ['copilot', 'codex']);
   assert.match(said, /Logging in: copilot/);
@@ -318,7 +323,7 @@ test('local models are never offered and unknown arguments are refused', () => {
 });
 
 test('all setup text is English', () => {
-  const { said } = play(flow(OTHER_NONE, COHERE, ['n', 'y']), { programs: { 'opencode-free': 'missing' }, afterInstall: { 'opencode-free': 'ok' } });
+  const { said } = play(flow(OTHER_NONE, COHERE, ['n', 'y']), { programs: { 'opencode': 'missing' }, afterInstall: { 'opencode': 'ok' } });
   assert.doesNotMatch(said + JSON.stringify(PROVIDER_HELP), /[äöüßÄÖÜ]|Schritt|Zusammenfassung|einschalten/i);
   assert.match(said, /Step 6 of 6: Summary/);
 });

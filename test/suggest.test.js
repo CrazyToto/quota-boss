@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { retiredProviders } = require('../scripts/lib');
 const { suggestions, lines, statusLines, due, remember } = require('../scripts/suggest');
 
 const NOW = Date.UTC(2026, 10, 17, 12);
@@ -22,24 +23,26 @@ const ids = list => list.map(s => s.id);
 
 test('the retired Zen GLM registration gets a removal suggestion', () => {
   const input = snap();
-  const providers = input.config.providers.providers;
-  providers['zen-glm'] = { enabled: false, cli: { defaultModel: 'opencode/glm-5.3-flash-free' } };
+  input.config.providers.retired = retiredProviders({
+    'zen-glm': { enabled: false, cli: { defaultModel: 'opencode/glm-5.3-flash-free' } },
+  });
   assert.deepEqual(suggestions(input, NOW), [{
     id: 'retired:zen-glm', text: 'OpenCode retired the free Zen GLM model', command: 'remove-api zen-glm',
   }]);
-  providers['zen-glm'].cli.defaultModel = 'opencode/deepseek-v4.1-flash-free';
+  input.config.providers.retired = retiredProviders({
+    'zen-glm': { enabled: true, cli: { defaultModel: 'opencode/deepseek-v4.1-flash-free' } },
+  });
   assert.deepEqual(suggestions(input, NOW), []);
 });
 
 test('only a stored free Mistral registration gets a removal suggestion', () => {
   const input = snap();
-  const providers = input.config.providers.providers;
   assert.deepEqual(suggestions(input, NOW), []);
-  providers['mistral-api'] = { custom: true, enabled: false, kind: 'free', cli: { defaultModel: 'mistral/codestral-latest' } };
+  input.config.providers.retired = retiredProviders({ 'mistral-api': { enabled: false, kind: 'free' } });
   assert.deepEqual(suggestions(input, NOW), [{
     id: 'retired:mistral-api', text: 'Mistral ended free API access', command: 'remove-api mistral-api',
   }]);
-  providers['mistral-api'].kind = 'api';
+  input.config.providers.retired = retiredProviders({ 'mistral-api': { kind: 'api' } });
   assert.deepEqual(suggestions(input, NOW), []);
 });
 

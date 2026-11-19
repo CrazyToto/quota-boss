@@ -57,13 +57,13 @@ test.describe('use', () => {
   });
 
   test('a stored only filter from before 0.2.0 keeps excluding, also training providers, and cannot be set again', () => {
-    lib.writeJson(userFile('providers'), { providers: { 'opencode-free': { enabled: true } } });
+    lib.writeJson(userFile('providers'), { providers: { 'kilo-free': { enabled: true } } });
     lib.saveProject(project, { allowTrainingProviders: true });
-    assert.equal(provider('opencode-free').enabled, true);
+    assert.equal(provider('kilo-free').enabled, true);
     lib.writeJson(lib.useFile(), { only: ['claude', 'codex'], modelsOff: [] });
     assert.equal(provider('claude').enabled, true);
     assert.equal(provider('codex').enabled, true);
-    for (const id of ['perplexity', 'grok', 'opencode-free']) assert.equal(provider(id).enabled, false, id + ' stays outside the global filter');
+    for (const id of ['perplexity', 'grok', 'kilo-free']) assert.equal(provider(id).enabled, false, id + ' stays outside the global filter');
     lib.saveProject(project, { allowTrainingProviders: true, use: { only: ['claude'] } });
     assert.equal(provider('codex').enabled, false, 'the project filter narrows further');
     assert.equal(provider('claude').enabled, true);

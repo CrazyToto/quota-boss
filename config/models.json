@@ -600,19 +600,6 @@
         "mechanical": 9
       }
     },
-    "opencode-free-example": {
-      "pool": "opencode-free",
-      "label": "OpenCode free (example)",
-      "cost": 0,
-      "scores": {
-        "architecture": 3,
-        "debugging": 4,
-        "implementation": 5,
-        "review": 3,
-        "research": 3,
-        "mechanical": 6
-      }
-    },
     "kilo-free": {
       "pool": "kilo-free",
       "label": "Kilo Auto Free",

@@ -29,7 +29,7 @@ const REGISTRY = Object.freeze({
   copilot: { label: 'GitHub Copilot', binary: 'copilot', source: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
     install: { all: npm('@github/copilot') },
     login: { command: 'copilot login', run: ['login'], statusFile: { env: 'COPILOT_HOME', dir: '.copilot', file: 'config.json', field: 'loggedInUsers' } } },
-  'opencode-free': { label: 'OpenCode', binary: 'opencode', source: 'https://opencode.ai/docs',
+  opencode: { label: 'OpenCode', binary: 'opencode', source: 'https://opencode.ai/docs',
     install: { all: npm('opencode-ai') },
     login: { command: 'opencode auth login', run: ['auth', 'login'], optional: true } },
   'kilo-free': { label: 'Kilo', binary: 'kilo', source: 'https://kilo.ai/docs/code-with-ai/platforms/cli',
@@ -196,8 +196,8 @@ function enabledIds(config) {
   const ids = new Set();
   for (const [id, provider] of Object.entries(config.providers.providers)) {
     if (provider?.enabled === false) continue;
-    if (Object.hasOwn(REGISTRY, id)) ids.add(id);
-    else if (provider?.cli?.command === 'opencode') ids.add('opencode-free');
+    if (provider?.cli?.command === 'opencode') ids.add('opencode');
+    else if (Object.hasOwn(REGISTRY, id)) ids.add(id);
     else if (provider?.cli?.command === 'kilo') ids.add('kilo-free');
     else if (provider?.cli?.command === 'junie') ids.add('junie');
   }

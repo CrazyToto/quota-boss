@@ -6,8 +6,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { PRESETS } = require('../scripts/add-api');
+const { run } = require('../scripts/quota-boss');
 const { PROVIDER_HELP } = require('../scripts/provider-help');
 const { openCodeOffers } = require('../scripts/diagnostics');
+const { BUILTIN_PROVIDERS, loadConfig, mergeProviders, retiredProviders } = require('../scripts/lib');
 
 const script = path.join(__dirname, '..', 'scripts', 'quota-boss.js');
 
@@ -18,6 +20,20 @@ function home() {
 }
 const cli = (dir, ...args) => spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, QUOTA_BOSS_HOME: dir } });
 const saved = (dir, name) => JSON.parse(fs.readFileSync(path.join(dir, 'config', name + '.json'), 'utf8'));
+const save = (dir, name, value) => fs.writeFileSync(path.join(dir, 'config', name + '.json'), JSON.stringify(value) + '\n');
+
+function inIsolatedHome(t) {
+  const dir = home(), previous = process.env.QUOTA_BOSS_HOME, cwd = process.cwd();
+  t.after(() => {
+    process.chdir(cwd);
+    if (previous === undefined) delete process.env.QUOTA_BOSS_HOME;
+    else process.env.QUOTA_BOSS_HOME = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  process.env.QUOTA_BOSS_HOME = dir;
+  process.chdir(dir);
+  return dir;
+}
 
 test('no arguments lists the presets', () => {
   const result = cli(home(), 'add-api');
@@ -42,6 +58,10 @@ test('a preset registers a working, enabled provider with a zero-cost model', ()
   assert.equal(saved(dir, 'models').models['cohere-plus'].cliModel, 'cohere/command-a-plus-05-2026');
   assert.equal(saved(dir, 'models').models['cohere-plus'].pool, 'cohere');
   assert.match(result.stdout, /opencode auth login -p cohere/);
+  assert.match(result.stdout, /quota-boss tools install opencode\b/);
+  const tools = cli(dir, 'tools', 'install', 'opencode');
+  assert.equal(tools.status, 0, tools.stderr);
+  assert.match(tools.stdout, /Run quota-boss tools install in a terminal/);
   assert.match(cli(dir, 'providers').stdout, /cohere/);
 });
 
@@ -53,6 +73,66 @@ test('Mistral can still be registered as a paid custom API', () => {
   assert.match(result.stdout, /opencode auth login -p mistral/);
   assert.equal(saved(dir, 'providers').providers['mistral-api'].kind, 'api');
   assert.ok(saved(dir, 'models').models['mistral-api-api'].cost > 0);
+  assert.match(cli(dir, 'providers').stdout, /mistral-api/);
+});
+
+test('Zen GLM retirement recognizes both legacy model flags and ignores a model string in other args', () => {
+  const model = 'opencode/glm-5.3-flash-free';
+  for (const flag of ['-m', '--model']) {
+    assert.deepEqual(retiredProviders({ 'zen-glm': { cli: { args: ['run', '--quiet', flag, model, '{prompt}'] } } }).map(p => p.id),
+      ['zen-glm']);
+  }
+  assert.deepEqual(retiredProviders({ 'zen-glm': { cli: { args: ['run', '--other', model, '{prompt}'] } } }), []);
+});
+
+test('retired routes are excluded before setup, and the suggested command removes each stored entry', t => {
+  const dir = inIsolatedHome(t);
+  const provider = { label: 'Retired Offer', kind: 'free', enabled: true, worker: 'cli-worker', quota: { source: 'none' } };
+  const model = { label: 'Retired Model', cost: 0, scores: { mechanical: 10 } };
+  const providers = {
+    'zen-glm': { ...provider, custom: true, cli: { command: 'opencode', args: ['run', '-m', 'opencode/glm-5.3-flash-free', '{prompt}'] } },
+    'mistral-api': { ...provider, custom: true, cli: { command: 'opencode', args: ['run', '-m', 'mistral/codestral-latest', '{prompt}'] } },
+    mistral: { ...provider, cli: { command: 'vibe', args: ['--prompt', '{prompt}'] } },
+  };
+  for (const [id, entry] of Object.entries(providers)) {
+    save(dir, 'providers', { providers: { [id]: entry }, caps: { [id]: { daily: 50 } } });
+    save(dir, 'models', { models: { 'retired-model': { ...model, pool: id } } });
+    const config = loadConfig();
+    assert.equal(config.providers.providers[id], undefined);
+    assert.equal(config.models.models['retired-model'], undefined);
+    assert.doesNotMatch(run(['route', '--explain', 'mechanical', 'trivial']), /Retired Model|retired-model/);
+    assert.match(run(['status']), new RegExp('remove-api ' + id + '\\b'));
+    assert.doesNotMatch(run(['providers']), /Retired Offer|unknown provider/);
+    assert.equal(run(['remove-api', id]), 'API removed: ' + id);
+    assert.deepEqual(saved(dir, 'providers').providers, {});
+    assert.deepEqual(saved(dir, 'models').models, {});
+    assert.doesNotMatch(run(['status']), /remove-api/);
+  }
+});
+
+test('copied and partial overrides for removed examples load without restoring their routes', t => {
+  const dir = inIsolatedHome(t);
+  const caps = { 'opencode-free': { daily: 60 }, openrouter: { monthly: 50 } };
+  const copied = {
+    'opencode-free': { label: 'Legacy OpenCode', kind: 'free', enabled: true, worker: 'cli-worker', quota: { source: 'none' },
+      cli: { command: 'opencode', args: ['run', '{prompt}'] } },
+    openrouter: { label: 'Legacy OpenRouter', kind: 'api', enabled: true, worker: 'cli-worker',
+      quota: { source: 'counter', windows: { monthly: { budget: 10, unit: 'usd' } } } },
+  };
+  save(dir, 'models', { models: {
+    'opencode-free-example': { pool: 'opencode-free', label: 'Legacy OpenCode', cost: 0, scores: { mechanical: 10 } },
+  } });
+  for (const providers of [copied, { 'opencode-free': { enabled: true }, openrouter: { enabled: true } }, {}]) {
+    save(dir, 'providers', { providers, caps });
+    const merged = mergeProviders(BUILTIN_PROVIDERS, { providers }, { caps });
+    assert.deepEqual(merged.caps, {});
+    for (const id of Object.keys(copied)) assert.equal(merged.providers[id], undefined);
+    assert.doesNotMatch(run(['route', '--explain', 'mechanical', 'trivial']), /Legacy OpenCode|unknown provider/);
+    assert.doesNotMatch(run(['providers']), /Legacy OpenCode|Legacy OpenRouter/);
+    assert.throws(() => run(['tools', 'install', 'opencode']), /only enabled providers/);
+  }
+  assert.match(run(['add-api', 'openrouter', 'openrouter/example', '--trains', 'no']), /quota-boss tools install opencode\b/);
+  assert.match(run(['providers']), /openrouter/);
 });
 
 test('a preset that may train says how to allow it', () => {

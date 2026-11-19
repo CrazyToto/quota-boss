@@ -13,7 +13,7 @@
       "output": 8
     }
   },
-  "$comment": "Percent of quota used. Modes are computed from the higher of the 5h and weekly value (weekly values are scaled by weeklyWeight so a full week counts as 'tight' earlier).",
+  "$comment": "Quota thresholds are percentages used. The five-hour and weekly windows have separate thresholds.",
   "claude": {
     "save": 60,
     "emergency": 85
@@ -31,29 +31,6 @@
     "exhausted": 97
   },
   "staleCodexMinutes": 360,
-  "profiles": {
-    "quality": {
-      "minQuality": {
-        "critical": 9,
-        "normal": 8,
-        "trivial": 6
-      }
-    },
-    "balanced": {
-      "minQuality": {
-        "critical": 9,
-        "normal": 7,
-        "trivial": 5
-      }
-    },
-    "frugal": {
-      "minQuality": {
-        "critical": 8,
-        "normal": 6,
-        "trivial": 4
-      }
-    }
-  },
   "difficulty": {
     "critical": 8.5,
     "normal": 6.5,

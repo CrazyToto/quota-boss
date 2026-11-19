@@ -13,9 +13,8 @@ test('provider help omits the Junie billing key', () => {
 });
 
 test('every normal choice explains what it is, on, off, the catch and what you need', () => {
-  const stubs = ['openrouter']; // only useful through add-api
   for (const [id, provider] of Object.entries(defaults.providers)) {
-    if (provider.kind === 'local' || stubs.includes(id)) continue;
+    if (provider.kind === 'local') continue;
     assert.ok(Object.hasOwn(help.PROVIDER_HELP, id), id);
   }
   for (const id of Object.keys(PRESETS)) assert.ok(Object.hasOwn(help.PROVIDER_HELP, id), id);

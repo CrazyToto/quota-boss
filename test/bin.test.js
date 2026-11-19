@@ -29,13 +29,20 @@ test('package.json declares the bin entry, can be published without dependencies
   assert.ok(!text.includes('\r'));
 });
 
-test('npm pack lists the bin file, the installer and the CLI', t => {
+test('npm pack includes runtime files and excludes repository tooling and tests', t => {
   const { env } = isolated(t);
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const result = spawnSync(npm, ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: root, env, encoding: 'utf8', shell: process.platform === 'win32' });
   if (result.status !== 0 || !result.stdout) return t.skip('npm pack unavailable: ' + (result.stderr || '').slice(0, 100));
   const files = JSON.parse(result.stdout)[0].files.map(f => f.path);
-  for (const file of ['bin/quota-boss.js', 'install.js', 'scripts/quota-boss.js', 'package.json']) assert.ok(files.includes(file), file);
+  for (const file of ['bin/quota-boss.js', 'install.js', 'scripts/quota-boss.js', 'package.json', 'templates/BOOT.md', 'templates/RULES.md']) {
+    assert.ok(files.includes(file), file);
+  }
+  for (const file of files) {
+    assert.doesNotMatch(file, /^(?:test|\.github)\//);
+    assert.ok(!['.gitattributes', 'CONTRIBUTING.md', 'scripts/free-models.js'].includes(file), file);
+  }
+  assert.deepEqual(files.filter(file => file.startsWith('templates/')), ['templates/BOOT.md', 'templates/RULES.md']);
 });
 
 test('isInstallerArgs treats no arguments and installer flags as install', () => {

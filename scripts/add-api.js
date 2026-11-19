@@ -38,13 +38,6 @@ const PRESETS = Object.freeze({
     limit: 'free, no published limit' },
 });
 
-const RETIRED = [
-  { id: 'zen-glm', reason: 'OpenCode retired the free Zen GLM model',
-    matches: provider => provider?.cli?.defaultModel === 'opencode/glm-5.3-flash-free' },
-  { id: 'mistral-api', reason: 'Mistral ended free API access',
-    matches: provider => provider?.custom === true && provider.kind !== 'api' },
-];
-
 const USAGE = 'Usage: quota-boss add-api [<preset>|<id> <provider/model> --trains <yes|no> [--free] [--budget <amount> <calls|usd|tokens> <daily|weekly|monthly>]]';
 // Passed as one argument to OpenCode: must contain a provider and can never look like a flag.
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]{0,126}$/;
@@ -120,7 +113,7 @@ function add(args) {
   update(paths.models, user => ({ ...user, models: { ...user.models, ...modelEntries(id, spec) } }));
   return ['API added: ' + id + ' (' + spec.model + ')',
     ...(preset && PROVIDER_HELP[id]?.warning ? ['Warning: ' + PROVIDER_HELP[id].warning] : []),
-    'Next: 1. quota-boss tools (installs OpenCode if it is missing)',
+    'Next: 1. quota-boss tools install opencode (if OpenCode is missing)',
     ...(spec.keyless ? [] : ['      2. opencode auth login -p ' + spec.model.split('/')[0] + ' (enter an API key, never a subscription login; it stays in OpenCode)',
       ...(preset ? ['         Create the key here: ' + spec.keyPage] : []),
       ...(preset?.keyHint ? ['         ' + preset.keyHint] : [])]),
@@ -131,12 +124,18 @@ function remove(args) {
   if (args.length !== 1) throw new Error('Usage: quota-boss remove-api <id>');
   const [id] = args;
   const paths = files();
-  if (lib.readProviderConfig(paths.providers).providers?.[id]?.custom !== true) throw new Error('Only APIs added with add-api can be removed.');
-  update(paths.providers, user => { const providers = { ...user.providers }; delete providers[id]; return { ...user, providers }; });
+  update(paths.providers, user => {
+    const providers = { ...user.providers };
+    if (providers[id]?.custom !== true && !lib.retiredProviders(providers).some(entry => entry.id === id)) {
+      throw new Error('Only APIs added with add-api and retired APIs can be removed.');
+    }
+    delete providers[id];
+    return { ...user, providers };
+  });
   update(paths.models, user => { const models = { ...user.models };
     for (const [modelId, model] of Object.entries(models)) if (model?.pool === id) delete models[modelId];
     return { ...user, models }; });
   return 'API removed: ' + id;
 }
 
-module.exports = { PRESETS, RETIRED, MODEL_PATTERN, add, remove, update, modelEntries };
+module.exports = { PRESETS, MODEL_PATTERN, add, remove, update, modelEntries };

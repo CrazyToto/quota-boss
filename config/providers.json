@@ -170,41 +170,6 @@
       "tos": "official-cli",
       "trainsOnData": false
     },
-    "openrouter": {
-      "label": "OpenRouter",
-      "kind": "api",
-      "enabled": false,
-      "quota": {
-        "source": "counter",
-        "windows": {
-          "monthly": {
-            "budget": 10,
-            "unit": "usd"
-          }
-        }
-      },
-      "worker": "cli-worker",
-      "tos": "api",
-      "trainsOnData": false
-    },
-    "opencode-free": {
-      "label": "OpenCode free (example)",
-      "kind": "free",
-      "enabled": false,
-      "trainsOnData": true,
-      "tos": "official-cli",
-      "worker": "cli-worker",
-      "quota": {
-        "source": "none"
-      },
-      "cli": {
-        "command": "opencode",
-        "args": [
-          "run",
-          "{prompt}"
-        ]
-      }
-    },
     "kilo-free": {
       "label": "Kilo Free",
       "kind": "free",

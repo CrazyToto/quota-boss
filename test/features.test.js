@@ -44,7 +44,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
 
   test('free/local examples are disabled, zero cost and conservatively scored with safe templates', () => {
     lib.validateProviders(defaults);
-    for (const id of ['opencode-free', 'kilo-free', 'ollama']) {
+    for (const id of ['kilo-free', 'ollama']) {
       const p = defaults.providers[id], m = models.models[id === 'kilo-free' ? id : id + '-example'];
       assert.equal(p.enabled, false); assert.equal(p.worker, 'cli-worker');
       assert.equal(p.trainsOnData, id !== 'ollama'); assert.equal(m.pool, id); assert.equal(m.cost, 0);
@@ -52,17 +52,16 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       for (const cat of ['architecture', 'debugging', 'review', 'research']) assert.ok(m.scores[cat] >= 3 && m.scores[cat] <= 4);
       assert.ok(!route({ models, providers: defaults }).candidates.some(c => c.pool === id));
     }
-    assert.deepEqual(defaults.providers['opencode-free'].cli.args, ['run', '{prompt}']);
     assert.deepEqual(defaults.providers['kilo-free'].cli.args, ['run', '-m', 'kilo/kilo-auto/free', '{prompt}']);
     assert.ok(!defaults.providers['kilo-free'].cli.args.includes('--auto'));
     assert.deepEqual(defaults.providers.ollama.cli.args, ['run', '<model>', '{prompt}']);
   });
 
   test('training is strict opt-in and excludes primary, fallback, manual options and ladder steps', () => {
-    const providers = lib.mergeProviders(defaults, { providers: { 'opencode-free': { enabled: true },
+    const providers = lib.mergeProviders(defaults, { providers: { 'kilo-free': { enabled: true },
       perplexity: { trainsOnData: true } } });
     const registry = { categories: ['research'], models: {
-      train: { pool: 'opencode-free', label: 'Train', cost: 0, scores: { research: 10 } },
+      train: { pool: 'kilo-free', label: 'Train', cost: 0, scores: { research: 10 } },
       safe: { pool: 'claude', label: 'Safe', cost: 10, scores: { research: 3 } },
       manual: { pool: 'perplexity', label: 'Manual', cost: 0, manual: true, scores: { research: 10 } }
     } };
@@ -214,8 +213,8 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     for (const args of [['settings', 'extra'], ['explain'], ['explain', 'missing']]) assert.throws(() => cli.run(args));
     assert.equal((projectValue() !== undefined), false);
     lib.saveProject(project, { enabled: true, rules: 'full', custom: { keep: 42 } });
-    cli.run(['use', 'opencode-free', 'on']);
-    assert.doesNotMatch(cli.run(['route']), /OpenCode free/);
+    cli.run(['use', 'kilo-free', 'on']);
+    assert.doesNotMatch(cli.run(['route']), /Kilo Auto Free/);
     for (const [command, key] of [['training', 'allowTrainingProviders']]) {
       for (const value of ['on', 'off']) {
         const output = cli.run(['set', command, value]);
@@ -224,7 +223,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
         assert.equal(projectValue().custom.keep, 42);
       }
     }
-    cli.run(['set', 'training', 'on']); assert.match(cli.run(['route', '--explain']), /OpenCode free/);
+    cli.run(['set', 'training', 'on']); assert.match(cli.run(['route', '--explain']), /Kilo Auto Free/);
     assert.throws(() => cli.run(['set', 'short-answers', 'on']), /short-answers was removed in 0\.2\.0/);
     assert.equal(projectValue().custom.keep, 42);
   });
@@ -233,7 +232,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     lib.atomicWrite(path.join(process.env.CODEX_HOME, 'sessions', 'log.jsonl'), JSON.stringify({ payload: { type: 'token_count',
       rate_limits: { secondary: { used_percent: 5 } } } }) + '\n');
     for (const args of [['on'], ['off'], ['on', '--host', 'codex'], ['set', 'profile', 'quality'], ['use', 'codex', 'off'], ['use', 'codex', 'on'],
-      ['use', 'opencode-free', 'on'], ['use', 'opencode-free', 'off'], ['cap', 'codex', 'weekly', '70'],
+      ['use', 'kilo-free', 'on'], ['use', 'kilo-free', 'off'], ['cap', 'codex', 'weekly', '70'],
       ['set', 'training', 'on']]) {
       const output = cli.run(args);
       assert.equal(output.split('\n').filter(l => l.startsWith('Effect:')).length, 1);

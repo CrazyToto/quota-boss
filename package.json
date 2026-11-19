@@ -48,10 +48,7 @@
     "url": "https://github.com/CrazyToto/quota-boss/issues"
   },
   "files": [
-    ".gitattributes",
-    ".github/",
     "CHANGELOG.md",
-    "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
     "SECURITY.md",
@@ -62,7 +59,8 @@
     "docs/*.md",
     "install.js",
     "scripts/",
-    "templates/",
-    "test/"
+    "!scripts/free-models.js",
+    "templates/BOOT.md",
+    "templates/RULES.md"
   ]
 }
