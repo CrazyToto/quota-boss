@@ -4,6 +4,38 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-20
+
+### Added
+
+- `quota-boss --help` and `-h` print the command list and exit with code 0.
+- Routing rows for a free trial end in `[trial: run route first]`, so the boss refreshes the table before the next job.
+
+### Changed
+
+- Free and local providers (such as Junie Lite) need no self-test: their first real trivial jobs are the test,
+  and setup, `use <id> on` and the update offer spend no call on one. One verified pass opens normal work for them
+  (`freeProbationPasses`, default 1); critical work still needs three verified normal passes. A free route that failed
+  in a category takes work there again only through a new trial.
+- Job size counts changed lines and files, not tool turns: do an edit yourself when it changes about 30 lines or fewer;
+  a clearly large job goes to the `[large:...]` worker. Read-only jobs are sized by what they must read. CRITICAL work
+  never takes the small-job shortcut.
+
+### Fixed
+
+- Free trials stay closed after a route used its trial jobs or failed one, also after old results leave the rolling
+  history: a lasting count lives in `state.json`. For an hour after a failed trial, trivial work goes back to the route
+  that would have won without trials, not to another unproven free route.
+- A trial on a paid docs-only provider needs a passed self-test on the same installed CLI version.
+- A CLI worker whose executable is missing, or whose provider has no CLI template, never wins a route.
+- The worker gate falls back to a short pointer when the rules would pass the 10,000-character hook limit on a long
+  install path.
+- A deferred routing table is delivered only to the session that deferred it.
+- `providers report` skips the coding call after a limit, timeout or missing login in the self-test, and a rate limit
+  pauses the model for 15 minutes.
+- Junie: a stale `EJ_RUNNER_PWD` from an earlier launch no longer points Junie at the old project.
+- Docs and website: examples name the current default models (GPT-6.2-Sol), absolute README links, probation per tier, worktree output, Codex limits and network wording.
+
 ## [0.4.3] - 2026-11-19
 
 ### Fixed
