@@ -47,7 +47,7 @@ function recordInstall(before) {
 
 /** Ask on a terminal and run the same activation as the use command. */
 function offer({ ask = lib.askLine, say = console.log, interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
-  toolsOptions, use = (id, action) => require('./quota-boss').run(['use', id, action], { interactive, say, toolsOptions }) } = {}) {
+  toolsOptions, use = (id, action) => require('./quota-boss').run(['use', id, action], { interactive, say, toolsOptions, confirmed: true }) } = {}) {
   const ids = pending();
   if (!ids.length) return;
   if (!interactive) { say('New providers since your last version: ' + ids.map(nameOf).join(', ') + '. To turn them on, run: quota-boss setup'); return; }

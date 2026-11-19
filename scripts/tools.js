@@ -148,7 +148,7 @@ function routeOf(tool, platform) {
   const script = tool.paste?.[platform] || tool.paste?.all;
   return tool.install[platform] || tool.install.all || (script && (platform === 'win32'
     ? { manager: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], script }
-    : { manager: 'bash', args: ['-c', script], script })) || null;
+    : { manager: 'bash', args: ['-c', 'set -o pipefail; ' + script], script })) || null;
 }
 const prerequisiteOf = (route, platform) => (route && PREREQUISITES[route.manager]?.[platform]) || null;
 
@@ -332,10 +332,15 @@ function finishLogin(login, { say = console.log, options, api = module.exports }
 }
 
 /** Run the CLI steps after the caller has terminal approval. */
-function activate(id, { say = console.log, options, test, verified }) {
+function activate(id, { say = console.log, options, test, verified, confirmed = false, ask = lib.askLine }) {
   options = { ...options, scripts: true };
   const [before] = check([id], options);
   const installing = before.state === 'missing' || before.state === 'broken';
+  // A vendor install script runs only after a yes to it or to the question that led here (update or setup).
+  if (installing && routeOf(REGISTRY[id], options.platform || process.platform)?.script && !confirmed) {
+    say(before.command);
+    if (!/^y(es)?$/i.test(String(ask('Install with this command? [y/N] ')).trim())) { say('Install cancelled.'); return; }
+  }
   if (installing) {
     const result = install([id], { ...options, approved: true, say });
     say(result);

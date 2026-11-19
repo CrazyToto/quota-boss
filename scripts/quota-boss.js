@@ -139,7 +139,7 @@ function useReport(active, config) {
   lines.push('Switch: quota-boss use <provider-id|model-id> on|off [--project]');
   return lines.join('\n');
 }
-function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && process.stdout.isTTY), say = console.log, toolsOptions } = {}) {
+function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && process.stdout.isTTY), say = console.log, toolsOptions, confirmed = false, ask } = {}) {
   const active = lib.findProjectConfig(), config = lib.loadConfig(active);
   if (!rest.length) return useReport(active, config);
   const noTest = rest.at(-1) === '--no-test';
@@ -222,7 +222,7 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
       say('Running the self-test (real calls that count against the limit). Skip with --no-test.');
       output += '\n' + selfTest(id, { ...toolsOptions, findExecutable: toolsOptions?.find, config: enabled });
     };
-    if (tool) tools.activate(tool, { say, options: toolsOptions, test, verified });
+    if (tool) tools.activate(tool, { say, options: toolsOptions, test, verified, confirmed, ...(ask ? { ask } : {}) });
     else test(false);
   }
   return output + (provider && !project ? '' : refreshCodexAgents());

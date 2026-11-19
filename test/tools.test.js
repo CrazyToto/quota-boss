@@ -69,7 +69,7 @@ test('tools without a usable package manager or package become manual steps', ()
 
 test('paste install uses the registry script as one argument after approval and display', () => {
   for (const [platform, shell, binary, argv] of [
-    ['linux', 'bash', '/bin/bash', ['-c', 'curl -fsSL https://x.ai/cli/install.sh | bash']],
+    ['linux', 'bash', '/bin/bash', ['-c', 'set -o pipefail; curl -fsSL https://x.ai/cli/install.sh | bash']],
     ['win32', 'powershell', 'C:\\bin\\powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://x.ai/cli/install.ps1 | iex']],
   ]) {
     const events = [];
@@ -81,6 +81,20 @@ test('paste install uses the registry script as one argument after approval and 
     assert.equal(tools.check(['grok'], { ...options, scripts: true })[0].state, 'missing');
     tools.install(['grok'], { ...options, approved: true });
     assert.deepEqual(events, [shell + ' ' + argv.slice(0, -1).join(' ') + ' "' + argv.at(-1) + '"', [binary, argv, false]]);
+  }
+});
+
+test('activation runs a vendor install script only after a yes unless an earlier question already asked', () => {
+  for (const [confirmed, answer, runs] of [[false, 'n', false], [false, '', false], [false, 'y', true], [true, null, true]]) {
+    const events = [], asked = [];
+    const options = { platform: 'linux', find: name => name === 'bash' ? '/bin/bash' : null,
+      spawnSync: (file, args) => { events.push([file, args]); return { status: 0 }; } };
+    const said = [];
+    tools.activate('grok', { say: line => said.push(line), options, confirmed, test: () => {}, verified: () => false,
+      ask: question => { asked.push(question); return answer; } });
+    assert.equal(asked.length, confirmed ? 0 : 1);
+    assert.equal(events.some(([file]) => file === '/bin/bash'), runs);
+    if (!runs) assert.ok(said.includes('Install cancelled.'));
   }
 });
 
