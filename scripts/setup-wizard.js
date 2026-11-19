@@ -292,13 +292,17 @@ function walk(screens) {
 
 const needsTest = (config, id) => config.providers.providers[id]?.evidence === 'docs' && !!config.providers.providers[id]?.cli;
 
-/** Self-tests, once the logins are done, for the providers this run turned on and for chosen ones that are on but never passed
- *  (an update may have turned them on); routing gives them work only after a pass. A login left open or declined skips its test. */
-function selfTests(w, commands, failedOn, open, usable) {
+/** Test new or newly logged-in CLIs and docs-only providers still awaiting a pass. */
+function selfTests(w, commands, failedOn, open, usable, changed) {
   const turnedOn = commands.filter(command => command[0] === 'use' && command[2] === 'on' && command.includes('--no-test')).map(command => command[1]);
+  const turnedOff = new Set(commands.filter(command => command[0] === 'use' && command[2] === 'off').map(command => command[1]));
+  const activated = chosen(w, choicesOf(w)).filter(id => {
+    const provider = w.config.providers.providers[id];
+    return provider?.cli && provider.tos !== 'avoid' && changed.has(toolOf(id)) && !turnedOff.has(id);
+  });
   const waiting = Object.keys(w.config.providers.providers).filter(id => w.state.choices[id] && usable(toolOf(id)) && enabledNow(w.config, id)
     && needsTest(w.config, id) && !w.selfTestPassed(id));
-  const ids = [...new Set([...turnedOn, ...waiting])].filter(id => !failedOn.has(id) && !w.declined.has(toolOf(id)))
+  const ids = [...new Set([...turnedOn, ...waiting, ...activated])].filter(id => usable(toolOf(id)) && !failedOn.has(id))
     .filter(id => !open.some(line => [nameOf(id), tools.REGISTRY[toolOf(id)]?.label].some(name => name && line.startsWith(name + ' ('))));
   return ids.map(id => {
     w.io.say(w.text.testing(nameOf(id)));
@@ -339,20 +343,14 @@ function reportInstalls(w, resultLines, after, usable) {
   }
 }
 
-function logins(w, usable) {
+function logins(w, usable, changed) {
   const ids = [...w.plan.users.keys()].filter(id => id !== OPENCODE).filter(usable);
-  const pending = w.tools.pendingLogins(ids, w.options).filter(login => login.id !== OPENCODE);
-  pending.forEach((login, index) => {
-    w.io.clear();
-    w.io.say(w.text.loginTitle + '\n' + '-'.repeat(WIDTH) + '\n');
-    const label = tools.REGISTRY[login.id].label;
-    say(w, [w.text.loginAsk(index + 1, pending.length, label, login.command), ...(login.hint ? [login.hint] : []),
-      login.newWindow ? w.text.loginWindow : w.text.loginInline]);
-    w.io.say('');
-    if (yesNo(w, w.text.loginNow, false, 'none')) w.tools.runLogin(login.id, w.options);
-    else w.declined.add(login.id);
+  const pending = w.tools.pendingLogins(ids, w.options).filter(login => login.id !== OPENCODE && !login.optional);
+  const open = pending.filter(login => {
+    if (!tools.finishLogin(login, { say: w.io.say, options: w.options, api: w.tools })) return true;
+    changed.add(login.id);
+    return false;
   });
-  const open = pending.length ? w.tools.pendingLogins(ids, w.options).filter(login => login.id !== OPENCODE && login.checkable) : [];
   const keys = usable(OPENCODE) ? apiKeys(w) : [];
   keys.forEach((api, index) => {
     w.io.clear();
@@ -383,7 +381,7 @@ function finish(w) {
   w.io.clear();
   w.io.say(w.text.working + '\n');
   const ids = w.plan.install.map(item => item.id);
-  const resultLines = ids.length ? w.tools.install(ids, w.options).split('\n') : [];
+  const resultLines = ids.length ? w.tools.install(ids, { ...w.options, approved: true, say: w.io.say }).split('\n') : [];
   const after = new Map(w.tools.check([...w.plan.users.keys()], w.options).map(item => [item.id, item]));
   const usable = tool => !tool || USABLE.has(after.get(tool)?.state);
 
@@ -393,7 +391,7 @@ function finish(w) {
   const failedAddApi = new Set(), failedOn = new Set();
   const commands = buildCommands(w, usable);
   for (const command of commands) {
-    try { w.run(command); } catch (error) {
+    try { w.run(command, { interactive: false }); } catch (error) {
       if (command[0] === 'add-api') failedAddApi.add(command[1]);
       if (command[0] === 'use') failedOn.add(command[1]);
       problems.push(w.text.problem(command.join(' '), error.message));
@@ -410,10 +408,11 @@ function finish(w) {
   report();
   if (stayedOff.length || problems.length) { w.io.say(''); w.io.ask(w.text.pressContinue + ' '); }
 
-  const logged = logins(w, usable);
+  const changed = new Set(w.plan.install.filter(item => item.state !== 'outdated' && usable(item.id)).map(item => item.id));
+  const logged = logins(w, usable, changed);
   const dropped = dropUnkeyed(w, usable);
   const open = logged.filter(line => !dropped.some(name => line.startsWith(name + ' (')));
-  const tested = selfTests(w, commands, failedOn, open, usable);
+  const tested = selfTests(w, commands, failedOn, open, usable, changed);
   w.io.clear();
   w.io.say(w.text.doneTitle + '\n' + '-'.repeat(WIDTH) + '\n');
   report();
@@ -455,7 +454,7 @@ function setup(args, run, deps = {}) {
   const active = deps.project || lib.findProjectConfig();
   const config = deps.config || lib.loadConfig(active);
   const project = lib.normalizeProject(active);
-  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: deps.options, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools, state: initialState(config, project, active, deps.userProviders || userProviders()), confirmed: false, declined: new Set(),
+  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: { ...deps.options, scripts: true }, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools, state: initialState(config, project, active, deps.userProviders || userProviders()), confirmed: false,
     selfTestPassed: deps.selfTestPassed || (id => require('./self-test').evidenceStatus(id, config.models, lib.readState().selfTests, config.providers.providers[id]?.cli?.command).startsWith('self-test passed')),
     io: { ask: deps.ask || lib.askLine, say: deps.say || console.log, clear: deps.clear || console.clear } };
 

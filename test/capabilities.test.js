@@ -233,12 +233,17 @@ test.describe('capability CLI and enabling self-tests', () => {
     const calls = [];
     t.mock.method(lib, 'findExecutable', name => name === 'git' ? null : process.execPath);
     t.mock.method(require('node:child_process'), 'spawnSync', (_file, args, options) => {
+      if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
+      if (args.join(' ') === 'login status') return { status: 0, stdout: 'Logged in' };
+      if (args[0] === 'login' || args[0] === '/d') return { status: 0 };
+      if (args[0] === 'view') return { status: 0, stdout: '1.0.0' };
       calls.push(args);
       if (succeeds) fs.writeFileSync(path.join(options.cwd, 'quota-boss-self-test.txt'), args.join(' ').match(/[a-f0-9]{48}/)[0]);
       return { status: 0 };
     });
     return calls;
   }
+  const activate = (id = 'grok', say = () => {}) => cli.run(['use', id, 'on'], { interactive: true, say });
   test('route parses both capability flags, reports none and rejects malformed requests', () => {
     assert.match(cli.run(['route', '--needs', 'video', 'implementation', 'normal']), /normal: implementation=none \(no enabled route takes video\)/);
     assert.match(cli.run(['route', '--context', '1000', 'implementation', 'normal']), /none \(no enabled route has context 1000\)/);
@@ -249,18 +254,27 @@ test.describe('capability CLI and enabling self-tests', () => {
   });
   test('global provider on runs fake real-work tests, binds each model and skips valid retests', t => {
     const calls = fakeCli(t);
-    const text = cli.run(['use', 'grok', 'on']);
-    assert.match(text, /Running the self-test \(real calls that count against the limit\). Skip with --no-test\./);
+    const messages = [];
+    const text = activate('grok', message => messages.push(message));
+    assert.ok(messages.includes('Running the self-test (real calls that count against the limit). Skip with --no-test.'));
     assert.match(text, /PASS grok-4.7/); assert.match(text, /PASS grok-build/);
     assert.equal(calls.length, 2);
     assert.equal(lib.loadConfig().providers.providers.grok.enabled, true);
     assert.equal(lib.readUsage().entries.length, 2);
     for (const id of ['grok-4.7', 'grok-build']) assert.deepEqual(lib.readState().selfTests[id].cli, fingerprint());
-    assert.doesNotMatch(cli.run(['use', 'grok', 'on']), /Running the self-test/);
+    assert.doesNotMatch(activate(), /PASS/);
     assert.equal(calls.length, 2);
     lib.updateState(state => ({ selfTests: { ...state.selfTests, 'grok-build': { result: 'pass' } } }));
-    assert.match(cli.run(['use', 'grok', 'on']), /Running the self-test/);
+    assert.match(activate(), /PASS grok-build/);
     assert.equal(calls.length, 4);
+  });
+  test('non-terminal provider on only switches and says how to finish', t => {
+    const calls = fakeCli(t);
+    const text = cli.run(['use', 'grok', 'on'], { interactive: false });
+    assert.match(text, /\nTo finish, run quota-boss use grok on in a terminal\.$/);
+    assert.equal(lib.loadConfig().providers.providers.grok.enabled, true);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(lib.readUsage().entries, []);
   });
   test('--no-test leaves the provider enabled and gated without any calls', t => {
     const calls = fakeCli(t);
@@ -273,25 +287,27 @@ test.describe('capability CLI and enabling self-tests', () => {
   test('global enabling tests globally enabled models despite project restrictions', t => {
     const calls = fakeCli(t);
     lib.saveProject(process.cwd(), { use: { modelsOff: ['grok-4.7', 'grok-build'] } });
-    assert.match(cli.run(['use', 'grok', 'on']), /PASS grok-build/);
+    assert.match(activate(), /PASS grok-build/);
     assert.equal(calls.length, 2);
   });
   test('globally disabled models do not require tests or receive calls', t => {
     const calls = fakeCli(t);
     cli.run(['use', 'grok-build', 'off']);
-    assert.doesNotMatch(cli.run(['use', 'grok', 'on']), /PASS grok-build/);
+    assert.doesNotMatch(activate(), /PASS grok-build/);
     assert.equal(calls.length, 1);
-    assert.doesNotMatch(cli.run(['use', 'grok', 'on']), /Running the self-test/);
+    assert.doesNotMatch(activate(), /PASS/);
     assert.equal(calls.length, 1);
   });
   test('failed and missing CLI tests leave provider on but gated', t => {
     const calls = fakeCli(t, false);
-    assert.match(cli.run(['use', 'grok', 'on']), /FAIL grok-4.7: exit 0 but the work was not done/);
+    assert.match(activate(), /FAIL grok-4.7: exit 0 but the work was not done/);
     assert.equal(calls.length, 2);
     assert.equal(lib.loadConfig().providers.providers.grok.enabled, true);
     assert.equal(lib.readState().selfTests?.['grok-4.7'], undefined);
     lib.findExecutable.mock.mockImplementation(() => null);
-    assert.match(cli.run(['use', 'grok', 'on']), /FAIL grok-4.7: not installed/);
+    const messages = [];
+    activate('grok', message => messages.push(message));
+    assert.match(messages.join('\n'), /install by hand/);
     assert.equal(calls.length, 2);
     assert.ok(route(lib.loadConfig()).candidates.filter(c => c.pool === 'grok').every(c => c.reason === 'CLI not installed'));
   });

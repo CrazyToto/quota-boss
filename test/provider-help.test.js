@@ -7,6 +7,11 @@ const { PRESETS } = require('../scripts/add-api');
 
 const config = providers => ({ providers: { providers } });
 
+test('provider help omits the Junie billing key', () => {
+  assert.doesNotMatch(help.guide(config(defaults.providers)), /JUNIE_API_KEY/i);
+  assert.doesNotMatch(JSON.stringify(help.PROVIDER_HELP), /JUNIE_API_KEY/i);
+});
+
 test('every normal choice explains what it is, on, off, the catch and what you need', () => {
   const stubs = ['openrouter']; // only useful through add-api
   for (const [id, provider] of Object.entries(defaults.providers)) {

@@ -662,6 +662,19 @@ test('a shown suggestion returns only after a day or after its condition went aw
   assert.equal(shows(), true, 'again when the condition comes back');
 });
 
+test('new providers show on every Claude session start until a switch answers', () => {
+  const { markKnown } = require('../scripts/new-providers');
+  const cli = require('../scripts/quota-boss');
+  enable({ rules: 'tiny' });
+  markKnown(Object.keys(lib.BUILTIN_PROVIDERS.providers).filter(id => id !== 'junie-lite'));
+  const show = source => invoke(session.main, JSON.stringify({ cwd: project, session_id: 'new-provider', source })).stdout;
+  for (const source of ['startup', 'clear', 'compact', 'resume']) {
+    assert.match(show(source), /Suggestion: Ask the user: "Turn on Junie Lite\? Free, no limit published\."/);
+  }
+  cli.run(['use', 'junie-lite', 'off']);
+  assert.doesNotMatch(show('resume'), /Turn on Junie Lite/);
+});
+
 test('the handoff pointers stay within the room they are given', () => {
   const context = require('../scripts/context');
   enable();

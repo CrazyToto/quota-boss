@@ -28,13 +28,13 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
     installable: items => items.filter(item => ['missing', 'outdated', 'broken'].includes(item.state)),
     install: ids => { installed = true; installs.push(...ids); return installOutput || ids.map(id => '- ' + id + ': done').join('\n'); },
     pendingLogins: () => pending,
-    runLogin: id => logged.push(id),
+    runLogin: id => { logged.push(id); return { status: 0 }; },
     storedKeys: () => stored.join('\n'),
     runKeyLogin: provider => keyed.push(provider),
     openPage: url => opened.push(url),
   };
   const result = setup([], args => { commands.push(args); const error = runError?.(args); if (error) throw error; return ''; }, {
-    interactive: true, tools: fake, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
+    interactive: true, tools: fake, options: { wait: () => {} }, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
     ask: question => { said.push(question); return queue.length ? queue.shift() : ''; }, say: line => said.push(line), clear: () => {},
   });
   return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, marked, left: queue };
@@ -224,12 +224,14 @@ test('f moves forward and keeps the answer; the summary cannot be skipped', () =
   assert.deepEqual(commands.slice(1), [['use', 'codex', 'off', '--project']]);
 });
 
-test('logins start only when wanted, and only from the listed tools', () => {
+test('confirmed setup starts required logins without asking again', () => {
   const pending = [{ id: 'copilot', command: 'copilot', checkable: false, optional: false }, { id: 'codex', command: 'codex login', checkable: true, optional: false },
     { id: 'opencode-free', command: 'opencode auth login', checkable: false, optional: true }];
-  const { logged, said } = play(flow(OTHER_NONE, FREE_NONE, ['y', 'y', 'n']), { pending });
-  assert.deepEqual(logged, ['copilot']);
-  assert.match(said, /Login 1 of 2: GitHub Copilot/);
+  const { logged, said, left } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { pending });
+  assert.deepEqual(logged, ['copilot', 'codex']);
+  assert.match(said, /Logging in: copilot/);
+  assert.deepEqual(left, []);
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['n']), { pending }).logged, []);
 });
 
 test('chosen presets get one key screen each, in order, with their pages', () => {
@@ -413,11 +415,11 @@ test('a provider that needs a self-test is turned on without one and tested afte
   assert.deepEqual(done.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test'], ['providers', 'test', 'junie-lite']]);
   assert.match(done.said, /Testing Junie Lite/);
   const pending = [{ id: 'junie', command: 'junie', checkable: true, optional: false, newWindow: true }];
-  const open = play(flow(OTHER_NONE, FREE_NONE, ['y', 'n']), { providers: docs(), pending });
+  const open = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: docs(), pending });
   assert.deepEqual(open.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test']]);
   assert.match(open.said, /Still not logged in: Junie CLI \(junie\)/);
-  const declined = play(flow(OTHER_NONE, FREE_NONE, ['y', 'n']), { providers: docs(), pending: [{ ...pending[0], checkable: false }] });
-  assert.deepEqual(declined.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test']], 'a declined login that cannot be checked skips the test');
+  const inline = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: docs(), pending: [{ ...pending[0], checkable: false }] });
+  assert.deepEqual(inline.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test'], ['providers', 'test', 'junie-lite']]);
 });
 
 test('a provider an update turned on without a self-test is tested by setup; one that passed is not', () => {
@@ -428,10 +430,22 @@ test('a provider an update turned on without a self-test is tested by setup; one
   assert.deepEqual(passed.commands.slice(1), []);
 });
 
+test('one setup confirmation installs Junie, starts login and tests Junie Lite', () => {
+  const providers = { ...baseProviders(), 'junie-lite': provider(false, { evidence: 'docs', cli: { command: 'junie' } }) };
+  const pending = [{ id: 'junie', command: 'junie', checkable: false }];
+  const { installs, logged, commands, left } = play(flow(OTHER_NONE, FREE_NONE, ['y']), {
+    providers, programs: { junie: 'missing' }, afterInstall: { junie: 'ok' }, pending,
+  });
+  assert.deepEqual(installs, ['junie']);
+  assert.deepEqual(logged, ['junie']);
+  assert.deepEqual(commands.slice(1), [['use', 'junie-lite', 'on', '--no-test'], ['providers', 'test', 'junie-lite']]);
+  assert.deepEqual(left, []);
+});
+
 test('the Junie login shows its hint and runs junie on yes', () => {
   const pending = [{ id: 'junie', command: 'junie', hint: 'In Junie choose "Continue with JetBrains account", log in in your browser, then type /exit.', checkable: true, optional: false, newWindow: true }];
-  const { said, logged, opened } = play(flow(OTHER_NONE, FREE_NONE, ['y', 'y']), { providers: withLite(), pending });
-  assert.match(said, /Login 1 of 1: Junie CLI\.\s+This\s+runs:\s+junie/);
+  const { said, logged, opened } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: withLite(), pending });
+  assert.match(said, /Logging in: junie \(new window\)/);
   assert.match(said, /Continue\s+with\s+JetBrains\s+account/);
   assert.deepEqual(logged, ['junie']); assert.deepEqual(opened, []);
 });

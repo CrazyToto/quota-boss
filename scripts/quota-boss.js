@@ -139,7 +139,7 @@ function useReport(active, config) {
   lines.push('Switch: quota-boss use <provider-id|model-id> on|off [--project]');
   return lines.join('\n');
 }
-function useCommand(command, rest) {
+function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && process.stdout.isTTY), say = console.log, toolsOptions } = {}) {
   const active = lib.findProjectConfig(), config = lib.loadConfig(active);
   if (!rest.length) return useReport(active, config);
   const noTest = rest.at(-1) === '--no-test';
@@ -203,17 +203,27 @@ function useCommand(command, rest) {
   const boss = lib.delegationBoss(config.models, active);
   const changedOff = action === 'off' && (provider ? id === hostPool : id === boss);
   if (changedOff) output += '\nThe boss itself keeps running on its model; this only stops delegation to it.';
-  if (provider && !project && action === 'on' && raw.providers[id].evidence === 'docs' && raw.providers[id].cli) {
+  if (provider && !project && action === 'on' && raw.providers[id].cli) {
+    const definition = raw.providers[id];
+    const gated = definition.evidence === 'docs';
+    if (noTest) return output + (gated ? '\nSelf-test skipped: run quota-boss providers test ' + id + ' before it gets work.' : '');
+    const tool = tools.enabledIds({ providers: { providers: { [id]: { ...definition, enabled: true } } } })[0];
+    if (!interactive) return output + '\nTo finish, run quota-boss use ' + id + ' on in a terminal.';
     const { selfTest, validSelfTest } = require('./self-test');
     const enabled = lib.loadConfig({});
     const models = Object.entries(enabled.models.models).filter(([, model]) => model.pool === id && model.enabled !== false);
-    const cli = lib.cliFingerprint(raw.providers[id].cli.command, lib.findExecutable);
-    const tests = lib.readState().selfTests;
-    if (noTest) output += '\nSelf-test skipped: run quota-boss providers test ' + id + ' before it gets work.';
-    else if (models.length && !models.every(([key]) => validSelfTest(tests?.[key], cli))) {
-      output += '\nRunning the self-test (real calls that count against the limit). Skip with --no-test.';
-      output += '\n' + selfTest(id, { config: enabled });
-    }
+    const verified = () => {
+      const cli = lib.cliFingerprint(definition.cli.command, toolsOptions?.find || lib.findExecutable);
+      const tests = lib.readState().selfTests;
+      return models.length > 0 && models.every(([key]) => validSelfTest(tests?.[key], cli));
+    };
+    const test = changed => {
+      if ((!gated && !changed) || !models.length || definition.tos === 'avoid' || (!changed && verified())) return;
+      say('Running the self-test (real calls that count against the limit). Skip with --no-test.');
+      output += '\n' + selfTest(id, { ...toolsOptions, findExecutable: toolsOptions?.find, config: enabled });
+    };
+    if (tool) tools.activate(tool, { say, options: toolsOptions, test, verified });
+    else test(false);
   }
   return output + (provider && !project ? '' : refreshCodexAgents());
 }
@@ -345,7 +355,7 @@ function resolveModel(registry, name) {
 }
 
 /** Execute a project CLI command and return human-readable output; invalid input throws. */
-function run(args = process.argv.slice(2)) {
+function run(args = process.argv.slice(2), options) {
   let [command, ...rest] = args;
   if (command === 'worktree') return require('./worktree').run(rest);
   if (command === 'help') { if (rest.length) throw new Error(usage(command)); return HELP; }
@@ -357,7 +367,7 @@ function run(args = process.argv.slice(2)) {
     if (rest.length !== 2 || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
     command = SET_NAMES[setting]; rest = rest.slice(1);
   } else if (['profile', 'allow-training', 'statusline', 'context'].includes(command)) throw new Error(HELP);
-  if (command === 'use') return useCommand(command, rest);
+  if (command === 'use') return useCommand(command, rest, options);
   if (command === 'graph') {
     const graph = require('./graph');
     const [kind, ...names] = rest;

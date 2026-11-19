@@ -33,7 +33,7 @@ function suggestions(snap, now = Date.now()) {
     if (project.profile === 'frugal' && values.length && values.every(v => v !== undefined && v <= 40)) {
       out.push({ id: 'profile-balanced', text: 'every Claude window is at most 40% used, so frugal saves nothing', command: 'set profile balanced' });
     }
-    // Built-in providers added by an update and not answered yet; setup asks about each of them.
+    // Ask about unanswered providers added by an update.
     const added = newProviders.suggestion(snap?.newProviders);
     if (added) out.push(added);
     const providers = config.providers?.providers ?? {}, models = config.models?.models ?? {};
@@ -71,7 +71,7 @@ function suggestions(snap, now = Date.now()) {
 
 /** One line per suggestion, in the form the boss reads at session start. */
 function lines(list) {
-  return list.map(s => '[quota-boss] Suggestion: ' + s.text + '. Propose to the user: quota-boss ' + s.command);
+  return list.map(s => '[quota-boss] Suggestion: ' + s.text + (s.command ? '. Propose to the user: quota-boss ' + s.command : ''));
 }
 
 // Session starts repeat a suggestion only after a day, or after its condition went away and came back. status shows all.
@@ -84,7 +84,7 @@ function readShown() {
 /** The suggestions a session start may show now. */
 function due(list, now = Date.now()) {
   const shown = readShown();
-  return list.filter(s => !(Object.hasOwn(shown, s.id) && shown[s.id] <= now && now - shown[s.id] < DAY));
+  return list.filter(s => s.id === 'new-providers' || !(Object.hasOwn(shown, s.id) && shown[s.id] <= now && now - shown[s.id] < DAY));
 }
 /** Remember what a session start showed. Ids whose condition went away are forgotten, so they show again when it returns. */
 function remember(current, shown, now = Date.now()) {

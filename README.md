@@ -47,9 +47,9 @@ npx quota-boss@latest
 
 This works the same on Windows, macOS and Linux. To see first what would change, add `--dry-run`. The installer backs
 up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
-everything again. Run the first command again to update. When an update adds providers, it asks once per new provider
-(`Turn on? [y/N]`; Junie Lite defaults to yes). Without a terminal it names them and points to `quota-boss setup`, and
-the session start suggests that until you answer. Providers you turned on or off before are never asked about.
+everything again. Run the first command again to update. An update asks about each new provider in a terminal.
+Session starts ask again until you answer. A yes in setup, after an update, or through `quota-boss use <id> on` in a
+terminal installs the CLI if needed, starts the login, and runs the self-test.
 
 <details>
 <summary>Other ways to install</summary>

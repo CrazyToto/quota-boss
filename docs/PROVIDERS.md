@@ -124,9 +124,9 @@ every provider it showed as answered.
 | kilo-free | npm `@kilocode/cli` | yes | not needed |
 | ollama | winget (Windows), brew (macOS), by hand on Linux | no | not needed |
 | graphify (optional, not a provider) | `uv tool install graphifyy`, then `graphify install`; asked in setup | no | not needed |
-| grok | paste xAI's script yourself; setup shows the command | no | none |
+| grok | xAI's install script | no | none |
 | antigravity | by hand from Google's guide | no | none |
-| junie (junie-lite, jetbrains) | paste JetBrains' script yourself; setup shows the command | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
+| junie (junie-lite, jetbrains) | JetBrains' install script | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
 
 Commands live in `scripts/tools.js`, not in `providers.json`, so a config file can never supply one. npm and uv are
 pinned to the public registries, and environment overrides for them are removed before they start.
@@ -148,10 +148,8 @@ Both run JetBrains' official [Junie CLI](https://junie.jetbrains.com/docs/junie-
 on stdin (`--input-format=text`), never in argv. On Windows Quota Boss starts the native `junie.exe` that the
 `junie.bat` launcher would start (version from `<data>/current`, data folder `JUNIE_DATA_DIR` or
 `%USERPROFILE%\.local\share\junie`, path checked to stay inside it) and sets `JUNIE_DATA` and `EJ_RUNNER_PWD` like the
-launcher does. Log in once by running `junie` and choosing "Continue with JetBrains account"; setup starts this.
-Do not set `JUNIE_API_KEY`: that token (from junie.jetbrains.com/tokens) switches Junie to usage-based billing with
-paid credits. Junie prints its "Cannot find authorization" hint with exit code 0, so cli-run reports that line as
-unavailable.
+launcher does. Choose "Continue with JetBrains account" in Junie to log in. Activation starts Junie and waits up to
+five minutes on Windows for its saved login. The CLI's "Cannot find authorization" message is reported as unavailable.
 
 - **junie-lite** is JetBrains' free [Junie Lite](https://junie.jetbrains.com/blog/junie-lite/) tier: only a JetBrains
   account and no published request limit. Its [docs](https://junie.jetbrains.com/docs/junie-lite.html) say it does
@@ -202,7 +200,9 @@ Example scores and training flags are conservative configuration declarations; c
 
 ## Untested providers
 
-Grok and Antigravity were built from vendor documentation. Turning a docs-only provider on runs `quota-boss providers test <id>` (real calls that spend quota); `use <id> on --no-test` skips it. A pass is bound to that model and the CLI's resolved path, size and modification time. CLI changes require another test.
+Turning on a docs-only provider in a terminal runs its self-test after install and login. Each test spends quota.
+`use <id> on --no-test` only switches it on. Without a terminal, `use <id> on` prints how to finish in a terminal.
+A pass is bound to that model and the CLI's resolved path, size and modification time. CLI changes require another test.
 
 Docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes. Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
 

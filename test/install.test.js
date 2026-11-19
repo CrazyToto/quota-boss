@@ -721,16 +721,18 @@ test('providers new since the last version: a fresh install knows all, an update
   installOnce();
   assert.deepEqual(added.pending(), fresh, 'a second update keeps the earlier record');
 
-  const asked = offer(['', '']);
-  assert.deepEqual(asked.asked, ['Turn on Junie Lite (free)? [Y/n] ', 'Turn on JetBrains AI (Junie)? [y/N] ']);
+  assert.deepEqual(offer(['', 'maybe']).used, [], 'an empty or invalid answer never starts activation');
+  assert.deepEqual(added.pending(), fresh);
+  const asked = offer(['yes', 'no']);
+  assert.deepEqual(asked.asked, ['Turn on Junie Lite (free)? [y/n] ', 'Turn on JetBrains AI (Junie)? [y/n] ']);
   assert.match(asked.said, /Junie Lite \(free\): JetBrains' free Junie Lite model/);
-  assert.deepEqual(asked.used, ['junie-lite'], 'Enter keeps Junie Lite on and JetBrains off');
+  assert.deepEqual(asked.used, ['junie-lite', 'jetbrains off']);
   assert.deepEqual(added.pending(), []);
   assert.deepEqual(offer(['y', 'y']).asked, [], 'answered providers are never asked again');
 
   previousVersion();
   installOnce();
-  assert.deepEqual(offer(['n', 'yes']).used, ['junie-lite off', 'jetbrains'], 'a no to a default yes is saved as off');
+  assert.deepEqual(offer(['n', 'yes']).used, ['junie-lite off', 'jetbrains'], 'a no is saved as off');
 
   previousVersion();
   installOnce();
@@ -749,4 +751,55 @@ test('providers new since the last version: a fresh install knows all, an update
   lib.writeState({ knownProviders: undefined });
   installOnce();
   assert.deepEqual(added.pending(), [], 'an update from an unknown version asks about nothing');
+});
+
+test('an update yes installs, logs in and tests, and no saves off without spawning', t => {
+  const f = fixture(t), lib = require('../scripts/lib'), added = require('../scripts/new-providers');
+  const previous = process.env.QUOTA_BOSS_HOME, previousExit = process.exitCode;
+  process.env.QUOTA_BOSS_HOME = f.home;
+  t.after(() => {
+    if (previous === undefined) delete process.env.QUOTA_BOSS_HOME; else process.env.QUOTA_BOSS_HOME = previous;
+    process.exitCode = previousExit;
+  });
+  const shipped = Object.keys(lib.BUILTIN_PROVIDERS.providers);
+  added.markKnown(shipped.filter(id => !['junie-lite', 'jetbrains'].includes(id)));
+  let installed = false, loggedIn = false;
+  const events = [], messages = [];
+  const windows = process.platform === 'win32';
+  const toolsOptions = { home: f.home, wait: () => {},
+    find: name => name === (windows ? 'powershell' : 'bash') || (name === 'junie' && installed) ? process.execPath : null,
+    spawnSync: (_file, args, options) => {
+      if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
+      if (args[0] === '-NoProfile') {
+        assert.deepEqual(args, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://junie.jetbrains.com/install.ps1 | iex']);
+        assert.equal(messages.at(-1), 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://junie.jetbrains.com/install.ps1 | iex"');
+        events.push('install');
+        installed = true;
+      } else if (args[0] === '-c') {
+        assert.deepEqual(args, ['-c', 'curl -fsSL https://junie.jetbrains.com/install.sh | bash']);
+        assert.match(messages.at(-1), /^bash -c "curl -fsSL https:\/\/junie\.jetbrains\.com\/install\.sh \| bash"$/);
+        events.push('install');
+        installed = true;
+      } else if (!args.length || args[0] === '/d') {
+        assert.ok(installed);
+        events.push('login');
+        loggedIn = true;
+        if (windows) write(path.join(f.home, '.junie', 'dpapi_credentials', 'saved'), 'credential');
+      } else {
+        assert.ok(loggedIn);
+        events.push('test');
+        const prompt = options.input || args.join(' ');
+        fs.writeFileSync(path.join(options.cwd, 'quota-boss-self-test.txt'), prompt.match(/[a-f0-9]{48}/)[0]);
+      }
+      return { status: 0 };
+    } };
+  added.offer({ interactive: true, toolsOptions, say: line => messages.push(line), ask: question => {
+    events.push(question.startsWith('Turn on Junie Lite') ? 'yes' : 'no');
+    return events.at(-1) === 'yes' ? 'y' : 'n';
+  } });
+  assert.deepEqual(events, ['yes', 'install', 'login', 'test', 'no'], messages.join('\n'));
+  assert.match(messages.join('\n'), /PASS junie-lite/);
+  assert.equal(lib.loadConfig({}).providers.providers['junie-lite'].enabled, true);
+  assert.equal(lib.loadConfig({}).providers.providers.jetbrains.enabled, false);
+  assert.deepEqual(added.pending(), []);
 });

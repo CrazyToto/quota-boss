@@ -1,7 +1,7 @@
 'use strict';
 // Finds, installs and updates the official CLIs of enabled providers, only after the user agreed.
 // Install commands live in this file on purpose: providers.json is user- and merge-editable, so a
-// config file can never supply a command. Pipe-to-shell installers are shown to paste, never run.
+// config file can never supply a command.
 
 const child = require('node:child_process');
 const fs = require('node:fs');
@@ -11,6 +11,7 @@ const { version, older } = require('./diagnostics');
 
 const QUERY_TIMEOUT = 20 * 1000;
 const INSTALL_TIMEOUT = 10 * 60 * 1000;
+const LOGIN_TIMEOUT = 5 * 60 * 1000;
 const MAX_STATUS_BYTES = 256 * 1024;
 const NPM_REGISTRY = '--registry=https://registry.npmjs.org/';
 const WINGET_FLAGS = ['-e', '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity'];
@@ -44,7 +45,7 @@ const REGISTRY = Object.freeze({
   antigravity: { label: 'Antigravity', binary: 'agy', source: 'https://antigravity.google/docs/install', install: {},
     note: 'Google only offers an install script; follow the official guide. It replaced Gemini CLI for free and Google One users.',
     login: { command: 'agy', run: [] } },
-  // One CLI for Junie Lite and JetBrains AI. The account login covers both; a JUNIE_API_KEY token bills paid credits instead.
+  // One CLI and account login for both Junie Lite and JetBrains AI.
   // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
   junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
     paste: { win32: 'irm https://junie.jetbrains.com/install.ps1 | iex', all: 'curl -fsSL https://junie.jetbrains.com/install.sh | bash' },
@@ -103,9 +104,12 @@ function context(options = {}) {
     const native = Object.keys(lib.NATIVE_LAUNCHERS).map(name => lib.nativeLauncher(name, env, platform)).find(item => item?.file === file) || null;
     return lib.childEnv(path.basename(String(file)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase(), env, native, platform);
   };
-  return { platform, env, home: options.home || env.USERPROFILE || env.HOME || null, find: options.find || (name => locate(name, env, platform)),
+  return { platform, env, scripts: options.scripts, home: options.home || env.USERPROFILE || env.HOME || null, find: options.find || (name => locate(name, env, platform)),
     call: (file, args, timeout) => lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024 }),
-    attach: (file, args) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file), spawnSync })
+    attach: (file, args, poll) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file),
+      spawnSync: poll ? (cmd, argv, opts) => spawnSync(cmd,
+        [...argv.slice(0, -1), argv.at(-1).replace(/^("start "Quota Boss login") \/wait /, '$1 ')],
+        { ...opts, timeout: QUERY_TIMEOUT }) : spawnSync })
       : lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, stdio: 'inherit' }) };
 }
 
@@ -139,8 +143,13 @@ function credentialFileExists(credential, d) {
 
 const output = result => String(result?.stdout || '') + '\n' + String(result?.stderr || '');
 const succeeded = result => !!result && !result.error && result.status === 0;
-const display = route => route.manager + ' ' + route.args.join(' ');
-const routeOf = (tool, platform) => tool.install[platform] || tool.install.all || null;
+const display = route => route.manager + ' ' + route.args.map((arg, i) => route.script && i === route.args.length - 1 ? '"' + arg + '"' : arg).join(' ');
+function routeOf(tool, platform) {
+  const script = tool.paste?.[platform] || tool.paste?.all;
+  return tool.install[platform] || tool.install.all || (script && (platform === 'win32'
+    ? { manager: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], script }
+    : { manager: 'bash', args: ['-c', script], script })) || null;
+}
 const prerequisiteOf = (route, platform) => (route && PREREQUISITES[route.manager]?.[platform]) || null;
 
 function latestVersion(route, d) {
@@ -159,7 +168,8 @@ function byHand(item, tool, route, platform) {
 
 function inspect(id, d) {
   const tool = REGISTRY[id];
-  const route = routeOf(tool, d.platform);
+  const candidate = routeOf(tool, d.platform);
+  const route = candidate?.script && !d.scripts ? null : candidate;
   const after = tool.postInstall ? ' && ' + tool.binary + ' ' + tool.postInstall.join(' ') : '';
   const item = { id, source: tool.source, command: route ? display(route) + after : null, installed: null, latest: null };
   const usable = route && d.find(route.manager);
@@ -221,13 +231,17 @@ function installOne(id, d) {
   const before = inspect(id, d);
   if (!INSTALLABLE.has(before.state)) return '- ' + id + ': skipped (' + before.state + ')';
   const route = routeOf(REGISTRY[id], d.platform);
+  d.say?.(before.command);
   if (!d.find(route.manager)) {
     const prerequisite = prerequisiteOf(route, d.platform);
+    if (!prerequisite || !d.find(prerequisite.manager)) return '- ' + id + ': FAILED (installer unavailable)';
     const prepared = d.call(d.find(prerequisite.manager), prerequisite.args, INSTALL_TIMEOUT);
     if (!succeeded(prepared)) return '- ' + id + ': FAILED (' + route.manager + ': ' + failureText(prepared) + ')';
     if (!d.find(route.manager)) return '- ' + id + ': ' + route.manager + ' installed; open a new terminal and run this setup once more to finish';
   }
-  const result = d.call(d.find(route.manager), route.args, INSTALL_TIMEOUT);
+  const manager = d.find(route.manager);
+  if (!manager) return '- ' + id + ': FAILED (installer unavailable)';
+  const result = d.call(manager, route.args, INSTALL_TIMEOUT);
   if (!succeeded(result)) return '- ' + id + ': FAILED (' + failureText(result) + ')';
   const after = inspect(id, d);
   if (after.state === 'ok' && REGISTRY[id].postInstall) {
@@ -243,7 +257,8 @@ function installOne(id, d) {
 
 /** One tool failing never stops the others; each id gets exactly one result line. */
 function install(ids, options) {
-  const d = context(options);
+  const d = { ...context(options), scripts: options?.approved === true,
+    say: options?.say || (options?.approved === true ? console.log : undefined) };
   return ids.map(id => installOne(id, d)).join('\n');
 }
 
@@ -288,7 +303,56 @@ function pendingLogins(ids, options) {
 function runLogin(id, options) {
   const d = context(options);
   const tool = REGISTRY[id];
-  return d.attach(d.find(tool.binary), tool.login.run);
+  const poll = tool.login.credentialFile?.platform === d.platform && options?.poll;
+  return d.attach(d.find(tool.binary), tool.login.run, poll);
+}
+
+/** Start a pending login and return whether activation can continue. */
+function finishLogin(login, { say = console.log, options, api = module.exports } = {}) {
+  say('Logging in: ' + login.command + (login.newWindow ? ' (new window)' : ''));
+  if (login.hint) say(login.hint);
+  const result = api.runLogin(login.id, { ...options, poll: true });
+  if (!succeeded(result)) {
+    say('Login failed: ' + login.command);
+    return false;
+  }
+  if (!login.checkable) return true;
+  const pending = () => api.pendingLogins([login.id], options).some(item => item.id === login.id);
+  if (REGISTRY[login.id].login.credentialFile?.platform === (options?.platform || process.platform)) {
+    const wait = options?.wait || (ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+    for (let elapsed = 0; elapsed < LOGIN_TIMEOUT; elapsed += 1000) {
+      if (!pending()) return true;
+      wait(1000);
+    }
+    if (!pending()) return true;
+    say('Login timed out: ' + login.command);
+    return false;
+  }
+  return !pending();
+}
+
+/** Run the CLI steps after the caller has terminal approval. */
+function activate(id, { say = console.log, options, test, verified }) {
+  options = { ...options, scripts: true };
+  const [before] = check([id], options);
+  const installing = before.state === 'missing' || before.state === 'broken';
+  if (installing) {
+    const result = install([id], { ...options, approved: true, say });
+    say(result);
+    if (result.includes(': FAILED (')) return;
+  }
+  const after = installing ? check([id], options)[0] : before;
+  if (!['ok', 'outdated'].includes(after.state)) {
+    say(describe(after));
+    return;
+  }
+  const [login] = pendingLogins([id], options);
+  if (login && !login.checkable && !installing && verified()) return;
+  if (login && !login.optional && !finishLogin(login, { say, options })) {
+    say('Finish login and retry activation.');
+    return;
+  }
+  test(installing || !!(login && !login.optional));
 }
 
 function storedKeys(options) {
@@ -322,16 +386,19 @@ function openPage(url, options) {
 /** CLI entry: `tools`, `tools install <ids>` or `tools logins`, always limited to enabled providers. */
 function command(args, config, options) {
   const enabled = enabledIds(config);
-  if (!args.length) return report(check(enabled, options));
+  if (!args.length) return report(check(enabled, { ...options, scripts: true }));
   if (args[0] === 'logins' && args.length === 1) return logins(enabled, options);
   if (args[0] === 'install' && args.length > 1) {
     const ids = [...new Set(args.slice(1))];
     if (ids.some(id => !enabled.includes(id))) throw new Error('tools install accepts only enabled providers with a known CLI: ' + enabled.join(' '));
-    const result = install(ids, options);
+    if (!(process.stdin.isTTY && process.stdout.isTTY)) return 'Run quota-boss tools install in a terminal.';
+    console.log(report(check(ids, { ...options, scripts: true })));
+    if (!/^y(es)?$/i.test(lib.askLine('Install with the commands above? [y/N] '))) return 'Install cancelled.';
+    const result = install(ids, { ...options, approved: true, say: console.log });
     if (/: FAILED \(/.test(result)) process.exitCode = 1;
     return result;
   }
   throw new Error('Usage: quota-boss tools | tools install <id...> | tools logins');
 }
 
-module.exports = { REGISTRY, enabledIds, check, installable, report, install, logins, pendingLogins, runLogin, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };
+module.exports = { REGISTRY, enabledIds, check, installable, report, install, logins, pendingLogins, runLogin, finishLogin, activate, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };

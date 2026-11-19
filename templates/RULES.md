@@ -25,4 +25,4 @@
 
 Pipe long check output through `node "{{QUOTA_BOSS_HOME}}/scripts/compact.js"` (max 40 lines) and read the `[quota-boss] Check passed.` or `Check failed` line, since the pipe hides the exit code.
 For CRITICAL architecture/security decisions with real trade-offs, use `consensus` before deciding.
-Propose each `[quota-boss] Suggestion:` command to the user once; never change settings yourself.
+Ask the user about each `[quota-boss] Suggestion:`. If they say yes, you may run the suggested command. For a new provider, record either answer with the indicated command.

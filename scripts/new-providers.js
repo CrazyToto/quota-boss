@@ -6,8 +6,6 @@ const path = require('node:path');
 const lib = require('./lib');
 const { PROVIDER_HELP } = require('./provider-help');
 
-// Junie Lite is free with no published limit, so its question defaults to yes, as in the setup.
-const DEFAULT_ON = ['junie-lite'];
 const home = () => lib.getPaths().quotaBossHome;
 const providerIds = file => { const value = lib.readJson(file, null)?.providers; return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : null; };
 const known = () => { const value = lib.readState().knownProviders; return Array.isArray(value) ? value.filter(lib.validProviderId) : null; };
@@ -47,34 +45,39 @@ function recordInstall(before) {
   markKnown(before.fresh || !before.ids ? shipped : before.ids.filter(lib.validProviderId));
 }
 
-/** After an update: on a terminal ask per new provider and switch it on through `use <id> on`; otherwise name them once.
- *  The self-test waits until the CLI is installed and logged in; a session start suggests it until it passed.
- *  A no to a question that defaults to yes is saved as off, so setup does not preselect it again. */
+/** Ask on a terminal and run the same activation as the use command. */
 function offer({ ask = lib.askLine, say = console.log, interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
-  use = (id, action) => require('./quota-boss').run(['use', id, action, ...(action === 'on' ? ['--no-test'] : [])]) } = {}) {
+  toolsOptions, use = (id, action) => require('./quota-boss').run(['use', id, action], { interactive, say, toolsOptions }) } = {}) {
   const ids = pending();
   if (!ids.length) return;
   if (!interactive) { say('New providers since your last version: ' + ids.map(nameOf).join(', ') + '. To turn them on, run: quota-boss setup'); return; }
   say('New providers since your last version:');
-  const failed = new Set();
+  const answered = [];
   for (const id of ids) {
-    const yes = DEFAULT_ON.includes(id);
     say(nameOf(id) + ': ' + PROVIDER_HELP[id].what);
-    const answer = String(ask('Turn on ' + nameOf(id) + '? ' + (yes ? '[Y/n] ' : '[y/N] '))).trim();
-    if (answer ? /^y(es)?$/i.test(answer) : yes) {
-      try { say(use(id, 'on')); } catch (error) { failed.add(id); say('Could not turn on ' + id + ': ' + error.message); }
-    } else if (yes) {
-      try { use(id, 'off'); } catch { /* setup asks again */ }
-    }
+    const answer = String(ask('Turn on ' + nameOf(id) + '? [y/n] ')).trim();
+    if (!/^(y(es)?|n(o)?)$/i.test(answer)) continue;
+    const action = /^y/i.test(answer) ? 'on' : 'off';
+    try {
+      say(use(id, action));
+      answered.push(id);
+    } catch (error) { say('Could not turn ' + action + ' ' + id + ': ' + error.message); }
   }
   // A yes that could not be saved is asked again next time.
-  markKnown(ids.filter(id => !failed.has(id)));
+  if (answered.length) markKnown(answered);
 }
 
 /** The session-start suggestion while new providers are still unanswered. */
 function suggestion(ids) {
-  const names = (Array.isArray(ids) ? ids : []).filter(id => lib.validProviderId(id) && Object.hasOwn(PROVIDER_HELP, id)).map(nameOf);
-  return names.length ? { id: 'new-providers', text: 'New since your update: ' + names.join(', '), command: 'setup' } : null;
+  const pending = (Array.isArray(ids) ? ids : []).filter(id => lib.validProviderId(id) && Object.hasOwn(PROVIDER_HELP, id));
+  if (!pending.length) return null;
+  const text = pending.map(id => {
+    const name = id === 'junie-lite' ? 'Junie Lite' : nameOf(id);
+    const detail = id === 'junie-lite' ? ' Free, no limit published.' : '';
+    return 'Ask the user: "Turn on ' + name + '?' + detail + '" If yes, run quota-boss use ' + id +
+      ' on in a terminal. If no, run quota-boss use ' + id + ' off.';
+  }).join(' ');
+  return { id: 'new-providers', text };
 }
 
 module.exports = { pending, markKnown, beforeInstall, recordInstall, offer, suggestion };

@@ -150,8 +150,9 @@ test('due hides a suggestion shown in the last 24 hours; remember forgets one wh
 test('providers new since an update are suggested until they are answered, explicit switches never', () => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const lib = require('../scripts/lib'), added = require('../scripts/new-providers');
-  assert.deepEqual(lines(suggestions(snap({ newProviders: ['junie-lite', 'jetbrains'] }), NOW)),
-    ['[quota-boss] Suggestion: New since your update: Junie Lite (free), JetBrains AI (Junie). Propose to the user: quota-boss setup']);
+  const [line] = lines(suggestions(snap({ newProviders: ['junie-lite', 'jetbrains'] }), NOW));
+  assert.match(line, /Ask the user: "Turn on Junie Lite\? Free, no limit published\." If yes, run quota-boss use junie-lite on in a terminal\. If no, run quota-boss use junie-lite off\./);
+  assert.match(line, /Turn on JetBrains AI \(Junie\)\?/);
   assert.deepEqual(suggestions(snap({ newProviders: ['bad id', 'no-help', 5] }), NOW), []);
   assert.deepEqual(ids(suggestions(snap({ cWeek: 90, newProviders: ['junie-lite'], missing: ['grok'] }), NOW)), ['profile-frugal', 'new-providers']);
   const saved = process.env.QUOTA_BOSS_HOME, home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-boss-suggest-'));
@@ -163,6 +164,13 @@ test('providers new since an update are suggested until they are answered, expli
     added.markKnown(old);
     assert.deepEqual(added.pending(), ['junie-lite', 'jetbrains']);
     assert.deepEqual(shown(), ['new-providers']);
+    for (const [index, source] of ['startup', 'clear', 'compact', 'resume'].entries()) {
+      const now = NOW + index;
+      const list = suggestions(snap({ newProviders: added.pending() }), now);
+      const current = due(list, now);
+      assert.deepEqual(ids(current), ['new-providers'], source);
+      remember(list, current, now);
+    }
     lib.writeJson(path.join(home, 'config', 'providers.json'), { providers: { jetbrains: { enabled: false } } });
     assert.deepEqual(added.pending(), ['junie-lite'], 'a provider switched on purpose is never new');
     added.markKnown(['junie-lite']);

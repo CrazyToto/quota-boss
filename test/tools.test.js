@@ -67,6 +67,49 @@ test('tools without a usable package manager or package become manual steps', ()
   assert.match(windows.note, /irm https:\/\/x\.ai\/cli\/install\.ps1 \| iex/);
 });
 
+test('paste install uses the registry script as one argument after approval and display', () => {
+  for (const [platform, shell, binary, argv] of [
+    ['linux', 'bash', '/bin/bash', ['-c', 'curl -fsSL https://x.ai/cli/install.sh | bash']],
+    ['win32', 'powershell', 'C:\\bin\\powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://x.ai/cli/install.ps1 | iex']],
+  ]) {
+    const events = [];
+    const options = { platform, find: name => name === shell ? binary : null,
+      spawnSync: (file, args, opts) => { events.push([file, args, opts.shell]); return { status: 0 }; },
+      say: command => events.push(command) };
+    assert.match(tools.install(['grok'], options), /skipped/);
+    assert.deepEqual(events, []);
+    assert.equal(tools.check(['grok'], { ...options, scripts: true })[0].state, 'missing');
+    tools.install(['grok'], { ...options, approved: true });
+    assert.deepEqual(events, [shell + ' ' + argv.slice(0, -1).join(' ') + ' "' + argv.at(-1) + '"', [binary, argv, false]]);
+  }
+});
+
+test('Windows activation polls for a Junie login for at most five minutes', t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-junie-wait-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const store = path.join(home, '.junie', 'dpapi_credentials');
+  fs.mkdirSync(store, { recursive: true });
+  for (const finish of [false, true]) {
+    const messages = [];
+    let waited = 0, launches = 0, tests = 0;
+    const options = { platform: 'win32', home,
+      find: name => name === 'junie' ? 'C:\\bin\\junie.exe' : null,
+      wait: ms => { waited += ms; if (finish && waited === 2000) fs.writeFileSync(path.join(store, 'credential'), 'saved'); },
+      spawnSync: (_file, args) => {
+        if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
+        launches++;
+        assert.match(args.at(-1), /start "Quota Boss login" "C:/);
+        assert.doesNotMatch(args.at(-1), /\/wait/);
+        return { status: 0 };
+      } };
+    tools.activate('junie', { options, say: line => messages.push(line), test: () => tests++, verified: () => false });
+    assert.equal(launches, 1);
+    assert.equal(waited, finish ? 2000 : 300000);
+    assert.equal(tests, finish ? 1 : 0);
+    assert.equal(messages.some(line => line.startsWith('Login timed out:')), !finish);
+  }
+});
+
 test('a missing package manager joins the same consent list and needs one more pass when PATH is stale', () => {
   const m = machine({ have: { winget: '1.0.0' } });
   m.options.platform = 'win32';
