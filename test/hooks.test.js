@@ -129,7 +129,7 @@ test('tiny startup falls back to the marked full start while the Claude pool is 
   assert.match(result.stdout, /critical: architecture=/);
   assert.match(result.stdout, /Claude 5h 80%/);
   assert.match(result.stdout, /previous-session notes/);
-  assert.doesNotMatch(result.stdout, /Do a job yourself when it takes two tool turns/);
+  assert.doesNotMatch(result.stdout, /Do a job yourself when it changes about 30 lines/);
   assert.equal(result.stdout.split('critical: architecture=').length, 2);
   // The marker in the start text lets the first worker call through.
   lib.writeState({ claude: limits(4).claude });
