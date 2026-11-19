@@ -776,8 +776,8 @@ test('an update yes installs, logs in and tests, and no saves off without spawni
         events.push('install');
         installed = true;
       } else if (args[0] === '-c') {
-        assert.deepEqual(args, ['-c', 'curl -fsSL https://junie.jetbrains.com/install.sh | bash']);
-        assert.match(messages.at(-1), /^bash -c "curl -fsSL https:\/\/junie\.jetbrains\.com\/install\.sh \| bash"$/);
+        assert.deepEqual(args, ['-c', 'set -o pipefail; curl -fsSL https://junie.jetbrains.com/install.sh | bash']);
+        assert.match(messages.at(-1), /^bash -c "set -o pipefail; curl -fsSL https:\/\/junie\.jetbrains\.com\/install\.sh \| bash"$/);
         events.push('install');
         installed = true;
       } else if (!args.length || args[0] === '/d') {

@@ -4,6 +4,12 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-19
+
+### Fixed
+
+- The 0.4.0 tag did not reach npm because a Linux and macOS install test still expected the old download command. 0.4.1 is the same release with that test fixed.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added
