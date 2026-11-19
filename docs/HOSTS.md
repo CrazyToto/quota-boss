@@ -13,7 +13,7 @@ A **host** is the agent the user talks to (the boss). Adapters connect a host to
 
 The boss **model** is picked among enabled providers that can host:
 `bossScore = 0.6 * architecture + 0.4 * review` (scores from `models.json`). Within 0.5 of the best score, the cheapest model wins, because the boss thread is the main cost.
-Output: host + model + why (including cost) and the best choice on the other host, e.g. `claude-code with Opus 5.5 (boss score 10.0)` and `codex with GPT-6.1-Sol (boss score 8.6, cost 5)`.
+Output: host + model + why (including cost) and the best choice on the other host, e.g. `claude-code with Opus 5.5 (boss score 10.0)` and `codex with GPT-6.2-Sol (boss score 8.6, cost 5)`.
 Disabled providers, `tos: avoid`, and models unavailable in the last 24 hours are excluded.
 The project's choice is stored in user-owned `QUOTA_BOSS_HOME/projects.json`, keyed by its real path -> `"host": "claude-code" | "codex" | "generic"`
 (default `claude-code`). Routing never picks the boss's own pool for delegated work when the host pool is saving quota

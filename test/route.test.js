@@ -291,6 +291,12 @@ test('free first: an equally rated free relay beats direct Haiku on trivial jobs
   assert.equal(pick({}).ladder[1].via, 'haiku-worker');
   assert.equal(select(route({ models, providers, limits: limits(0, 0, 0, 0) }), 'normal', 'mechanical').via, 'haiku-worker');
   assert.equal(pick({ relayCost: { trivial: 0.000001 }, thinEvidenceFactor: 1 }).via, 'cli-worker:kilo-free');
+  // An unproven free route that failed here wins no more by free first, also after the retry hour; one with a pass does.
+  const later = 2e12, dayOld = { 'relayed|mechanical': { n: 1, failed: later - 86400000 } };
+  const after = trials => select(route({ models, providers, trials, now: later, limits: limits(0, 0, 0, 0) }), 'trivial', 'mechanical');
+  assert.equal(after(dayOld).via, 'haiku-worker');
+  assert.equal(after(dayOld).reason, 'won: highest utility (2% ties: P, then previous pool)');
+  assert.equal(after({ 'relayed|mechanical': { n: 1 } }).via, 'cli-worker:kilo-free');
   // A margin of 0 needs the free route to be at least as likely, and a free route below the margin loses.
   const weaker = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 6 } } } };
   assert.equal(select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0), thresholds: { freeFirst: { trialMargin: 0 } } }), 'trivial', 'mechanical').via, 'haiku-worker');

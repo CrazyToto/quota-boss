@@ -301,7 +301,8 @@ function selfTests(w, commands, failedOn, open, usable, changed) {
   const turnedOff = new Set(commands.filter(command => command[0] === 'use' && command[2] === 'off').map(command => command[1]));
   const activated = chosen(w, choicesOf(w)).filter(id => {
     const provider = w.config.providers.providers[id];
-    return provider?.cli && provider.tos !== 'avoid' && changed.has(toolOf(id)) && !turnedOff.has(id);
+    // A free provider proves itself with real work, also right after its CLI was installed or logged in.
+    return provider?.cli && provider.tos !== 'avoid' && !['free', 'local'].includes(provider.kind) && changed.has(toolOf(id)) && !turnedOff.has(id);
   });
   const waiting = Object.keys(w.config.providers.providers).filter(id => w.state.choices[id] && usable(toolOf(id)) && enabledNow(w.config, id)
     && needsTest(w.config, id) && !w.selfTestPassed(id));

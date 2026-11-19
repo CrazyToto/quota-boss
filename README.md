@@ -16,7 +16,7 @@ do it,<br>across the subscriptions you already pay for and the free AI offers yo
 
 [Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Documentation](#documentation) · [Website](https://quota-boss.neocities.org)
 
-![A real Claude Code session: boss mode on, one feature task, the Opus boss hands the code to GPT-6.1-Sol through Codex, re-runs the tests and says who did what (waiting parts sped up)](https://raw.githubusercontent.com/CrazyToto/quota-boss/main/docs/assets/demo.gif)
+![A real Claude Code session: boss mode on, one feature task, the Opus boss hands the code to a GPT worker through Codex, re-runs the tests and says who did what (waiting parts sped up)](https://raw.githubusercontent.com/CrazyToto/quota-boss/main/docs/assets/demo.gif)
 
 </div>
 
@@ -51,7 +51,7 @@ This works the same on Windows, macOS and Linux. To see first what would change,
 up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
 everything again. Run the first command again to update. An update asks about each new provider in a terminal.
 Session starts ask again until you answer. A yes in setup, after an update, or through `quota-boss use <id> on` in a
-terminal installs the CLI if needed, starts the login, and runs the self-test.
+terminal installs the CLI if needed, starts the login, and runs the self-test (free providers skip it and start with small jobs).
 
 <details>
 <summary>Other ways to install</summary>
@@ -172,8 +172,8 @@ in [bench/](https://github.com/CrazyToto/quota-boss/blob/main/bench/README.md), 
 
 Claude, ChatGPT / Codex and Junie Lite are tested end to end. Copilot, Grok, Antigravity and JetBrains AI are built
 from their official documentation and stay off until you turn them on; Grok has not been run by the maintainer yet, and
-Antigravity carries an account warning because of Google's terms. Every provider gets work only after its self-test
-passes on your machine; setup runs it for you.
+Antigravity carries an account warning because of Google's terms. A paid one gets work only after its self-test
+passes on your machine (setup runs it for you); a free one starts with small jobs and earns more with each verified pass.
 
 Free offers can take simple work instead of your paid quota. Some of them train on what you send, so those stay off
 unless you allow them for a project. Details are in [docs/PROVIDERS.md](docs/PROVIDERS.md).

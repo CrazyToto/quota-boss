@@ -474,6 +474,16 @@ test('a provider an update turned on without a self-test is tested by setup; one
   assert.deepEqual(passed.commands.slice(1), []);
 });
 
+test('setup installs and logs in Junie for free Junie Lite without a self-test call', () => {
+  const providers = { ...baseProviders(), 'junie-lite': provider(false, { kind: 'free', evidence: 'docs', cli: { command: 'junie' } }) };
+  const { installs, logged, commands } = play(flow(OTHER_NONE, FREE_NONE, ['y']), {
+    providers, programs: { junie: 'missing' }, afterInstall: { junie: 'ok' }, pending: [{ id: 'junie', command: 'junie', checkable: false }],
+  });
+  assert.deepEqual(installs, ['junie']);
+  assert.deepEqual(logged, ['junie']);
+  assert.deepEqual(commands.slice(1), [['use', 'junie-lite', 'on']]);
+});
+
 test('one setup confirmation installs Junie, starts login and tests Junie Lite', () => {
   const providers = { ...baseProviders(), 'junie-lite': provider(false, { evidence: 'docs', cli: { command: 'junie' } }) };
   const pending = [{ id: 'junie', command: 'junie', checkable: false }];

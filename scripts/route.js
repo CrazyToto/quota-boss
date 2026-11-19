@@ -422,7 +422,9 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const scarcity = poolPrice(winner.pool, limits, history, thresholds, now, modes);
         const tight = Number.isFinite(scarcity) && scarcity > positive(rule.tightPrice, 2);
         const margin = clamp(finite(tight ? rule.tightMargin : rule.margin, tight ? 0.05 : 0.02), 0, 0.2);
-        const free = eligible.filter(c => c.free && (tier === 'trivial' || !c.thinEvidence) && c.P >= winner.P - margin)
+        // An unproven free route that failed in this category has to win a trial again, never free first.
+        const failedHere = c => c.tried.some(e => e.result === 'fail') || Number.isFinite(c.ledger.failed);
+        const free = eligible.filter(c => c.free && (!c.thinEvidence || tier === 'trivial' && !failedHere(c)) && c.P >= winner.P - margin)
           .sort((a, b) => (Math.abs(b.P - a.P) > 0.01 ? b.P - a.P : 0) || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
         if (free) { displaced = winner; winner = free; }
       }
@@ -434,7 +436,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       const trialMargin = clamp(finite(rule.trialMargin, 0.15), 0, 0.3);
       const settled = winner && winner.free && !winner.thinEvidence;
       if (original && !belowThreshold && tier === 'trivial' && trialMargin > 0 && original.via !== 'self' && !settled) {
-        const probation = positive(thresholds.probationPasses, 3);
+        // A free route gets as many trials as the passes that open normal work for it.
+        const probation = Math.max(positive(thresholds.probationPasses, 3), positive(thresholds.freeProbationPasses, 1));
         const count = c => Math.max(c.tried.length, Number.isInteger(c.ledger.n) ? c.ledger.n : 0);
         const failedAt = c => Number.isFinite(c.ledger.failed) ? c.ledger.failed : null;
         // A free route that failed in this category within the hour means a retry may be under way: it goes to the

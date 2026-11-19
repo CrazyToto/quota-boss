@@ -1,6 +1,6 @@
 # Routing algorithm (v2)
 
-Providers with `evidence: "docs"` receive no work until that model has passed `quota-boss providers test <pool>`. Normal work requires three verified `pass` outcomes for that model in retained history (`probationPasses` overrides the count). Critical work needs three passes that are normal or critical tier. Log every verified result with `feedback`, including jobs performed outside the routing table; a file-write self-test does not end probation.
+Paid providers with `evidence: "docs"` receive no work until that model has passed `quota-boss providers test <pool>`; free and local ones need no self-test and prove themselves with real trivial jobs. Normal work requires three verified `pass` outcomes for that model in retained history (`probationPasses` overrides the count), one for a free or local route (`freeProbationPasses`). Critical work needs three passes that are normal or critical tier. Log every verified result with `feedback`, including jobs performed outside the routing table; a file-write self-test does not end probation.
 
 
 Goal: for every sub-task pick the model that gives the **best chance of a correct result per unit of
@@ -109,7 +109,7 @@ On a Codex host, a `claude-worker` job starts a fresh Claude session and re-read
 `relay` is the charge described above, and `0` for direct routes. `freshCli` is `1` except on `claude-worker` routes. `effortCost` is `1` for models that declare no `efforts`.
 See [MODELS.md](MODELS.md) for where cost, scores and effort factors come from.
 
-Pools other than `claude` and `codex` use estimated scores: until `probationPasses` verified passes (default 3) across any category or tier, multiply utility by `thinEvidenceFactor` (default 0.75, clamped 0.1..1). Only passes count; `route --explain` marks these candidates with `thin evidence`.
+Pools other than `claude` and `codex` use estimated scores: until the passes that open normal work (`probationPasses`, default 3; `freeProbationPasses`, default 1, for free and local routes) across any category or tier, multiply utility by `thinEvidenceFactor` (default 0.75, clamped 0.1..1). Only passes count; `route --explain` marks these candidates with `thin evidence`.
 
 Zero-cost free/local models keep conservative priors and the same probability floors. Training-data providers require project opt-in even for fallback, manual options and escalation.
 Critical architecture rows also carry a `consensus` option with an available Codex model and high effort. The consensus agent hides the boss’s draft until an independent read-only answer returns.
@@ -133,7 +133,7 @@ neither does a job the boss does itself.
 
 - **Free first.** A free route takes a job from a paid worker when its `P` is at least the paid worker's `P` minus
   `margin` (0.02), or `tightMargin` (0.05) while that worker's pool is tight. Normal work needs a free route with
-  `probationPasses` verified passes.
+  `freeProbationPasses` (1) verified passes.
 - **Free trial.** A free route can only prove itself with work. On trivial work a free route with fewer than `probationPasses` jobs in that category takes
   the job when its `P` is within `trialMargin` (0.15) of the route that would win otherwise, unless that route is a free route
   with verified passes. Per category a route gets at most `probationPasses` trial jobs and none after a logged fail there.
@@ -190,5 +190,5 @@ Counters and timing journals have no project identity, so those sections are glo
 
 - `~/.claude/quota-boss/config/models.json`: quality scores and cost per model. **PRs with better defaults are very welcome.**
 - `~/.claude/quota-boss/config/thresholds.json`: mode thresholds, difficulty, alpha, floors.
-- Log outcomes to make routing learn: `node ~/.claude/quota-boss/scripts/quota-boss.js feedback gpt-6.1-sol implementation normal pass`
+- Log outcomes to make routing learn: `node ~/.claude/quota-boss/scripts/quota-boss.js feedback gpt-6.2-sol implementation normal pass`
   (the boss does this automatically after verifying worker results).

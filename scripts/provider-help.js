@@ -132,7 +132,7 @@ function evidenceNotice(id) {
   return (MAINTAINER_TESTED.has(id) ? 'Tested end to end by the maintainer.'
     : "Not run end to end by the maintainer yet, built from the vendor's documentation.")
     + (['free', 'local'].includes(provider.kind)
-      ? ' It starts with small jobs, and one verified pass opens routine work.'
+      ? ' It starts with small jobs, and verified passes open routine work.'
       : ' Quota Boss gives it no work until its self-test (quota-boss providers test ' + id + ') passes.');
 }
 

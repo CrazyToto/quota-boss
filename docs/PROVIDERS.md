@@ -200,11 +200,12 @@ Example scores and training flags are conservative configuration declarations; c
 
 ## Untested providers
 
-Turning on a docs-only provider in a terminal runs its self-test after install and login. Each test spends quota.
+Turning on a paid docs-only provider in a terminal runs its self-test after install and login. Each test spends quota.
+A free or local one runs none: its first real trivial jobs are the test, and a failed one closes its trial and hands the job back.
 `use <id> on --no-test` only switches it on. Without a terminal, `use <id> on` prints how to finish in a terminal.
 A pass is bound to that model and the CLI's resolved path, size and modification time. CLI changes require another test.
 
-Docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes; free and local routes have the same normal gate. Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
+Paid docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes; free and local routes need one (`freeProbationPasses`). Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
 
 `route --needs image,pdf --context 100000` filters every option, including fallback models. Unknown capabilities fail the filter. Model `inputs` and worker support must both allow an input; `text` always works. CLI workers declare their handover support in `cli.inputs` (default: text only). Model `contextTokens` and `webSearch` are optional documented metadata; shipped context sizes and web search support remain unknown. `route --explain` lists the inputs each route can actually accept.
 

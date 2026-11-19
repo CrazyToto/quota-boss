@@ -108,7 +108,7 @@ the boss's self work, which retains its original live-quota emergency fallback. 
 
 Each row carries `tier, category, model, label, pool, via, effort, belowThreshold` and its ladder; `options` lists manual routes.
 `formatTable(result)` -> compact text, one line per tier, e.g.
-`critical: architecture=Opus 5.5(self) debugging=Opus 5.5(self) implementation=GPT-6.1-Sol(codex-worker,high) ...`
+`critical: architecture=Opus 5.5(self) debugging=Opus 5.5(self) implementation=Sonnet 5.5(sonnet-worker,high) ...`
 Max ~6 lines total.
 On Claude Code, `routeTable(params)` adds a `[large:Model(worker,effort,model=id)]` hint to medium `self` rows when a large job would use a worker; the hint omits its ladder.
 
