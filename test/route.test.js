@@ -108,8 +108,12 @@ test('route variants never change home files, including history and oversized us
   }
 });
 
-test('session table prints the unknown boss note exactly once before its rows', () => {
+test('session table prints the unknown boss note exactly once before its rows', t => {
   // Only a saving Claude gets the full start with the table; a stored rules field is ignored.
+  // The rules carry the install path several times: use a typical one, not the runner's long temp folder.
+  const installed = '/Users/someone/.claude/quota-boss';
+  t.mock.method(lib, 'trustedHomeText', () => installed);
+  t.mock.method(lib, 'substituteHome', text => text.split('{{QUOTA_BOSS_HOME}}').join(installed).split('{{HARNESS_HOME}}').join(installed));
   enable();
   lib.writeState({ claude: { five_hour: { used_percentage: 90 }, seven_day: { used_percentage: 49 } } });
   const result = invoke(require('../scripts/hook-session').main, JSON.stringify({ cwd: project, model: 'claude-opus-5-6' }));
