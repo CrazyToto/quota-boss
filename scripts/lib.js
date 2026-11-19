@@ -1238,15 +1238,15 @@ function mergeEnv(env, extra, platform = process.platform) {
   return { ...base, ...extra };
 }
 // Inherited variables a CLI must not see: a JUNIE_API_KEY token bills paid credits instead of the account login, and
-// JUNIE_PROJECT could point Junie at another folder than the checked working folder.
-const CHILD_ENV_DROP = Object.freeze({ junie: ['JUNIE_API_KEY', 'JUNIE_PROJECT'] });
-/** The environment a provider CLI starts with: the native launcher's values merged in, unsafe inherited names dropped. */
+// JUNIE_PROJECT or a stale EJ_RUNNER_PWD (left by an earlier Junie launch) could point Junie at another folder than the
+// checked working folder. The native launcher sets its own EJ_RUNNER_PWD after this filter.
+const CHILD_ENV_DROP = Object.freeze({ junie: ['JUNIE_API_KEY', 'JUNIE_PROJECT', 'EJ_RUNNER_PWD'] });
+/** The environment a provider CLI starts with: unsafe inherited names dropped, then the native launcher's values merged in. */
 function childEnv(command, env, native, platform = process.platform) {
-  const merged = native ? mergeEnv(env, native.env, platform) : env;
   const drop = Object.hasOwn(CHILD_ENV_DROP, command) ? CHILD_ENV_DROP[command] : [];
-  if (!drop.length) return merged;
   const same = (a, b) => platform === 'win32' ? a.toUpperCase() === b.toUpperCase() : a === b;
-  return Object.fromEntries(Object.entries(merged).filter(([key]) => !drop.some(name => same(key, name))));
+  const clean = drop.length ? Object.fromEntries(Object.entries(env).filter(([key]) => !drop.some(name => same(key, name)))) : env;
+  return native ? mergeEnv(clean, native.env, platform) : clean;
 }
 function nativeLauncher(name, env = process.env, platform = process.platform, cwd = process.cwd()) {
   if (platform !== 'win32' || !Object.hasOwn(NATIVE_LAUNCHERS, name)) return null;

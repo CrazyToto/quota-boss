@@ -603,6 +603,10 @@ test('childEnv drops the Junie token and project for Junie only, ignoring case o
   assert.deepEqual(lib.childEnv('junie', env, null, 'linux'), { junie_api_key: 'k', KEEP: '1' });
   assert.deepEqual(lib.childEnv('junie', { JUNIE_API_KEY: 'k' }, { env: { JUNIE_DATA: 'd' } }, 'win32'), { JUNIE_DATA: 'd' });
   assert.equal(lib.childEnv('codex', env, null, 'win32'), env);
+  // A stale workspace from an earlier Junie launch never leaks into the next one; the native launcher's own value wins.
+  assert.deepEqual(lib.childEnv('junie', { ej_runner_pwd: 'C:\old', KEEP: '1' }, null, 'win32'), { KEEP: '1' });
+  assert.deepEqual(lib.childEnv('junie', { EJ_RUNNER_PWD: 'C:\old' }, { env: { EJ_RUNNER_PWD: 'C:\tmp\self-test' } }, 'win32'), { EJ_RUNNER_PWD: 'C:\tmp\self-test' });
+  assert.deepEqual(lib.childEnv('codex', { EJ_RUNNER_PWD: 'x' }, null, 'win32'), { EJ_RUNNER_PWD: 'x' });
 });
 
 test('mergeEnv leaves one value per Windows name', () => {
