@@ -503,17 +503,17 @@
       }
     },
     "junie-lite": {
-      "$comment": "Provisional until outcomes are logged: JetBrains' docs name GPT-6 Luna, but a run on 2026-11-19 used Qwen 3.6 27B, so the scores sit below GPT-6-Luna.",
+      "$comment": "JetBrains' docs name GPT-6 Luna, but runs on 2026-11-19 used Qwen 3.6 27B. Solo bench 2026-11-19: all hidden checks on small to refactor tasks, 94/96 on large and 126/132 on xlarge, so implementation and mechanical rose by 1; the rest stays provisional.",
       "pool": "junie-lite",
       "label": "Junie Lite",
       "cost": 0,
       "scores": {
         "architecture": 3,
         "debugging": 4,
-        "implementation": 5,
+        "implementation": 6,
         "review": 3,
         "research": 3,
-        "mechanical": 7
+        "mechanical": 8
       }
     },
     "jetbrains-gpt-6-luna": {

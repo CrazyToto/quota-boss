@@ -281,3 +281,33 @@ long. Left to choose, the boss read the docs itself in 5 of 6 runs, even with qu
 only while Claude is saving and not when the worker's own pool is tight. Research stays off by default. Kept for
 everyone: the claim, source and date report form of `gpt-advisor` and `researcher`, and `codex-run --search
 cached|live|disabled`.
+
+### Junie Lite and GPT-6.2 (2026-11-19)
+
+Junie CLI 26.11.2, Junie Lite (it ran Qwen/Qwen3.6-27B-FP8), `bench/run.js --host junie --arm off`, 3 runs per task, cost 0:
+
+| Task | Hidden checks | Time per run |
+| --- | --- | --- |
+| small | 15/15 | about 20 s |
+| medium | 54/54 | about 42 s |
+| mixed | 66/66 | about 60 s |
+| bugfix | 27/27 | about 22 s |
+| refactor | 30/30 | about 23 s |
+| docs | 21/21 | about 21 s |
+| large | 94/96 | about 110 s |
+| xlarge | 126/132 | about 95 s |
+
+`bench/effort.js` (scheduler task, 11 checks): Junie Lite 11/11 in 3 of 4 runs and 10/11 once, about 11 s.
+GPT-6.2 Sol and GPT-6.2 Astra passed 11/11 at every level in 2 runs each. Output grew from about 900 tokens at low to
+about 2,650 (Sol) and 2,150 (Astra) at xhigh without a better result; Astra stayed at about 900 tokens up to medium.
+
+Codex host, `gpt-6.2-sol`, 2 runs per arm, all hidden checks passed in every run. USD is the Codex estimate:
+
+| Task | off USD | on USD | off s | on s |
+| --- | --- | --- | --- | --- |
+| medium | 0.116, 0.101 | 0.111, 0.166 | 412, 97 | 101, 125 |
+| bugfix | 0.065, 0.079 | 0.066, 0.068 | 45, 52 | 31, 40 |
+| large | 0.200, 0.214 | 0.285, 0.276 | 251, 208 | 239, 266 |
+
+On large, boss on cost about 36% more than boss off at the same quality (medium about 27% more, with a wide spread;
+bugfix even). This is open work: boss mode must not cost more than boss off.
