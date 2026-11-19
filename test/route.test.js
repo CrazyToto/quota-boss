@@ -155,6 +155,25 @@ test('on a full tie the newer model of the same family wins, other ties stay alp
   assert.ok(shipped.rows.every(row => row.model !== 'gpt-6.1-sol'), 'the shipped GPT-6.2-Sol replaces its equally rated predecessor');
 });
 
+test('logged passes do not keep a predecessor, but the boss model and a stronger predecessor stay', () => {
+  const twin = { pool: 'codex', label: 'M', cost: 1, scores: { implementation: 9 }, efforts: ['medium'] };
+  const models = { categories: ['implementation'], models: { 'gpt-6.1-sol': { ...twin, label: 'Old' }, 'gpt-6.2-sol': { ...twin, label: 'New' } } };
+  const passes = Array.from({ length: 12 }, (_, t) => ({ t, model: 'gpt-6.1-sol', category: 'implementation', tier: 'normal', result: 'pass' }));
+  const base = { thresholds: { relayCost: { normal: 0.000001 } }, limits: limits(0, 0, 0, 0), outcomes: passes, now: 13 };
+  assert.equal(select(route({ ...base, models }), 'normal', 'implementation').model, 'gpt-6.2-sol');
+  assert.match(formatExplain(route({ ...base, models }), 'implementation', 'normal'), /Old .*lost: replaced by New/);
+  const boss = route({ ...base, models, host: 'codex', bossModel: 'gpt-6.1-sol' });
+  assert.ok(boss.rows.some(row => row.model === 'gpt-6.1-sol' && row.via === 'self'), 'the running boss is never replaced by its successor');
+  const weaker = { ...models, models: { ...models.models, 'gpt-6.2-sol': { ...twin, label: 'New', scores: { implementation: 8 } } } };
+  assert.equal(select(route({ ...base, models: weaker }), 'normal', 'implementation').model, 'gpt-6.1-sol');
+  // A successor below minP does not push out a predecessor that is above it.
+  const critical = passes.map(o => ({ ...o, tier: 'critical' }));
+  const strict = route({ ...base, outcomes: critical, models, thresholds: { ...base.thresholds, minP: { critical: 0.7 } } });
+  const row = select(strict, 'critical', 'implementation');
+  assert.equal(row.model, 'gpt-6.1-sol');
+  assert.ok(!row.belowThreshold);
+});
+
 test('a Codex model missing from the Codex model cache while its family is listed is not routed', () => {
   const config = lib.loadConfig();
   const used = models => route({ ...config, limits: limits(10, 10, 0, 0), codexModels: models }).rows.map(row => row.model);

@@ -310,4 +310,16 @@ Codex host, `gpt-6.2-sol`, 2 runs per arm, all hidden checks passed in every run
 | large | 0.200, 0.214 | 0.285, 0.276 | 251, 208 | 239, 266 |
 
 On large, boss on cost about 36% more than boss off at the same quality (medium about 27% more, with a wide spread;
-bugfix even). This is open work: boss mode must not cost more than boss off.
+bugfix even). No run delegated. The extra cost came from the full rules in `AGENTS.md`: about 3,700 more prompt tokens in
+every turn, and rule text that pushed the boss to extra steps (more output tokens). Part of the gap was provider cache misses.
+
+With only the short boot lines in `AGENTS.md` (3 runs per task, all hidden checks passed, no run loaded the full rules
+or delegated):
+
+| Task | off USD | on USD (boot only) | on s |
+| --- | --- | --- | --- |
+| medium | 0.116, 0.101 | 0.107, 0.131, 0.103 | 131, 92, 90 |
+| large | 0.200, 0.214 | 0.234, 0.233, 0.195 | 279, 229, 202 |
+
+Boss on now costs about 5% (medium) and 7% (large) more than boss off on average, within the run-to-run spread: one
+large run was cheaper than both off runs. The first prompt is about 870 tokens longer than with boss off.

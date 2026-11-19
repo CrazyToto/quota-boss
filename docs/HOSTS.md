@@ -38,10 +38,12 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   `<project>/AGENTS.md` between `<!-- quota-boss:start -->` and `<!-- quota-boss:end -->` (create file if missing,
   never touch text outside the markers; `off` or switching hosts removes the block; malformed markers fail safely).
   AGENTS.md must be a regular file with no symlinked parents. The registry tracks managed blocks before they
-  are written; installer uninstall removes each tracked marker range safely and reports each project. The block = RULES (host-neutral wording) +
-  routing-table fallback instructions + instructions for enabled workers only (Claude when enabled; cli-worker when an enabled provider routes through it, including Ollama).
+  are written; installer uninstall removes each tracked marker range safely and reports each project. The block holds only the short boot lines (as on Claude Code) and the shell retry: a Codex boss keeps most work
+  itself, and the full rules in every turn made boss on cost 25-35% more than boss off. Before the first delegation, review or
+  CRITICAL change the boss runs `quota-boss rules --host codex`: RULES (host-neutral wording) + routing-table fallback + instructions
+  for enabled workers only (Claude when enabled; cli-worker when an enabled provider routes through it, including Ollama).
   Global and project `use` switches apply. Provider/model switches and `local on/off` refresh all enabled registered Codex projects;
-  missing directories or malformed markers are skipped with a note. If a table names an omitted worker, run `quota-boss rules --host codex` for its current instructions.
+  missing directories or malformed markers are skipped with a note.
 - `on` also merges a SessionStart command into `<CODEX_HOME or ~/.codex>/hooks.json` when the Codex home exists,
   preserving other hooks. It attaches only the routing table and limits line, using the boss model from hook stdin
   before the existing detection fallbacks. Output above 8,000 bytes becomes a command to run `route`.

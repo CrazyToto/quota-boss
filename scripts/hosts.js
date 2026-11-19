@@ -96,5 +96,16 @@ function scanAgents(directory, maxDepth = 6, maxEntries = 5000) {
   if (!fs.lstatSync(directory).isSymbolicLink()) walk(path.resolve(directory), 0);
   return found;
 }
-function managedBlock(project) { return START + '\n' + rules('codex', project) + '\n' + END; }
+// A Codex boss keeps most work itself, so AGENTS.md holds only the boot lines; the full rules come with `rules --host codex`
+// before the first delegation. The 13 KB of rules in every turn cost a Codex boss 25-35% more than boss off (2026-11-19 bench).
+function codexBoot() {
+  const home = lib.trustedHomeText();
+  let text = boot().replace('rules --host claude-code', 'rules --host codex')
+    .replace('it has the routing table, the handover form and the checks', 'it has the worker steps, the handover form and the checks')
+    .replace(/ For discovery that needs several searches, `scout` or Explore[^\n]*/, '')
+    + '\nThe routing table is attached at session start. If a command launch is refused (for example CreateProcessAsUserW failed: 5), run it once more with another shell, on Windows C:\\Windows\\System32\\cmd.exe, and keep using that shell.';
+  if (/^[A-Za-z0-9_:\/.\-]+$/.test(home)) text = text.split('"' + home + '/scripts/quota-boss.js"').join(home + '/scripts/quota-boss.js');
+  return text;
+}
+function managedBlock() { return START + '\n' + codexBoot() + '\n' + END; }
 module.exports = { writeAgents, scanAgents, checkHost, rules, boot, RULES_LOADED, PRE_TOOL_MATCHER, LEGACY_PRE_TOOL_MATCHERS, agentsText, managedBlock, START, END };

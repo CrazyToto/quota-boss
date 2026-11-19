@@ -351,6 +351,18 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             c.reason = 'lost: handover too slow (' + size + ')';
         }
       }
+      // A newer model of the same family rated at least as high replaces its predecessor, even when the predecessor has
+      // more logged passes. The boss's own model stays: handing work to its successor would cost a handover.
+      const rated = c => registry.find(model => model.id === c.model)?.scores?.[category] ?? 0;
+      // Only a successor in the same pool and above minP replaces it, so repeated failures bring the predecessor back.
+      // The second opinion has no minP and passes floor 0.
+      const successor = (c, list, floor = minimum) => list.find(o => o !== c && o.pool === c.pool && familyKey(o.model) === familyKey(c.model)
+        && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c) && (o.P >= floor || c.P < floor));
+      const open = evaluated.filter(c => !c.reason);
+      for (const c of open) {
+        const newer = c.via !== 'self' && successor(c, open);
+        if (newer) c.reason = 'lost: replaced by ' + newer.label;
+      }
       let usable = evaluated.filter(c => !c.reason);
       let qualified = usable.filter(c => c.P >= minimum);
       // Only the boss's own critical work may consume an emergency pool, and only as a last resort.
@@ -402,10 +414,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)
             && settings.host !== 'generic') : [];
-        // A newer model of the same family rated at least as high replaces its predecessor, even when the predecessor has more logged passes.
-        const rated = c => registry.find(model => model.id === c.model)?.scores?.[category] ?? 0;
-        const advisor = advisors.length ? advisors.filter(c => !advisors.some(o => familyKey(o.model) === familyKey(c.model)
-            && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c))).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
+        const advisor = advisors.length ? advisors.filter(c => !successor(c, advisors, 0)).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
         rows.push({ ...winner, belowThreshold, ladder, options: advisor ? ['consensus'] : [],
           ...(advisor ? { consensus: { model: advisor.model, label: advisor.label, effort: 'high' } } : {}) });
       } else if (needs.length || contextTokens !== null) {

@@ -83,8 +83,13 @@ test.describe('hosts and diagnostics', () => {
     cli.run(['on', '--host', 'codex', 'quality']);
     const first = fs.readFileSync(file, 'utf8');
     assert.ok(first.startsWith(before + hosts.START)); assert.ok(first.endsWith(hosts.END + after));
-    assert.match(first, /cli-run.js"? --provider claude/);
-    assert.match(first, /before delegating run node .*quota-boss.js.* route/);
+    // AGENTS.md holds only the boot lines; the worker steps come with `rules --host codex`.
+    assert.match(first, /quota-boss.js"? rules --host codex and follow it/);
+    assert.doesNotMatch(first, /cli-run.js|^name: /m);
+    assert.ok(Buffer.byteLength(hosts.managedBlock()) < 2500);
+    const full = cli.run(['rules', '--host', 'codex']);
+    assert.match(full, /cli-run.js"? --provider claude/);
+    assert.match(full, /before delegating run node .*quota-boss.js.* route/);
     cli.run(['on', 'quality', '--host', 'codex']);
     assert.equal(fs.readFileSync(file, 'utf8'), first);
     assert.equal(first.split(hosts.START).length, 2);
@@ -132,7 +137,7 @@ test.describe('hosts and diagnostics', () => {
     assert.match(cli.run(['on', '--host', 'codex']), /Claude CLI not found/);
     const text = fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8');
     assert.doesNotMatch(text, /^name: claude-worker$/m);
-    assert.equal(text, hosts.managedBlock(lib.findProjectConfig()));
+    assert.equal(text, hosts.managedBlock());
   });
   test('switches refresh every enabled Codex project and skip malformed or missing projects', () => {
     cli.run(['on', '--host', 'codex']);
@@ -141,29 +146,17 @@ test.describe('hosts and diagnostics', () => {
       fs.mkdirSync(directory);
       lib.saveProject(directory, { enabled: true, host: 'codex', managedAgents: true });
     }
-    fs.writeFileSync(path.join(other, 'AGENTS.md'), 'Prefix\n' + hosts.managedBlock({}) + '\nSuffix');
+    fs.writeFileSync(path.join(other, 'AGENTS.md'), 'Prefix\n' + hosts.START + '\nstale\n' + hosts.END + '\nSuffix');
     fs.writeFileSync(path.join(broken, 'AGENTS.md'), hosts.START);
     fs.rmdirSync(gone);
-    cli.run(['use', 'claude', 'off']);
     const output = cli.run(['use', 'claude', 'on']);
     assert.match(output, /Note: Skipped AGENTS.md refresh.*Malformed/);
     assert.match(output, /Note: Skipped AGENTS.md refresh.*gone/);
-    for (const directory of [project, other]) assert.match(fs.readFileSync(path.join(directory, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
-    assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').startsWith('Prefix\n'));
-    assert.ok(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8').endsWith('\nSuffix'));
-    cli.run(['use', 'claude', 'off']);
-    assert.doesNotMatch(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: (claude|cli)-worker$/m);
-    cli.run(['use', 'claude', 'on']);
-    cli.run(['local', 'on', 'tiny']);
-    assert.match(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: cli-worker$/m);
-    cli.run(['local', 'off']);
-    assert.doesNotMatch(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: cli-worker$/m);
+    assert.equal(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), 'Prefix\n' + hosts.managedBlock() + '\nSuffix');
+    assert.equal(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), hosts.managedBlock());
     fs.writeFileSync(path.join(other, 'AGENTS.md'), hosts.START + '\nstale\n' + hosts.END);
     cli.run(['use', 'gpt-6.1-sol', 'on']);
-    assert.equal(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), hosts.managedBlock(lib.findProjectConfig(other)));
-    cli.run(['use', 'claude', 'off', '--project']);
-    assert.doesNotMatch(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
-    assert.match(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), /^name: claude-worker$/m);
+    assert.equal(fs.readFileSync(path.join(other, 'AGENTS.md'), 'utf8'), hosts.managedBlock());
     assert.equal(fs.readFileSync(path.join(broken, 'AGENTS.md'), 'utf8'), hosts.START);
   });
   test('host CLI forms reject extra, missing, duplicate, and injected arguments before writes', () => {
