@@ -395,13 +395,17 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const next = [...(different.length ? different : steps)].sort((a, b) =>
           (stronger.length ? b.utility - a.utility : 0) || probabilityOrder(a, b, previousPool))[0];
         if (next) ladder.push(step(next));
-        const advisor = tier === 'critical' && category === 'architecture'
+        const advisors = tier === 'critical' && category === 'architecture'
           ? evaluated.filter(c => c.pool === 'codex'
             && !c.capabilityReason
             && !context.usage.codex?.capped && modes.codexMode !== 'exhausted'
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)
-            && settings.host !== 'generic').sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
+            && settings.host !== 'generic') : [];
+        // A newer model of the same family rated at least as high replaces its predecessor, even when the predecessor has more logged passes.
+        const rated = c => registry.find(model => model.id === c.model)?.scores?.[category] ?? 0;
+        const advisor = advisors.length ? advisors.filter(c => !advisors.some(o => familyKey(o.model) === familyKey(c.model)
+            && newerFirst(o.model, c.model) < 0 && rated(o) >= rated(c))).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
         rows.push({ ...winner, belowThreshold, ladder, options: advisor ? ['consensus'] : [],
           ...(advisor ? { consensus: { model: advisor.model, label: advisor.label, effort: 'high' } } : {}) });
       } else if (needs.length || contextTokens !== null) {

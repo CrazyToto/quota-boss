@@ -162,6 +162,9 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.ok(r.rows.filter(c => c !== row).every(c => !c.options.includes('consensus')));
     // A stored consensus or workers field from before 0.2.0 changes nothing.
     for (const old of [{ consensus: false }, { workers: { codex: false, gpt: false } }]) assert.match(formatTable(route({ ...config, ...old })), /option:consensus=GPT-6\.2-Sol,high/);
+    // Logged passes of the predecessor do not keep it as the second opinion.
+    const passes = Array.from({ length: 8 }, (_, t) => ({ t, model: 'gpt-6.1-sol', category: 'architecture', tier: 'critical', result: 'pass' }));
+    assert.match(formatTable(route({ ...config, outcomes: passes, now: 9 })), /option:consensus=GPT-6\.2-Sol,high/);
     for (const extra of [{ providers: lib.mergeProviders(config.providers, { providers: { codex: { enabled: false } } }) },
       { limits: { codex: { primary: { used_percent: 100 } } } },
       { caps: { codex: { weekly: 20 } }, limits: { codex: { secondary: { used_percent: 20 } } } },
