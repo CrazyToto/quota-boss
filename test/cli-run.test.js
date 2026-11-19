@@ -947,11 +947,73 @@ test('Junie sends the prompt on stdin, always names the free model and gets the 
     const result = await runner.run(['--provider', id, '--model', model, '--effort', 'high'], h.deps);
     const call = h.records.spawns[0];
     assert.equal(result.code, 0, result.report); assert.equal(call.file, process.execPath);
-    assert.deepEqual(call.args, ['--input-format=text', '--output-format=text', ...flags]);
+    assert.deepEqual(call.args.slice(0, -1), ['--input-format=text', '--output-format=json', '--skip-update-check', ...flags]);
+    assert.match(call.args.at(-1), /^--json-output-file=.+quota-boss-junie-[0-9a-f]{16}\.json$/);
     assert.ok(!call.args.some(arg => arg.includes('second line')));
     assert.equal(call.options.stdio[0], 'pipe'); assert.equal(call.child.stdin.writableEnded, true);
     assert.match(call.child.stdin.read().toString(), /Use relative file paths\.\n\nquotes " & % \$value\nsecond line \{prompt\}$/);
     assert.equal(call.options.env.JUNIE_DATA, 'C:\\data'); assert.equal(call.options.env.EJ_RUNNER_PWD, call.options.cwd);
     assert.equal(call.options.env.PATH, h.deps.env.PATH);
+  }
+});
+
+function junieHarness(report, status = 0) {
+  const shipped = require('../config/providers.json').providers, models = require('../config/models.json').models;
+  const h = harness({ stdout: 'Authenticated successfully\n', status }, { providers: { providers: { jetbrains: { ...shipped.jetbrains, enabled: true } } },
+    models: { models: { 'jetbrains-gpt-6-luna': models['jetbrains-gpt-6-luna'] } } });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-junie-'));
+  h.deps.tmpdir = () => dir; h.deps.nativeLauncher = () => null;
+  const spawn = h.deps.spawn;
+  h.deps.spawn = (file, args, options) => {
+    const file2 = args.at(-1).slice('--json-output-file='.length);
+    if (report !== undefined) fs.writeFileSync(file2, typeof report === 'string' ? report : JSON.stringify(report));
+    return spawn(file, args, options);
+  };
+  return { h, dir };
+}
+
+test('Junie: a refused JetBrains license in the JSON report marks the model unavailable and the temp report is removed', async () => {
+  const { h, dir } = junieHarness({ errors: ['Junie: Exception during request to https://auth.grazie.ai/auth/jetbrains-jwt/provide-access/license/v2 with code 492: Untrusted license F90V1QLAJ5', "Failed to build 'issue.md.junie_standalone'"], llmUsage: [] }, 1);
+  const result = await runner.run(['--provider', 'jetbrains', '--model', 'jetbrains-gpt-6-luna', '--effort', 'high', '--category', 'implementation', '--tier', 'normal'], h.deps);
+  assert.equal(result.code, 1);
+  assert.match(result.report, /FAILED \(unavailable: JetBrains license not accepted\)/);
+  assert.equal(h.records.feedback[0][0].result, 'unavailable');
+  assert.deepEqual(fs.readdirSync(dir), []);
+});
+
+test('Junie: limits and bad requests in the JSON report are classified, unknown errors fall back to the exit code', async () => {
+  for (const [errors, status, pattern] of [
+    [['Request failed with HTTP 429: too many requests'], 1, /FAILED \(limited: provider limit\)/],
+    [['error 400: invalid request'], 1, /FAILED \(structural: invalid request\)/],
+    [['something odd'], 1, /FAILED \(failed: exit 1\)/],
+    [['Untrusted license X'], 0, /FAILED \(unavailable: JetBrains license not accepted\)/],
+  ]) {
+    const { h } = junieHarness({ errors }, status);
+    assert.match((await runner.run(['--provider', 'jetbrains', '--model', 'jetbrains-gpt-6-luna', '--effort', 'high'], h.deps)).report, pattern);
+  }
+});
+
+test('Junie: tokens and the model that really ran come from the JSON report; a missing or broken report changes nothing', async () => {
+  const { h } = junieHarness({ result: 'done', llmUsage: [{ model: 'Qwen/Qwen3.6-27B-FP8', calls: 7, inputTokens: 100, cacheInputTokens: 50, outputTokens: 9 },
+    { model: 'Qwen/Qwen3.6-27B-FP8', inputTokens: 1, cacheInputTokens: -5, outputTokens: 'x' }, { model: 'bad name; rm -rf', inputTokens: 1 }] });
+  const result = await runner.run(['--provider', 'jetbrains', '--model', 'jetbrains-gpt-6-luna', '--effort', 'high'], h.deps);
+  assert.equal(result.code, 0, result.report);
+  assert.match(result.report, /\| tokens in 102 cached 50 out 9 \| ran Qwen\/Qwen3\.6-27B-FP8 \|/);
+  assert.deepEqual(h.records.timing[0].ran, ['Qwen/Qwen3.6-27B-FP8']);
+  for (const report of [undefined, '{broken', '[1]']) {
+    const { h: h2 } = junieHarness(report);
+    const plain = await runner.run(['--provider', 'jetbrains', '--model', 'jetbrains-gpt-6-luna', '--effort', 'high'], h2.deps);
+    assert.equal(plain.code, 0, plain.report); assert.doesNotMatch(plain.report, /tokens in|ran /);
+  }
+});
+
+test('Junie: text output or an own output file gets no report file', async () => {
+  for (const own of [['--output-format=text', '--model={model}'], ['--output-format=json', '--json-output-file=mine.json', '--model={model}']]) {
+    const h = harness({}, { providers: { providers: { jetbrains: { label: 'J', kind: 'subscription', enabled: true, worker: 'cli-worker', quota: { source: 'none' },
+      cli: { command: 'junie', promptVia: 'stdin', args: own } } } }, models: { models: { j: { pool: 'jetbrains', cliModel: 'gpt-6-luna' } } } });
+    h.deps.nativeLauncher = () => null;
+    const result = await runner.run(['--provider', 'jetbrains', '--model', 'j'], h.deps);
+    assert.equal(result.code, 0, result.report);
+    assert.deepEqual(h.records.spawns[0].args, own.map(arg => arg.replace('{model}', 'gpt-6-luna')));
   }
 });

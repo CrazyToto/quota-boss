@@ -89,6 +89,7 @@ test.describe('provider self-tests', () => {
     assert.equal(lib.readState().selfTests.tiny.at, 1);
   });
   for (const [reason, patterns] of [
+    ['JetBrains license not accepted for this model', ['Exception with code 492: Untrusted license F90V1QLAJ5', 'code 492: license refused']],
     ['not signed in', ['authentication required', 'not logged in', 'unauthorized', '401', 'api key']],
     ['model not available', ['model not found', 'unknown model', 'invalid model', 'not available']],
     ['rate limited', ['rate limit', '429', 'too many requests', 'quota exceeded', 'exceeded your quota', 'out of quota', 'overloaded', '503']]

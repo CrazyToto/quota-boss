@@ -255,7 +255,7 @@ function cliArgsForModel(cli, cliModel, effort) {
   const level = effort || cli.defaultEffort;
   // Without a level the flag goes too, because some models refuse it (Copilot's auto does).
   const args = level ? cli.args.map(arg => arg.replaceAll('{effort}', level))
-    : cli.args.filter((arg, index) => !arg.includes('{effort}') && !(arg.startsWith('-') && cli.args[index + 1]?.includes('{effort}')));
+    : cli.args.filter((arg, index) => !arg.includes('{effort}') && !(arg.startsWith('-') && !arg.includes('=') && !arg.includes('{') && cli.args[index + 1]?.includes('{effort}')));
   if (args.some(arg => arg.includes('{model}'))) {
     const selected = cliModel || cli.defaultModel;
     if (!selected) throw new Error('This provider CLI has no model to select.');

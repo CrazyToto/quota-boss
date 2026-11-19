@@ -137,7 +137,8 @@
         "promptVia": "stdin",
         "args": [
           "--input-format=text",
-          "--output-format=text",
+          "--output-format=json",
+          "--skip-update-check",
           "--model=junie-lite"
         ]
       },
@@ -159,7 +160,8 @@
         "promptVia": "stdin",
         "args": [
           "--input-format=text",
-          "--output-format=text",
+          "--output-format=json",
+          "--skip-update-check",
           "--model={model}",
           "--effort={effort}"
         ],

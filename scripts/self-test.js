@@ -26,6 +26,8 @@ function failure(result, output, correct) {
   if (result.error?.code === 'ENOENT') return 'not installed';
   if (result.error?.code === 'ETIMEDOUT') return 'timed out';
   if (/authentication required|not logged in|cannot find authorization|unauthorized|\b401\b|api key/i.test(output)) return 'not signed in';
+  // Junie: the account's JetBrains AI plan is not accepted for this model (code 492).
+  if (/untrusted license|\b492\b[^\n]{0,40}licen[cs]e/i.test(output)) return 'JetBrains license not accepted for this model';
   if (/model not found|unknown model|invalid model|not available/i.test(output)) return 'model not available';
   if (/rate limit|\b429\b|too many requests|quota exceeded|exceeded (your )?quota|out of quota|overloaded|\b503\b/i.test(output)) return 'rate limited';
   if (result.status !== 0) {

@@ -3,6 +3,7 @@
 // One foreground CLI call, with bounded output, process-tree timeout and routing journals.
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const childProcess = require('node:child_process');
 const lib = require('./lib');
@@ -14,6 +15,9 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const TAIL_CHARS = 256 * 1024;
 const NO_WORK = /auto-rejecting|rejected permission/i;
 const AUTH_MISSING = /^Cannot find authorization\. Please authenticate before running Junie\.\r?$/m;
+// Junie reports request errors (a refused license, limits) only in its JSON result, not on stdout or in the exit code.
+const JUNIE_LICENSE = /\b492\b|untrusted license|no (?:valid |active )?licen[cs]e/i;
+const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
 const FAILURES = [
@@ -213,6 +217,11 @@ function classify(result, expectChanges, before, after, env, claude = false, jun
   if (result.error) return { kind: 'failed', reason: 'could not run CLI' + (result.error.code ? ' (' + result.error.code + ')' : '') };
   // Junie prints its login hint and still exits 0, so this one exact line counts even on success.
   if (junie && ['stdout', 'stderr'].some(stream => AUTH_MISSING.test(result[stream] || ''))) return { kind: 'unavailable', reason: 'not logged in' };
+  const junieErrors = junie && Array.isArray(result.junie?.errors) ? result.junie.errors.filter(item => typeof item === 'string').join('\n') : '';
+  if (junieErrors) {
+    if (JUNIE_LICENSE.test(junieErrors)) return { kind: 'unavailable', reason: 'JetBrains license not accepted' };
+    for (const [kind, pattern, reason] of FAILURES) if (pattern.test(junieErrors)) return { kind, reason };
+  }
   let envelopeError;
   if (claude && result.claude && (result.claude.is_error === true || result.claude.subtype !== 'success')) {
     const status = result.claude.api_error_status, subtype = result.claude.subtype;
@@ -266,6 +275,12 @@ async function run(argv, deps = {}) {
   if (!executable) throw new Error('CLI not found on the trusted PATH.');
   const target = invocation(executable, platform);
   const args = selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt));
+  const junie = path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'junie';
+  // With --output-format=json Junie writes its result (errors, models used, tokens) to a private temp file and stdout
+  // keeps the readable answer. A user CLI with text output or its own output file is left as it is.
+  const junieReport = junie && args.includes('--output-format=json') && !args.some(arg => arg.startsWith('--json-output-file'))
+    ? path.join((deps.tmpdir || os.tmpdir)(), 'quota-boss-junie-' + crypto.randomBytes(8).toString('hex') + '.json') : null;
+  if (junieReport) args.push('--json-output-file=' + junieReport);
   const status = deps.gitStatus || (() => gitStatus(cwd, env, platform, deps.spawnSync));
   const before = options['expect-changes'] ? status() : null;
   const now = deps.now || Date.now;
@@ -273,6 +288,13 @@ async function run(argv, deps = {}) {
   const result = await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
   const seconds = Math.max(0, Math.round((now() - started) / 1000));
   const after = options['expect-changes'] ? status() : null;
+  if (junieReport) {
+    try {
+      const value = JSON.parse(lib.readBounded(junieReport, JUNIE_REPORT_MAX));
+      if (value && typeof value === 'object' && !Array.isArray(value)) result.junie = value;
+    } catch { /* no report: classify from the exit code and streams */ }
+    try { fs.rmSync(junieReport, { force: true }); } catch { /* temp file */ }
+  }
   if (selected.claude && !result.stdoutTruncated) {
     try {
       const value = JSON.parse(result.stdout);
@@ -280,16 +302,21 @@ async function run(argv, deps = {}) {
     } catch { /* classification rejects missing envelopes; keep the raw tail */ }
   }
   const usage = result.claude?.usage;
+  const junieUsage = Array.isArray(result.junie?.llmUsage) ? result.junie.llmUsage.filter(item => item && typeof item === 'object') : [];
   const validNumber = value => Number.isFinite(value) && value >= 0;
   const tokens = usage && ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'].some(key => validNumber(usage[key]))
     ? { input: (validNumber(usage.input_tokens) ? usage.input_tokens : 0) + (validNumber(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0),
-      cached: validNumber(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0, output: validNumber(usage.output_tokens) ? usage.output_tokens : 0 } : null;
-  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude, path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'junie');
+      cached: validNumber(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0, output: validNumber(usage.output_tokens) ? usage.output_tokens : 0 }
+    : junieUsage.length ? Object.fromEntries([['input', 'inputTokens'], ['cached', 'cacheInputTokens'], ['output', 'outputTokens']]
+      .map(([key, field]) => [key, junieUsage.reduce((sum, item) => sum + (validNumber(item[field]) ? item[field] : 0), 0)])) : null;
+  // The model the vendor really ran (Junie Lite does not pin one).
+  const ran = [...new Set(junieUsage.map(item => item.model).filter(name => typeof name === 'string' && /^[\w./:@-]{1,100}$/.test(name)))].slice(0, 3);
+  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
   const ok = outcome.kind === 'ok';
   const recording = [], errors = [];
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };
   record('timing', () => (deps.recordRun || latency.recordRun)({ t: now(), model: selected.model,
-    category: options.category || null, tier: options.tier || null, seconds, ok, ...(tokens ? { tokens } : {}) }));
+    category: options.category || null, tier: options.tier || null, seconds, ok, ...(tokens ? { tokens } : {}), ...(ran.length ? { ran } : {}) }));
   const feedback = { limited: 'limited', unavailable: 'unavailable', structural: 'fail', 'no-work': 'fail' }[outcome.kind];
   if (feedback) record('feedback', () => (deps.appendOutcome || lib.appendOutcome)({ model: selected.model,
     category: options.category || 'mechanical', tier: options.tier || 'trivial', result: feedback,
@@ -303,6 +330,7 @@ async function run(argv, deps = {}) {
     + ' | provider ' + options.provider + ' | model ' + selected.model + ' @' + selected.effort + ' | ' + seconds + 's'
     + (options['expect-changes'] && (before === null || after === null) ? ' | expect-changes skipped: Git fingerprint unavailable' : '')
     + (tokens ? ' | tokens in ' + tokens.input + ' cached ' + tokens.cached + ' out ' + tokens.output : '')
+    + (ran.length ? ' | ran ' + ran.join(', ') : '')
     + (validNumber(result.claude?.total_cost_usd) ? ' | $' + result.claude.total_cost_usd.toFixed(4) : '')
     + ' | feedback ' + (recording.includes('feedback') ? 'recorded' : 'none');
   const lines = [first];

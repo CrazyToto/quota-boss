@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 // Measures how the reasoning level changes usage: one fixed task per model and level, checked by a hidden test.
-//   node bench/effort.js --host claude|codex --model <id> [--efforts low,medium,high,xhigh] [--n 2] [--out <dir>]
+//   node bench/effort.js --host claude|codex|junie --model <id> [--efforts low,medium,high,xhigh] [--n 2] [--out <dir>]
 //   node bench/effort.js --report [--out <dir>]
 // Spends real quota. Results go to <out>/effort.jsonl, one line per run.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { nativeLauncher, childEnv } = require('../scripts/lib.js');
 
 const PROMPT = `Write the file schedule.js in the current folder (CommonJS, no dependencies). It exports one function: module.exports = { schedule }.
 
@@ -117,7 +118,7 @@ const out = flag('out', path.join(os.tmpdir(), 'quota-boss-bench'));
 const results = path.join(out, 'effort.jsonl');
 // One agent turn mix as in docs/MODELS.md: 38k input, 80% of it cached at 0.1 of the input price.
 const INPUT_UNITS = 38000 * (0.2 + 0.8 * 0.1);
-const OUTPUT_PRICE = { claude: 5, codex: 6 };
+const OUTPUT_PRICE = { claude: 5, codex: 6, junie: 5 };
 
 function report() {
   const rows = fs.existsSync(results) ? fs.readFileSync(results, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
@@ -134,12 +135,26 @@ function report() {
   }
 }
 
+/** Token totals and the models Junie really used, from its --output-format=json result. */
+function junieUsage(stdout) {
+  const text = String(stdout || ''); const start = text.indexOf('{');
+  let r; try { r = JSON.parse(text.slice(start)); } catch { return { error: 'no JSON result' }; }
+  const list = Array.isArray(r.llmUsage) ? r.llmUsage : [];
+  const sum = key => list.reduce((s, u) => s + (Number(u[key]) || 0), 0);
+  return { input: sum('inputTokens'), cached: sum('cacheInputTokens'), output: sum('outputTokens'), usd: sum('cost'), turns: sum('calls'), models: [...new Set(list.map(u => u.model))] };
+}
+
 function runOnce(host, model, effort, name) {
   const dir = path.join(out, name); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const started = Date.now(); let run;
   if (host === 'claude') {
     run = spawnSync('claude', ['-p', '--safe-mode', '--model', model, '--effort', effort, '--output-format', 'json', '--tools', 'Write', '--permission-mode', 'acceptEdits', '--no-session-persistence'],
       { cwd: dir, input: PROMPT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '' } });
+  } else if (host === 'junie') {
+    // The native exe on Windows (the .bat shim re-parses arguments); effort "none" leaves the flag out (Junie Lite has no levels).
+    const native = nativeLauncher('junie', process.env, process.platform, dir);
+    const cli = ['--input-format=text', '--output-format=json', '--skip-update-check', `--model=${model}`, ...(effort === 'none' ? [] : [`--effort=${effort}`])];
+    run = spawnSync(native ? native.file : 'junie', cli, { cwd: dir, input: PROMPT, encoding: 'utf8', shell: !native && process.platform === 'win32', timeout: 1800000, maxBuffer: 64 * 1024 * 1024, env: childEnv('junie', process.env, native) });
   } else {
     run = spawnSync('codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
       { input: PROMPT, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 64 * 1024 * 1024 });
@@ -154,6 +169,8 @@ function runOnce(host, model, effort, name) {
       Object.assign(row, { input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), cached: u.cache_read_input_tokens || 0,
         output: u.output_tokens || 0, usd: r.total_cost_usd, turns: r.num_turns, models: Object.keys(r.modelUsage || {}) });
     } catch { row.error = 'no JSON result'; }
+  } else if (host === 'junie') {
+    Object.assign(row, junieUsage(run.stdout));
   } else {
     for (const line of String(run.stdout || '').split('\n')) {
       let e; try { e = JSON.parse(line); } catch { continue; }
@@ -178,7 +195,7 @@ if (args.includes('--check')) {
   report();
 } else {
   const host = flag('host'); const model = flag('model');
-  if (!['claude', 'codex'].includes(host) || !model) { console.error('Usage: node bench/effort.js --host claude|codex --model <id> [--efforts low,medium,high,xhigh] [--n 2] [--out <dir>] | --report'); process.exit(1); }
+  if (!['claude', 'codex', 'junie'].includes(host) || !model) { console.error('Usage: node bench/effort.js --host claude|codex|junie --model <id> [--efforts low,medium,high,xhigh] [--n 2] [--out <dir>] | --report'); process.exit(1); }
   fs.mkdirSync(out, { recursive: true });
   const efforts = flag('efforts', 'low,medium,high,xhigh').split(',');
   for (let i = 1; i <= Number(flag('n', 2)); i++) for (const effort of efforts) runOnce(host, model, effort, `effort-${model.replace(/[^\w.-]/g, '_')}-${effort}-${i}`);

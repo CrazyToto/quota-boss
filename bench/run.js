@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex|junie --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex|junie --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 const { find: findTranscript, analyze: analyzeTranscript } = require('./transcript');
 function parseArm(value) {
@@ -34,8 +34,9 @@ if (reps > 1) {
  return;
 }
 const task = args.task;
-if (!['claude', 'codex'].includes(host) || !['on', 'off'].includes(mode) || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
-const model = args.model || (host === 'claude' ? 'opus' : 'gpt-6.1-sol');
+// Junie is a worker CLI, not a boss host, so it runs only the off arm (solo quality of one model).
+if (!['claude', 'codex', 'junie'].includes(host) || !['on', 'off'].includes(mode) || (host === 'junie' && mode !== 'off') || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
+const model = args.model || { claude: 'opus', codex: 'gpt-6.1-sol', junie: 'junie-lite' }[host];
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
 const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`);
 const n = args.n || '1';
@@ -93,6 +94,12 @@ if (host === 'claude') {
     '--disallowedTools', 'ScheduleWakeup', '--max-budget-usd', '8'];
   if (effort) cli.push('--effort', effort);
   run = execute('claude', cli, { cwd: dir, input: prompt, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, CLAUDECODE: '', QUOTA_BOSS_BENCH: runName, ...modeEnv } });
+} else if (host === 'junie') {
+  // The native exe on Windows (the .bat shim re-parses arguments); the token billing variables are dropped as for workers.
+  const { nativeLauncher, childEnv } = require('../scripts/lib.js');
+  const native = nativeLauncher('junie', process.env, process.platform, dir);
+  const cli = ['--input-format=text', '--output-format=json', '--skip-update-check', `--model=${model}`, ...(effort ? [`--effort=${effort}`] : [])];
+  run = execute(native ? native.file : 'junie', cli, { cwd: dir, input: prompt, encoding: 'utf8', shell: !native && process.platform === 'win32', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: childEnv('junie', process.env, native) });
 } else {
   run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
     { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, QUOTA_BOSS_BENCH: runName, ...modeEnv } });
@@ -126,6 +133,18 @@ if (host === 'claude') {
     // What filled the boss context, from the session transcript (null when it cannot be found).
     try { const file = findTranscript(r.session_id); claude.boss = file ? analyzeTranscript(file) : null; } catch (e) { claude.boss = { error: e.message }; }
   } catch { claude = { error: 'no JSON result' }; }
+}
+
+// Junie: tokens and the models it really ran, from its JSON result.
+let junie = null;
+if (host === 'junie') {
+  const text = String(run.stdout || '');
+  try {
+    const r = JSON.parse(text.slice(text.indexOf('{')));
+    const list = Array.isArray(r.llmUsage) ? r.llmUsage : [];
+    const sum = key => list.reduce((t, u) => t + (Number(u[key]) || 0), 0);
+    junie = { input: sum('inputTokens'), cached: sum('cacheInputTokens'), output: sum('outputTokens'), calls: sum('calls'), usd: sum('cost'), models: [...new Set(list.map(u => u.model))], errors: r.errors || [] };
+  } catch { junie = { error: 'no JSON result' }; }
 }
 
 // Every Codex session started during the run in this fixture: a Codex boss, its children, or Codex workers of a Claude boss.
@@ -162,7 +181,7 @@ const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
   date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, hint, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
-  ownPass: count('pass'), ownFail: count('fail'), claude, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
+  ownPass: count('pass'), ownFail: count('fail'), claude, junie, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');
 console.log(`done ${runName} ${seconds}s hidden=${hidden} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);

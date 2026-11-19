@@ -163,6 +163,11 @@ unavailable.
   Setup turns it on by default unless you turned it off before (`quota-boss use junie-lite off`).
 - **jetbrains** uses a JetBrains AI Pro or Ultimate plan, which is included for verified GitHub Education students.
   Models are chosen with `--model`; only `jetbrains-gpt-6-luna` is on by default.
+- Junie runs with `--output-format=json` and `--skip-update-check`. cli-run adds `--json-output-file` with a private
+  temp file, which it reads and deletes: request errors appear only there (stdout shows the readable answer). A refused
+  license (code 492, "Untrusted license") counts as unavailable, a limit as limited, and the report line shows the
+  tokens and the model Junie really ran (`ran Qwen/...`). A plan that Junie does not accept for paid models fails the
+  self-test with "JetBrains license not accepted for this model"; Junie Lite works without it.
 - Headless Junie trusts the project folder by itself and loads its MCP servers, hooks and skills.
 
 Antigravity stays off by default and shows an account warning, because Google's terms treat third-party access to the

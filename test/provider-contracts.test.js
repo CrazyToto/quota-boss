@@ -41,7 +41,10 @@ test('every shipped CLI template against local executables', { concurrency: true
         setTimeout: (fn, ms) => setTimeout(fn, ms === runner.TIMEOUT_MS ? (scenario === 'timeout' ? 500 : 30000) : 300),
         spawn(file, args, options) {
           if (file !== process.execPath) throw new Error('No external executables permitted');
-          assert.deepEqual(args, expected); assert.equal(options.shell, false); assert.equal(options.cwd, dir);
+          // cli-run adds Junie's private JSON report file; everything else is the template.
+          const report = args.filter(arg => arg.startsWith('--json-output-file='));
+          assert.equal(report.length, original.cli.command === 'junie' ? 1 : 0);
+          assert.deepEqual(args.filter(arg => !report.includes(arg)), expected); assert.equal(options.shell, false); assert.equal(options.cwd, dir);
           // A stdin template carries the prompt only on stdin, never in argv.
           assert.equal(args.filter(arg => arg.includes(prompt)).length, stdin ? 0 : 1);
           assert.equal(options.stdio[0], stdin ? 'pipe' : 'ignore');
@@ -60,7 +63,7 @@ test('every shipped CLI template against local executables', { concurrency: true
       assert.equal(journals.timing.length, 1); assert.equal(journals.timing[0].ok, kind === 'ok');
       assert.equal(journals.timing[0].seconds, 1); assert.equal(journals.timing[0].model, model);
       assert.equal(journals.usage.length, provider.quota.source === 'counter' ? 1 : 0);
-      assert.deepEqual(JSON.parse(fs.readFileSync(observed)).args, expected);
+      assert.deepEqual(JSON.parse(fs.readFileSync(observed)).args.filter(arg => !arg.startsWith('--json-output-file=')), expected);
       assert.equal(input, stdin ? full : undefined);
       assert.equal(fs.existsSync(output), ['success', 'partial-write', 'bad-output'].includes(scenario));
       if (scenario === 'timeout') {

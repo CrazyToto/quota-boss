@@ -159,3 +159,10 @@ test('provider show, add-api and remove-api use isolated home', t => {
   addApi.remove(['trial']);
   assert.ok(Object.values(lib.readProviderConfig(path.join(configDir, 'models.json')).models).every(model => model.pool !== 'trial'));
 });
+
+test('an inline --effort={effort} without a level drops only itself, not the inline model flag before it', () => {
+  const cli = { args: ['--output-format=text', '--model={model}', '--effort={effort}'] };
+  assert.deepEqual(lib.cliArgsForModel(cli, 'gpt-6-luna'), ['--output-format=text', '--model=gpt-6-luna']);
+  assert.deepEqual(lib.cliArgsForModel(cli, 'gpt-6-luna', 'high'), ['--output-format=text', '--model=gpt-6-luna', '--effort=high']);
+  assert.deepEqual(lib.cliArgsForModel({ args: ['-m', '{model}', '--effort', '{effort}'] }, 'x'), ['-m', 'x']);
+});
