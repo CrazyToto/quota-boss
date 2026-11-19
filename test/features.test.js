@@ -89,7 +89,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       local: { pool: 'ollama', label: 'Local', cost: 0, scores: { mechanical: 6 } },
       paid: { pool: 'codex', label: 'Paid', cost: 1, scores: { mechanical: 9 } }
     } };
-    const r = route({ providers, models: registry });
+    const r = route({ providers, models: registry, findExecutable: () => process.execPath });
     assert.equal(r.rows.find(c => c.tier === 'trivial').model, 'local');
     assert.equal(r.rows.find(c => c.tier === 'normal').model, 'paid');
     const c = r.candidates.find(c => c.model === 'local' && c.tier === 'trivial');

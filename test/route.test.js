@@ -653,7 +653,7 @@ function thinRoute(outcomes = [], thresholds = {}) {
     haiku: { pool: 'claude', agentModel: 'haiku', label: 'Haiku', cost: 0.25, scores: { implementation: 8 } },
     codex: { pool: 'codex', label: 'Codex', cost: 100, scores: { implementation: 8 } }
   } };
-  return route({ models, providers, outcomes, thresholds: { relayCost: { trivial: 0.047 }, ...thresholds }, now: clock });
+  return route({ models, providers, outcomes, thresholds: { relayCost: { trivial: 0.047 }, ...thresholds }, now: clock, findExecutable: () => process.execPath });
 }
 const freeCandidate = result => result.candidates.find(c => c.model === 'free' && c.tier === 'trivial');
 const trivialWinner = result => result.rows.find(c => c.tier === 'trivial').model;
@@ -681,4 +681,17 @@ test('thin evidence discounts estimated pools until verified passes across categ
   assert.match(formatExplain(thinRoute()), /Free[^\n]* \| thin evidence \| inputs=text/);
   assert.doesNotMatch(formatTable(thinRoute()), /thin evidence/);
   assert.equal(freeCandidate(thinRoute([freePass()], { probationPasses: 1 })).thinEvidence, false);
+});
+
+test('a CLI worker whose executable is missing never wins a route', () => {
+  const providers = { providers: { ...lib.BUILTIN_PROVIDERS.providers,
+    copilot: { ...lib.BUILTIN_PROVIDERS.providers.copilot, enabled: true } } };
+  const models = { categories: ['implementation'], models: {
+    cp: { pool: 'copilot', label: 'Copilot', cost: 0, scores: { implementation: 9 } },
+    haiku: { pool: 'claude', agentModel: 'haiku', label: 'Haiku', cost: 0.25, scores: { implementation: 8 } } } };
+  const missing = route({ models, providers, host: 'claude-code', findExecutable: () => null });
+  assert.equal(missing.candidates.find(c => c.model === 'cp' && c.tier === 'trivial').reason, 'CLI not installed');
+  assert.notEqual(missing.rows.find(r => r.tier === 'trivial').model, 'cp');
+  const present = route({ models, providers, host: 'claude-code', findExecutable: () => process.execPath });
+  assert.notEqual(present.candidates.find(c => c.model === 'cp' && c.tier === 'trivial').reason, 'CLI not installed');
 });

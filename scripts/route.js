@@ -281,7 +281,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const rated = CATEGORIES.some(category => Number.isFinite(model.scores?.[category]));
         let reason = '';
         if (capabilityReason) reason = capabilityReason;
-        else if (provider.evidence === 'docs' && !fingerprint(model.pool)) reason = 'CLI not installed';
+        else if ((provider.evidence === 'docs' || provider.worker === 'cli-worker' && provider.cli?.command) && !fingerprint(model.pool)) reason = 'CLI not installed';
         else if (provider.evidence === 'docs' && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
         else if (provider.evidence === 'docs' && !validSelfTest(selfTests?.[model.id], fingerprint(model.pool)))
           reason = 'self-test needed (CLI changed): quota-boss providers test ' + model.pool;

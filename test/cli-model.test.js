@@ -59,10 +59,10 @@ test('a CLI that cannot take a level gets none, and the table names models for t
   const providers = { ...lib.BUILTIN_PROVIDERS, providers: { ...lib.BUILTIN_PROVIDERS.providers,
     grok: { ...lib.BUILTIN_PROVIDERS.providers.grok, enabled: true, evidence: 'real', cli: { command: 'grok', args: ['-p', '{prompt}', '-m', '{model}'], defaultModel: 'x' } } } };
   const models = { categories: ['implementation'], models: { g: { pool: 'grok', label: 'G', cost: 1, cliModel: 'g-1', efforts: ['low', 'medium', 'high'], scores: { implementation: 9 } } } };
-  const row = route({ models, providers, selfTests: { g: { result: 'pass' } } }).rows.find(r => r.tier === 'normal');
+  const row = route({ models, providers, selfTests: { g: { result: 'pass' } }, findExecutable: () => process.execPath }).rows.find(r => r.tier === 'normal');
   assert.equal(row.effort, null);
   const enabled = { ...providers, providers: { ...providers.providers, grok: { ...providers.providers.grok, cli: { command: 'grok', args: ['-p', '{prompt}', '-m', '{model}', '--effort', '{effort}'], defaultModel: 'x' } } } };
-  const withLevel = route({ models, providers: enabled, selfTests: { g: { result: 'pass' } } });
+  const withLevel = route({ models, providers: enabled, selfTests: { g: { result: 'pass' } }, findExecutable: () => process.execPath });
   assert.equal(withLevel.rows.find(r => r.tier === 'normal').effort, 'low');
   assert.match(formatTable(withLevel), /G\(cli-worker:grok,low,model=g\)/);
   const family = { categories: ['implementation'], models: {
