@@ -84,7 +84,10 @@ function invoke(main, input = '', args = []) {
   }
 }
 
-const { route, formatTable } = require('../scripts/route');
+// Tests never depend on which provider CLIs this machine has installed.
+const installed = () => process.execPath;
+const { route: routeWith, formatTable } = require('../scripts/route');
+const route = (params = {}) => routeWith({ findExecutable: installed, ...params });
 
 function select(result, tier, category) { return result.rows.find(row => row.tier === tier && row.category === category); }
 
@@ -368,6 +371,14 @@ test('free trial: the lasting ledger keeps a used or failed trial closed and a r
   assert.equal(pick({ 'relayed|research': { n: 3, failed: clock - 1 }, 'other|research': { n: 3 } }).trial, true);
   // A fail stamped in the future (clock skew) still counts as recent, so the retry stays on Haiku.
   assert.equal(pick({ [first.model + '|mechanical']: { n: 1, failed: clock + 600000 } }).via, 'haiku-worker');
+  // A retry also skips an unproven free winner from free first: B's trial failed, A is equal to Haiku but unproven.
+  const equal = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 8 } } } };
+  const both = trials => route({ models: equal, providers, trials, now: clock, limits: limits(0, 0, 0, 0) }).rows
+    .find(row => row.tier === 'trivial' && row.category === 'mechanical');
+  const turn = both({ 'relayed|mechanical': { n: 1 } });
+  assert.equal(turn.model, 'other');
+  assert.equal(turn.trial, true);
+  assert.equal(both({ 'relayed|mechanical': { n: 1 }, 'other|mechanical': { n: 1, failed: clock - 60000 } }).via, 'haiku-worker');
   // Malformed ledgers count as empty.
   for (const bad of [null, [], 'x', { 'relayed|mechanical': 'x' }, { 'relayed|mechanical': { n: 'many', failed: 'yes' } }]) assert.equal(pick(bad).trial, true);
 });
@@ -626,7 +637,8 @@ test('docs evidence requires a real self-test and verified probation passes', ()
   assert.ok(route(input).rows.every(c => c.tier !== 'critical'));
 });
 
-const { route, formatTable, projectWindow, successProbability, formatExplain } = require('../scripts/route');
+const { route: routeWith, formatTable, projectWindow, successProbability, formatExplain } = require('../scripts/route');
+const route = (params = {}) => routeWith({ findExecutable: () => process.execPath, ...params });
 const clock = 1000000000;
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 function projection(W, L, used, thresholds = {}, rate = 0.1) {
@@ -744,5 +756,8 @@ test('a CLI worker whose executable is missing never wins a route', () => {
   assert.equal(missing.candidates.find(c => c.model === 'cp' && c.tier === 'trivial').reason, 'CLI not installed');
   assert.notEqual(missing.rows.find(r => r.tier === 'trivial').model, 'cp');
   const present = route({ models, providers, host: 'claude-code', findExecutable: () => process.execPath });
+  const bare = { providers: { ...providers.providers, copilot: { ...providers.providers.copilot, cli: undefined } } };
+  assert.equal(route({ models, providers: bare, host: 'claude-code', findExecutable: () => process.execPath })
+    .candidates.find(c => c.model === 'cp' && c.tier === 'trivial').reason, 'no CLI configured');
   assert.notEqual(present.candidates.find(c => c.model === 'cp' && c.tier === 'trivial').reason, 'CLI not installed');
 });

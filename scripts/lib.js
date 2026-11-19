@@ -851,7 +851,7 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
       updateState(current => {
         const trials = { ...object(current.trials) }, key = entry.model + '|' + entry.category;
         const before = object(trials[key]);
-        trials[key] = { n: Math.min((Number.isInteger(before.n) ? before.n : 0) + 1, 99),
+        trials[key] = { n: Math.min((Number.isInteger(before.n) ? before.n : 0) + 1, 10000),
           ...(entry.result === 'fail' ? { failed: now } : Number.isFinite(before.failed) ? { failed: before.failed } : {}) };
         return { trials };
       });

@@ -281,7 +281,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const rated = CATEGORIES.some(category => Number.isFinite(model.scores?.[category]));
         let reason = '';
         if (capabilityReason) reason = capabilityReason;
-        else if ((provider.evidence === 'docs' || provider.worker === 'cli-worker' && provider.cli?.command) && !fingerprint(model.pool)) reason = 'CLI not installed';
+        else if (provider.worker === 'cli-worker' && !provider.cli?.command) reason = 'no CLI configured';
+        else if ((provider.evidence === 'docs' || provider.worker === 'cli-worker') && !fingerprint(model.pool)) reason = 'CLI not installed';
         else if (provider.evidence === 'docs' && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
         else if (provider.evidence === 'docs' && !validSelfTest(selfTests?.[model.id], fingerprint(model.pool)))
           reason = 'self-test needed (CLI changed): quota-boss providers test ' + model.pool;
@@ -438,6 +439,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const retry = evaluated.some(c => c.free && failedAt(c) !== null && failedAt(c) > now - 3600000);
         const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
           && count(c) < probation && !c.tried.some(e => e.result === 'fail') && failedAt(c) === null;
+        // During that hour an unproven free winner from free first is no fallback either: the retry goes to the original.
+        if (retry && winner !== original && winner.thinEvidence) { winner = original; displaced = null; }
         const trial = retry ? null : eligible.filter(open)
           .sort((a, b) => count(a) - count(b) || b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
         if (trial && trial !== original && trial !== winner) {

@@ -7,7 +7,10 @@ const os = require('node:os');
 const lib = require('../scripts/lib');
 const cli = require('../scripts/quota-boss');
 const settings = require('../scripts/settings');
-const { route, formatTable } = require('../scripts/route');
+// Tests never depend on which provider CLIs this machine has installed.
+const installed = () => process.execPath;
+const { route: routeWith, formatTable } = require('../scripts/route');
+const route = (params = {}) => routeWith({ findExecutable: installed, ...params });
 const diagnostics = require('../scripts/diagnostics');
 const defaults = require('../config/providers.json');
 const models = require('../config/models.json');

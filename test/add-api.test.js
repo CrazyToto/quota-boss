@@ -203,7 +203,15 @@ test('a rate-limited offer is paused, found by provider id and not counted as a 
   const result = cli(dir, 'feedback', 'zen-deepseek', 'mechanical', 'trivial', 'limited');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /zen-deepseek-api mechanical trivial limited/);
-  assert.match(cli(dir, 'route', '--explain', 'mechanical', 'trivial').stdout, /OpenCode Zen DeepSeek .*rate limited \(paused for 15 minutes\)/);
+  // A stand-in for the offer's CLI, so the pause and not a missing CLI decides on any machine.
+  const command = saved(dir, 'providers').providers['zen-deepseek'].cli.command, bin = path.join(dir, 'fake-bin');
+  fs.mkdirSync(bin);
+  const windows = process.platform === 'win32';
+  fs.writeFileSync(path.join(bin, windows ? command + '.cmd' : command), windows ? '@exit /b 0\r\n' : '#!/bin/sh\n', { mode: 0o755 });
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
+  const explain = spawnSync(process.execPath, [script, 'route', '--explain', 'mechanical', 'trivial'], { cwd: dir, encoding: 'utf8',
+    env: { ...env, QUOTA_BOSS_HOME: dir, PATH: bin + path.delimiter + (process.env.PATH || process.env.Path || '') } });
+  assert.match(explain.stdout, /OpenCode Zen DeepSeek .*rate limited \(paused for 15 minutes\)/);
 });
 
 test('a rate limit ends after 15 minutes', () => {
