@@ -4,6 +4,23 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-19
+
+### Fixed
+
+- A free or local route now needs three verified passes before it gets normal work, like a docs-only provider. Before, a
+  new free API could win normal work on its registry scores alone.
+- `/boss add-api` installs OpenCode with `tools install opencode`; the old `opencode-free` id no longer exists.
+- Docs: the Copilot limit is a local launch count (GitHub bills AI Credits since 2026-06-01), OpenCode Zen offers only
+  DeepSeek, outdated routing algorithm and Mistral notes removed.
+
+### Removed
+
+- Retired routes (Zen GLM, Mistral, including old `-m` and `mistral` pool forms) are dropped when providers load, and
+  `quota-boss remove-api` can delete them.
+- The inert built-in `openrouter` pool, the unpinned OpenCode free example and dead threshold keys.
+- Tests, `.github`, CONTRIBUTING and unused templates from the npm package (207 -> 74 files).
+
 ## [0.4.2] - 2026-11-19
 
 ### Added

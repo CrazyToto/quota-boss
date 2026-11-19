@@ -72,7 +72,9 @@ test.describe('free/local providers, code intelligence, consensus and settings',
       assert.ok(r.candidates.filter(c => c.model === 'train').every(c => /training provider blocked/.test(c.reason)));
     }
     const r = route({ models: registry, providers, allowTrainingProviders: true });
-    assert.ok(r.rows.filter(row => row.tier !== 'critical').every(row => row.model === 'train'));
+    assert.equal(r.rows.find(row => row.tier === 'trivial').model, 'train');
+    // Free routes earn normal work with verified passes first.
+    assert.equal(r.rows.find(row => row.tier === 'normal').model, 'safe');
     assert.equal(r.rows.find(row => row.tier === 'critical').model, 'safe');
     assert.equal(r.options.length, 3);
     assert.equal(lib.normalizeProject({}).allowTrainingProviders, false);

@@ -198,6 +198,20 @@ test('docs-only probation has exact normal and critical tier boundaries', () => 
   assert.equal(candidate(params, 'critical').reason, 'probation: unrated, no public evidence for critical');
 });
 
+test('free and local routes need verified passes before normal work, like docs-only providers', () => {
+  for (const kind of ['free', 'local']) {
+    const params = fixture('real');
+    params.providers.providers.trial.kind = kind;
+    params.models.models.tiny.cost = 0;
+    assert.equal(candidate(params, 'normal').reason, 'probation: 3 more verified trivial+ passes needed for normal');
+    assert.ok(!candidate(params, 'trivial').reason.startsWith('probation'));
+    params.outcomes = [pass('trivial'), pass('trivial', { t: now - 1 }), pass('trivial', { t: now - 2 })];
+    assert.ok(!candidate(params, 'normal').reason?.startsWith('probation'));
+  }
+  const paid = fixture('real');
+  assert.ok(!candidate(paid, 'normal').reason?.startsWith('probation'));
+});
+
 test('only recent verified real passes count; other pools also need rated normal passes for critical', () => {
   const params = fixture('docs');
   params.outcomes = [pass('normal', { bench: true }), pass('normal', { result: 'fail' }), pass('normal', { t: now + 1 }),

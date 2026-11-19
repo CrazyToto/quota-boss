@@ -120,7 +120,7 @@ every provider it showed as answered.
 | claude | npm `@anthropic-ai/claude-code` | no, it updates itself | `claude auth status` |
 | codex | npm `@openai/codex` | yes | `codex login status` |
 | copilot | npm `@github/copilot` | yes | none |
-| opencode-free | npm `opencode-ai` | yes | none |
+| opencode | npm `opencode-ai` | yes | none |
 | kilo-free | npm `@kilocode/cli` | yes | not needed |
 | ollama | winget (Windows), brew (macOS), by hand on Linux | no | not needed |
 | graphify (optional, not a provider) | `uv tool install graphifyy`, then `graphify install`; asked in setup | no | not needed |
@@ -204,7 +204,7 @@ Turning on a docs-only provider in a terminal runs its self-test after install a
 `use <id> on --no-test` only switches it on. Without a terminal, `use <id> on` prints how to finish in a terminal.
 A pass is bound to that model and the CLI's resolved path, size and modification time. CLI changes require another test.
 
-Docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes. Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
+Docs-only models can do trivial work after the self-test. Normal work needs three verified trivial-or-higher passes; free and local routes have the same normal gate. Critical work needs three verified normal-or-critical passes and registry scores as public evidence; this critical gate also applies to every pool except Claude and Codex. `probationPasses` changes the required count.
 
 `route --needs image,pdf --context 100000` filters every option, including fallback models. Unknown capabilities fail the filter. Model `inputs` and worker support must both allow an input; `text` always works. CLI workers declare their handover support in `cli.inputs` (default: text only). Model `contextTokens` and `webSearch` are optional documented metadata; shipped context sizes and web search support remain unknown. `route --explain` lists the inputs each route can actually accept.
 
@@ -223,13 +223,14 @@ get an account suspended. This is a summary from November 2026, not legal advice
   software to reach the service a breach and allow suspending your account. Quota Boss only starts Google's own
   program, but whether that is allowed is unclear. It is off unless you turn it on.
 - **GitHub Copilot** documents scripted use of its CLI. Keep it moderate, because GitHub restricts excessive automated
-  activity.
+  activity. Since 2026-06-01 every Copilot request is billed in AI Credits from your plan; Copilot Free and Student
+  offer only `auto`. Quota Boss counts launches locally, so its Copilot number is an estimate, not GitHub's meter.
 - **ChatGPT through Codex** documents `codex exec` for scripts, and it reuses your saved login. OpenAI recommends an API
   key for automation and [says not to use a ChatGPT login in CI for public or open-source repositories](https://learn.chatgpt.com/docs/non-interactive-mode).
   Use that login on your own machine only, never on a CI runner.
 - **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
 - **OpenCode Zen** needs no key. Quota Boss offers only the two free models whose providers, [according to OpenCode](https://opencode.ai/docs/zen/),
-  keep no data and do not train on it: GLM-5.3-Flash and DeepSeek V4.1 Flash. They are free for a limited time.
+  keep no data and do not train on it. Only DeepSeek V4.1 Flash is left, because OpenCode retired the free GLM model. It is free for a limited time.
 - **Other free API offers** are off until you add them. Each shows its limit and warning first. Gemini's unpaid tier
   lets Google use your content and lets humans read it, NVIDIA NIM is reported as for prototyping and evaluation only,
   and where we could not confirm a service's training policy Quota Boss treats it as if it trains on your data.

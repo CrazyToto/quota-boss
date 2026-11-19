@@ -36,9 +36,9 @@ Ideas and reports are welcome as issues.
   handoff notes move to the first prompt when they do not fit. Shorter rules would bring them back into the session
   start, but the rule text is tuned by benchmark, so shortening it needs a benchmark rerun.
 - OpenAI's Terms of Use could not be fetched automatically (HTTP 403), so read them in a browser.
-- Mistral Vibe and `mistral-api` may share one limit. Some limit texts still come from OmniRoute's reported values.
+- Some limit texts still come from OmniRoute's reported values.
 - Extra provider models had one real call each on 2026-11-09: Cohere Command A+, OpenRouter Nemotron Ultra and Copilot
-  `auto` answered. Mistral Large is not in the free tier, Gemini Flash hung for 90 s, and Copilot rejected
+  `auto` answered. Gemini Flash hung for 90 s, and Copilot rejected
   `claude-haiku-5.5` on the test account. Their scores are provisional until outcomes are logged.
 - A fresh session starts near 45k tokens. By estimate most of that is the host and the user's own tools, and only 1-2k
   is Quota Boss. This was not measured separately.

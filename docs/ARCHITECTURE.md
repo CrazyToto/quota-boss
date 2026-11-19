@@ -104,28 +104,9 @@ Provider ids are model pool ids. Disabled/unknown providers do not participate. 
 history before modes and pricing; reached caps exclude delegation with `capped:<id>`. Caps do not exclude
 the boss's self work, which retains its original live-quota emergency fallback. Generic providers using
 `cli-worker` route via `cli-worker:<id>`. Usage appends and compaction share an ownership lock. See the journal retention rules below.
-The following describes the original routing conventions retained by the current implementation.
+`via` maps a model to its worker: the boss model -> `self`, Claude models -> `sonnet-worker`/`haiku-worker` (or `reviewer`/`researcher`), Codex models -> `codex-worker` (`gpt-advisor` for review, research and architecture), CLI providers -> `cli-worker:<id>`.
 
-For each tier in `critical, normal, trivial` and each category:
-1. Candidates = models whose pool is usable: pool `claude` always (boss); pool `codex` only if
-   `workers.codex` (or `workers.gpt` for category `research`/`review` second opinions) and codexMode != exhausted;
-   pool `perplexity` only for `research`, only if `workers.perplexity`. Manual models are listed as an *option*,
-   never as the primary pick.
-2. Filter `scores[cat] >= profiles[profile].minQuality[tier]`. If empty, use all usable models and set
-   `belowThreshold: true`.
-3. Pick:
-   - `critical`: highest score; tie -> lower effective cost. Exception: claudeMode `emergency` -> prefer best
-     non-claude candidate if one meets the threshold.
-   - `normal` / `trivial`: lowest effective cost; tie -> higher score.
-   - effective cost = `cost * (1 + 2*u) * modeFactor`, `u` = max(5h, weekly)/100 of that pool (0 if unknown);
-     modeFactor = 3 for claude in `save`, 3 for codex in `tight`; claude excluded for normal/trivial in
-     `emergency` (unless nothing else is usable).
-4. `via`: claude-opus -> `self`; claude-sonnet -> `reviewer` for review else `sonnet-worker`; claude-haiku ->
-   `researcher` for research else `haiku-worker`; codex model -> `codex-worker` (category
-   `review`/`research`/`architecture` -> `gpt-advisor`); perplexity -> `researcher (manual)`.
-5. Suggested Codex reasoning effort: critical `high`, normal `medium`, trivial `low`.
-
-Return `{ mode, rows: [{tier, category, model, label, pool, via, effort, belowThreshold}], options: [...] }`.
+Each row carries `tier, category, model, label, pool, via, effort, belowThreshold` and its ladder; `options` lists manual routes.
 `formatTable(result)` -> compact text, one line per tier, e.g.
 `critical: architecture=Opus 5.5(self) debugging=Opus 5.5(self) implementation=GPT-6.1-Sol(codex-worker,high) ...`
 Max ~6 lines total.

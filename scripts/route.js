@@ -302,7 +302,9 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             reason = 'probation: unrated, no public evidence for critical';
           else if (tier === 'critical' && (provider.evidence === 'docs' || !['claude', 'codex'].includes(model.pool)) && model.normalPasses < probation)
             reason = 'probation: ' + (probation - model.normalPasses) + ' more verified normal passes needed for critical';
-          else if (provider.evidence === 'docs' && tier === 'normal' && model.passes < probation)
+          // Docs-only providers and free or local routes earn normal work with verified passes, never on registry scores alone.
+          else if ((provider.evidence === 'docs' || model.cost === 0 && ['free', 'local'].includes(provider.kind) && model.pool !== bossPool)
+            && tier === 'normal' && model.passes < probation)
             reason = 'probation: ' + (probation - model.passes) + ' more verified trivial+ passes needed for normal';
           else if (provider.tos === 'avoid') reason = 'provider tos avoid';
           else if (model.pool === bossPool && !self && hostSaving) reason = 'host pool saving';
