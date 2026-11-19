@@ -4,6 +4,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-19
+
 ### Added
 
 - `quota-boss providers report <id>`: runs the self-test and one small coding task with hidden checks for each model of a provider, saves a redacted Markdown report and offers to open a prefilled GitHub issue, so people with plans the maintainer lacks can send real numbers for the routing table.
