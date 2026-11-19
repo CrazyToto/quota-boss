@@ -844,6 +844,19 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
   if (/^[A-Za-z0-9._-]{1,120}$/.test(bench)) entry.bench = bench;
   const file = getPaths().outcomesFile;
   appendRegular(file, JSON.stringify(entry) + '\n');
+  // Free trials are counted apart from the rolling quality history, so an expired or rotated outcome never
+  // reopens a trial that was used up or failed. A new model id starts over.
+  if (!entry.bench && ['pass', 'fail'].includes(entry.result)) {
+    try {
+      updateState(current => {
+        const trials = { ...object(current.trials) }, key = entry.model + '|' + entry.category;
+        const before = object(trials[key]);
+        trials[key] = { n: Math.min((Number.isInteger(before.n) ? before.n : 0) + 1, 99),
+          ...(entry.result === 'fail' ? { failed: now } : Number.isFinite(before.failed) ? { failed: before.failed } : {}) };
+        return { trials };
+      });
+    } catch { /* the outcome is logged; the trial count is best effort */ }
+  }
   return entry;
 }
 

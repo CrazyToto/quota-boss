@@ -17,7 +17,7 @@ function build(project, config, input = {}, codexHost = false, now = Date.now())
   const { state, limits } = readLimits(config, now);
   const bossModel = lib.cleanModelId(codexHost ? input?.model : input?.model?.id ?? input?.model) ?? lib.currentBossModel(project, state);
   const routing = codexHost || project.host === 'codex' ? route : routeTable;
-  const table = formatTable(routing({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now }), { ladder: false });
+  const table = formatTable(routing({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, history: state.history, selfTests: state.selfTests, trials: state.trials, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now }), { ladder: false });
   return { table, limits: lib.formatLimits(limits, project.profile, config.thresholds, now, config.providers) };
 }
 module.exports = { build, readLimits, claudeSaving };

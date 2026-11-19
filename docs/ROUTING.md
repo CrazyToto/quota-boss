@@ -138,7 +138,10 @@ neither does a job the boss does itself.
   the job when its `P` is within `trialMargin` (0.15) of the route that would win otherwise, unless that route is a free route
   with verified passes. Per category a route gets at most `probationPasses` trial jobs and none after a logged fail there.
   The least tried goes first, so free routes take turns. A failed trial costs one step: the route that would have won is
-  next on the ladder. A `trialMargin` of 0 turns trials off.
+  next on the ladder, and for an hour after a free route fails in a category no new trial starts there, so the retry
+  goes to that route. Trial counts and fails are kept in `state.json` apart from the rolling history, so they never expire;
+  a new model id starts over. Tables mark a trial row `[trial: run route first]`, so a table from the session start is never used for it.
+  A `trialMargin` of 0 turns trials off.
 
 ## 5. Effort and escalation ladder
 

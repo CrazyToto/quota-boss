@@ -219,7 +219,7 @@ function inheritScores(id, model, all = {}) {
 
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
 function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {},
-  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
+  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, trials = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
   if (!['small', 'medium', 'large'].includes(size)) size = null;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(bossEffort)) bossEffort = null;
   if (caps) providers = { ...providers, caps: tightenCaps(providers.caps ?? {}, caps) };
@@ -316,6 +316,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
           inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, prior: successProbability(model, category, tier, [], thresholds, now, effort), price, thinEvidence, jobCost,
           tried: learned.filter(e => e.model === model.id && e.category === category && ['pass', 'fail'].includes(e.result)),
+          ledger: (v => v && typeof v === 'object' && !Array.isArray(v) ? v : {})(trials && typeof trials === 'object' && Object.hasOwn(trials, model.id + '|' + category) ? trials[model.id + '|' + category] : null),
           free: model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
@@ -430,10 +431,15 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       const settled = winner && winner.free && !winner.thinEvidence;
       if (original && !belowThreshold && tier === 'trivial' && trialMargin > 0 && original.via !== 'self' && !settled) {
         const probation = positive(thresholds.probationPasses, 3);
+        const count = c => Math.max(c.tried.length, Number.isInteger(c.ledger.n) ? c.ledger.n : 0);
+        const failedAt = c => Number.isFinite(c.ledger.failed) ? c.ledger.failed : null;
+        // A free route that failed in this category within the hour means a retry may be under way: it goes to the
+        // route that would have won, not to the next trial. New trials open again after that.
+        const retry = evaluated.some(c => c.free && failedAt(c) !== null && now - failedAt(c) >= 0 && now - failedAt(c) < 3600000);
         const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
-          && c.tried.length < probation && !c.tried.some(e => e.result === 'fail');
-        const trial = eligible.filter(open)
-          .sort((a, b) => a.tried.length - b.tried.length || b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
+          && count(c) < probation && !c.tried.some(e => e.result === 'fail') && failedAt(c) === null;
+        const trial = retry ? null : eligible.filter(open)
+          .sort((a, b) => count(a) - count(b) || b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
         if (trial && trial !== original && trial !== winner) {
           displaced = original;
           winner = trial; trialRun = true;
@@ -479,7 +485,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             && settings.host !== 'generic') : [];
         const outdated = replacements(advisors, 0);
         const advisor = advisors.length ? advisors.filter(c => !outdated.has(c)).sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0] : null;
-        rows.push({ ...winner, belowThreshold, ladder, options: advisor ? ['consensus'] : [],
+        rows.push({ ...winner, belowThreshold, ...(trialRun ? { trial: true } : {}), ladder, options: advisor ? ['consensus'] : [],
           ...(advisor ? { consensus: { model: advisor.model, label: advisor.label, effort: 'high' } } : {}) });
       } else if (needs.length || contextTokens !== null) {
         const requirement = needs.length ? 'takes ' + needs.join(',') + (contextTokens !== null ? ' with context ' + contextTokens : '')
@@ -521,7 +527,7 @@ function formatTable(result, { ladder: withLadder = true } = {}) {
       + (item.cliModel && item.via.startsWith('cli-worker:') || ['codex-subagent', 'codex-worker', 'gpt-advisor', 'claude-worker'].includes(item.via) ? ',model=' + item.model : '') + ')'
       + (chain ? '[' + chain + ']' : '')
       + (item.tier === 'critical' && item.category === 'architecture' && item.options?.includes('consensus') && item.consensus
-        ? '[option:consensus=' + sanitizeLabel(item.consensus.label) + ',high]' : '') + (item.belowThreshold ? '[below threshold]' : '');
+        ? '[option:consensus=' + sanitizeLabel(item.consensus.label) + ',high]' : '') + (item.belowThreshold ? '[below threshold]' : '') + (item.trial === true ? '[trial: run route first]' : '');
   };
   const empty = item => item && item.model === null && TIERS.includes(item.tier) && CATEGORIES.includes(item.category) && typeof item.reason === 'string';
   const row = item => item.category + '=' + (empty(item) ? 'none (' + sanitizeLabel(item.reason) + ')'

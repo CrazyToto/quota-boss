@@ -466,7 +466,7 @@ function run(args = process.argv.slice(2), options) {
     if (command === 'route') {
       const bossModel = lib.currentBossModel(active, state);
       const routing = size === undefined && !explain && active.host !== 'codex' ? routeTable : route;
-      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', needs, context: contextTokens, limits, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
+      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', needs, context: contextTokens, limits, history: state.history, selfTests: state.selfTests, trials: state.trials, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
       const match = row => (!filters[0] || row.category === filters[0]) && (!filters[1] || row.tier === filters[1]);
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
       return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));

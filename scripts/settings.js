@@ -20,7 +20,7 @@ function snapshot(project = lib.findProjectConfig()) {
   const state = lib.readState();
   const limits = lib.readProviderLimits(config.providers, { claude: state.claude, codex }, now);
   const bossModel = lib.currentBossModel(project, state);
-  const result = route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, now, history: state.history, selfTests: state.selfTests, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now) });
+  const result = route({ ...config, ...project, bossModel, bossEffort: lib.currentBossEffort(project, state, bossModel), size: config.thresholds.gate?.defaultSize ?? 'medium', limits, now, history: state.history, selfTests: state.selfTests, trials: state.trials, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now) });
   return { project, config, limits, result, now, history: state.history };
 }
 function entries(project, config) {

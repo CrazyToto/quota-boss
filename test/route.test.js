@@ -338,6 +338,37 @@ test('free trial: an untested free route gets trivial work until its own results
   assert.notEqual(first, second);
   assert.ok(['relayed', 'other'].includes(second));
 });
+test('free trial: the lasting ledger keeps a used or failed trial closed and a retry goes to the original fallback', () => {
+  const free = lib.BUILTIN_PROVIDERS.providers['kilo-free'];
+  const providers = { ...lib.BUILTIN_PROVIDERS, providers: { ...lib.BUILTIN_PROVIDERS.providers,
+    'kilo-free': { ...free, enabled: true, trainsOnData: false }, 'kilo-two': { ...free, enabled: true, trainsOnData: false } } };
+  const models = { categories: ['mechanical'], models: {
+    'claude-haiku-5-5': { pool: 'claude', label: 'Haiku', agentModel: 'haiku', cost: 0.25, scores: { mechanical: 8 } },
+    relayed: { pool: 'kilo-free', label: 'Free', cost: 0, scores: { mechanical: 6 } },
+    other: { pool: 'kilo-two', label: 'Other', cost: 0, scores: { mechanical: 6 } },
+  } };
+  const pick = trials => route({ models, providers, trials, now: clock, limits: limits(0, 0, 0, 0) }).rows
+    .find(row => row.tier === 'trivial' && row.category === 'mechanical');
+  // I1: a trial row is marked so the boss resolves it right before starting the job.
+  const first = pick({});
+  assert.equal(first.trial, true);
+  assert.match(formatTable({ rows: [first] }, { ladder: false }), /\[trial: run route first\]$/);
+  // I3: right after one free route failed, the retry goes to Haiku, not to the other free route's trial.
+  const failed = { [first.model + '|mechanical']: { n: 1, failed: clock - 60000 } };
+  const retry = pick(failed);
+  assert.equal(retry.via, 'haiku-worker');
+  assert.equal(retry.trial, undefined);
+  assert.doesNotMatch(formatTable({ rows: [retry] }, { ladder: false }), /\[trial/);
+  // An hour later new jobs give the other free route its own trial; the failed one stays closed (I2: no outcome left).
+  const later = pick({ [first.model + '|mechanical']: { n: 1, failed: clock - 3600000 } });
+  assert.equal(later.trial, true);
+  assert.notEqual(later.model, first.model);
+  // I2: used-up trials stay closed when the rolling history no longer holds them; other categories are untouched.
+  assert.equal(pick({ 'relayed|mechanical': { n: 3 }, 'other|mechanical': { n: 3 } }).via, 'haiku-worker');
+  assert.equal(pick({ 'relayed|research': { n: 3, failed: clock - 1 }, 'other|research': { n: 3 } }).trial, true);
+  // Malformed ledgers count as empty.
+  for (const bad of [null, [], 'x', { 'relayed|mechanical': 'x' }, { 'relayed|mechanical': { n: 'many', failed: 'yes' } }]) assert.equal(pick(bad).trial, true);
+});
 
 
 const LEVELS = ['low', 'medium', 'high', 'xhigh'];
