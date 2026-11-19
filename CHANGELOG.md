@@ -2,7 +2,25 @@
 
 This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
-## [Unreleased]
+## [Unreleased]
+
+## [0.3.0] - 2026-11-19
+
+### Added
+
+- Junie Lite (`junie-lite`), JetBrains' free tier with no published limit, and JetBrains AI (`jetbrains`) as providers through the official Junie CLI. You log in once with your JetBrains account in `junie`, which setup starts; a `JUNIE_API_KEY` token is not used because it bills paid credits. The task goes on stdin, Windows starts the native `junie.exe` instead of its `.bat` launcher, and setup turns Junie Lite on by default unless you turned it off before. Junie's "not logged in" message exits with code 0, so cli-run reports it as unavailable. Setup and the update question turn a provider like this on first and run its self-test after the login; Junie never sees an inherited `JUNIE_API_KEY` or `JUNIE_PROJECT`. Both are marked as not training on your data by the user's decision; see docs/PROVIDERS.md for JetBrains' data sharing default.
+
+- GPT-6.2-Sol and GPT-6.2-Astra (efforts low to xhigh). GPT-6.2-Sol has GPT-6.1-Sol's price; GPT-6.2-Astra costs 20 instead of GPT-6-Astra's 32. Until outcomes are logged, their scores are those of the predecessors, because public benchmarks are mixed. Routing skips a Codex model that your Codex CLI's model cache does not list while it lists others of the same family, so an older Codex keeps the older models. Agent defaults and the JetBrains GPT-Sol entry move to GPT-6.2-Sol; Copilot entries stay unchanged.
+
+- `doctor` names a model in your Codex model cache that is newer than every configured model of its family. It only informs and never changes config.
+
+- After an update the installer asks once about each provider the new version added (Junie Lite defaults to yes) and runs `use <id> on` for a yes; a no to Junie Lite is saved as off. Without a terminal it prints one line pointing to `quota-boss setup`, and the session start shows a suggestion until you answer. Providers you turned on or off before are never asked about.
+
+- The session start suggests `quota-boss providers test <id>` for a provider that is on and installed but has not passed its self-test, since routing gives it no work until then.
+
+### Changed
+
+- On a full routing tie the newer model of the same family wins, so an equally rated successor replaces its predecessor.
 
 ## [0.2.1] - 2026-11-17
 

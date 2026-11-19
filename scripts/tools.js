@@ -44,6 +44,12 @@ const REGISTRY = Object.freeze({
   antigravity: { label: 'Antigravity', binary: 'agy', source: 'https://antigravity.google/docs/install', install: {},
     note: 'Google only offers an install script; follow the official guide. It replaced Gemini CLI for free and Google One users.',
     login: { command: 'agy', run: [] } },
+  // One CLI for Junie Lite and JetBrains AI. The account login covers both; a JUNIE_API_KEY token bills paid credits instead.
+  // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
+  junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
+    paste: { win32: 'irm https://junie.jetbrains.com/install.ps1 | iex', all: 'curl -fsSL https://junie.jetbrains.com/install.sh | bash' },
+    login: { command: 'junie', run: [], hint: 'In Junie choose "Continue with JetBrains account", log in in your browser, then type /exit.',
+      credentialFile: { platform: 'win32', dir: '.junie', store: 'dpapi_credentials' } } },
 });
 
 /** Package managers some tools need first, offered in the same list. */
@@ -91,10 +97,16 @@ function managerEnv(env) {
 function context(options = {}) {
   const env = managerEnv(options.env || process.env), platform = options.platform || process.platform;
   const spawnSync = options.spawnSync || child.spawnSync;
+  // A native exe that stands in for a Windows launcher gets the environment that launcher would set; a login never sees
+  // the variables childEnv drops for that CLI.
+  const envOf = file => {
+    const native = Object.keys(lib.NATIVE_LAUNCHERS).map(name => lib.nativeLauncher(name, env, platform)).find(item => item?.file === file) || null;
+    return lib.childEnv(path.basename(String(file)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase(), env, native, platform);
+  };
   return { platform, env, home: options.home || env.USERPROFILE || env.HOME || null, find: options.find || (name => locate(name, env, platform)),
-    call: (file, args, timeout) => lib.runExecutable(file, args, { platform, env, spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024 }),
-    attach: (file, args) => platform === 'win32' ? lib.runInNewWindow(file, args, { env, spawnSync })
-      : lib.runExecutable(file, args, { platform, env, spawnSync, stdio: 'inherit' }) };
+    call: (file, args, timeout) => lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024 }),
+    attach: (file, args) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file), spawnSync })
+      : lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, stdio: 'inherit' }) };
 }
 
 /**
@@ -111,6 +123,17 @@ function statusFileSaysLoggedIn(status, d) {
     if (fs.statSync(file).size > MAX_STATUS_BYTES) return false;
     const users = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, ''))[status.field];
     return Array.isArray(users) && users.length > 0;
+  } catch { return false; }
+}
+
+/** null: this platform keeps the login elsewhere, so it cannot be checked. */
+function credentialFileExists(credential, d) {
+  if (!credential || credential.platform !== d.platform) return null;
+  if (!d.home) return false;
+  const store = path.join(d.home, credential.dir, credential.store);
+  try {
+    if (!fs.lstatSync(store).isDirectory()) return false;
+    return fs.readdirSync(store, { withFileTypes: true }).some(entry => entry.isFile() && fs.statSync(path.join(store, entry.name)).size > 0);
   } catch { return false; }
 }
 
@@ -166,6 +189,7 @@ function enabledIds(config) {
     if (Object.hasOwn(REGISTRY, id)) ids.add(id);
     else if (provider?.cli?.command === 'opencode') ids.add('opencode-free');
     else if (provider?.cli?.command === 'kilo') ids.add('kilo-free');
+    else if (provider?.cli?.command === 'junie') ids.add('junie');
   }
   return [...ids];
 }
@@ -230,6 +254,8 @@ function logins(ids, options) {
     const login = REGISTRY[id].login, binary = login && d.find(REGISTRY[id].binary);
     if (!binary) continue;
     if (login.statusFile && statusFileSaysLoggedIn(login.statusFile, d)) { lines.push('- ' + id + ': logged in'); continue; }
+    const saved = credentialFileExists(login.credentialFile, d);
+    if (saved !== null) { lines.push('- ' + id + ': ' + (saved ? 'logged in' : 'NOT logged in, run: ' + login.command)); continue; }
     if (!login.check) { lines.push('- ' + id + ': cannot be checked automatically; ' + (login.optional ? 'only if needed' : 'if not done yet') + ', run: ' + login.command); continue; }
     const result = d.call(binary, login.check, QUERY_TIMEOUT);
     if (result.error) lines.push('- ' + id + ': could not check');
@@ -245,12 +271,15 @@ function pendingLogins(ids, options) {
   for (const id of ids) {
     const tool = REGISTRY[id], login = tool.login, binary = login?.run && d.find(tool.binary);
     if (!binary) continue;
+    const saved = credentialFileExists(login.credentialFile, d);
+    if (saved) continue;
     if (login.statusFile && statusFileSaysLoggedIn(login.statusFile, d)) continue;
     if (login.check) {
       const result = d.call(binary, login.check, QUERY_TIMEOUT);
       if (succeeded(result) && login.loggedIn.test(output(result))) continue;
     }
-    pending.push({ id, command: [tool.binary, ...login.run].join(' '), checkable: !!(login.check || login.statusFile), optional: !!login.optional, newWindow: d.platform === 'win32' });
+    pending.push({ id, command: [tool.binary, ...login.run].join(' '), checkable: !!(login.check || login.statusFile) || saved === false,
+      optional: !!login.optional, newWindow: d.platform === 'win32', ...(login.hint ? { hint: login.hint } : {}) });
   }
   return pending;
 }

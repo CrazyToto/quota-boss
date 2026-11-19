@@ -591,6 +591,18 @@ test('nonzero failures scan stderr before stdout, with structural errors ahead o
   }
 });
 
+test('the Junie login hint is unavailable for Junie even with exit 0, but a quoted mention or another CLI is not', () => {
+  const hint = 'Junie 26.11.2 (4100.8)\nCannot find authorization. Please authenticate before running Junie.\n\nTo authenticate, you can:';
+  const junie = result => runner.classify(result, false, null, null, {}, false, true);
+  for (const stream of ['stdout', 'stderr']) {
+    assert.deepEqual(junie({ status: 0, [stream]: hint }), { kind: 'unavailable', reason: 'not logged in' });
+    assert.deepEqual(junie({ status: 0, [stream]: hint.replace(/\n/g, '\r\n') }), { kind: 'unavailable', reason: 'not logged in' });
+    assert.equal(junie({ status: 0, [stream]: 'The CLI says "Cannot find authorization. Please authenticate before running Junie." when logged out.' }).kind, 'ok');
+    assert.equal(runner.classify({ status: 0, [stream]: hint }).kind, 'ok', 'a Copilot job that prints the line is not marked unavailable');
+  }
+  assert.equal(runner.classify({ status: 0, stdout: hint, claude: { subtype: 'success' } }, false, null, null, {}, true).kind, 'ok');
+});
+
 test('permission rejection is no-work and records fail for every exit code and either stream', async () => {
   for (const status of [0, 1, 2]) for (const stream of ['stdout', 'stderr']) for (const marker of ['auto-rejecting', 'rejected permission']) {
     const h = harness({ status, [stream]: 'HTTP 429\n' + marker });
@@ -923,4 +935,23 @@ test('real config, project training consent and journal functions work with an i
   assert.equal(journals.usage.provider, 'trial'); assert.equal(journals.usage.amount, 1); assert.equal(journals.usage.unit, 'calls');
   assert.equal(journals.runs.model, 'tiny'); assert.equal(journals.runs.ok, false);
   assert.equal(journals.runs.category, null); assert.equal(journals.runs.tier, null);
+});
+
+test('Junie sends the prompt on stdin, always names the free model and gets the native launcher environment', async () => {
+  const shipped = require('../config/providers.json').providers, models = require('../config/models.json').models;
+  for (const [id, model, flags] of [['junie-lite', 'junie-lite', ['--model=junie-lite']], ['jetbrains', 'jetbrains-gpt-6-luna', ['--model=gpt-6-luna', '--effort=high']]]) {
+    const h = harness({}, { providers: { providers: { [id]: { ...shipped[id], enabled: true } } }, models: { models: { [model]: models[model] } } });
+    h.deps.prompt = 'quotes " & % $value\nsecond line {prompt}';
+    h.deps.findExecutable = () => { throw new Error('the native launcher wins'); };
+    h.deps.nativeLauncher = (command, env, platform, cwd) => (assert.equal(command, 'junie'), { file: process.execPath, env: { JUNIE_DATA: 'C:\\data', EJ_RUNNER_PWD: cwd } });
+    const result = await runner.run(['--provider', id, '--model', model, '--effort', 'high'], h.deps);
+    const call = h.records.spawns[0];
+    assert.equal(result.code, 0, result.report); assert.equal(call.file, process.execPath);
+    assert.deepEqual(call.args, ['--input-format=text', '--output-format=text', ...flags]);
+    assert.ok(!call.args.some(arg => arg.includes('second line')));
+    assert.equal(call.options.stdio[0], 'pipe'); assert.equal(call.child.stdin.writableEnded, true);
+    assert.match(call.child.stdin.read().toString(), /Use relative file paths\.\n\nquotes " & % \$value\nsecond line \{prompt\}$/);
+    assert.equal(call.options.env.JUNIE_DATA, 'C:\\data'); assert.equal(call.options.env.EJ_RUNNER_PWD, call.options.cwd);
+    assert.equal(call.options.env.PATH, h.deps.env.PATH);
+  }
 });

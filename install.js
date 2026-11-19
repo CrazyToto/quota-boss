@@ -522,8 +522,13 @@ function offerTools({ ask = lib.askLine, say = console.log, interactive = !!proc
 if (require.main === module) {
   try {
     const args = process.argv.slice(2);
+    const installing = !args.includes('--dry-run') && !args.includes('--uninstall');
+    const newProviders = require('./scripts/new-providers');
+    const before = installing ? newProviders.beforeInstall() : null;
     install({ args });
-    if (!args.includes('--dry-run') && !args.includes('--uninstall')) {
+    if (installing) {
+      // Before the CLI check, so a provider turned on here gets its program offered right away.
+      try { newProviders.recordInstall(before); newProviders.offer(); } catch (error) { console.error(`New provider check skipped (${error.message}); run quota-boss setup later.`); }
       try { offerTools(); } catch (error) { console.error(`Provider CLI check skipped (${error.message}); run /boss-setup later.`); }
       console.log(setupNext() || 'Next: type /boss-setup in Claude Code. It shows the one command that starts the step-by-step setup in your terminal.');
     }

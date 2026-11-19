@@ -25,13 +25,14 @@ test('every shipped CLI template against local executables', { concurrency: true
     const config = { providers: { providers: { [id]: provider } }, models: { models: { [model]: entry?.[1] || { pool: id } } } };
     const prompt = 'write expected.txt; literal "quotes" & % $value\nsecond line {model}';
     // Independent expansion: explicit effort and default model, as requested by the invocation below.
-    const expected = original.cli.args.map(arg => arg.replaceAll('{effort}', 'high').replaceAll('{model}', original.cli.defaultModel || '').replaceAll('{prompt}',
-      'Your working directory is ' + path.resolve(dir) + ' and every file is inside it. Use relative file paths.\n\n' + prompt));
+    const full = 'Your working directory is ' + path.resolve(dir) + ' and every file is inside it. Use relative file paths.\n\n' + prompt;
+    const stdin = original.cli.promptVia === 'stdin';
+    const expected = original.cli.args.map(arg => arg.replaceAll('{effort}', 'high').replaceAll('{model}', original.cli.defaultModel || '').replaceAll('{prompt}', full));
     for (const [scenario, [kind, feedback]] of Object.entries(cases)) {
       const observed = path.join(dir, 'argv.json'), output = path.join(dir, 'expected.txt');
       fs.rmSync(output, { force: true }); fs.rmSync(observed, { force: true });
       const journals = { timing: [], feedback: [], usage: [] };
-      let spawned, killed = false, clock = 0;
+      let spawned, killed = false, clock = 0, input;
       const result = await runner.run(['--provider', id, '--effort', 'high', '--expect-changes'], {
         prompt, env: {}, findProjectConfig: () => ({ directory: dir, allowTrainingProviders: true }), loadConfig: () => config,
         findExecutable: command => { assert.equal(command, original.cli.command); return process.execPath; },
@@ -41,9 +42,12 @@ test('every shipped CLI template against local executables', { concurrency: true
         spawn(file, args, options) {
           if (file !== process.execPath) throw new Error('No external executables permitted');
           assert.deepEqual(args, expected); assert.equal(options.shell, false); assert.equal(options.cwd, dir);
-          assert.equal(args.filter(arg => arg.includes(prompt)).length, 1);
+          // A stdin template carries the prompt only on stdin, never in argv.
+          assert.equal(args.filter(arg => arg.includes(prompt)).length, stdin ? 0 : 1);
+          assert.equal(options.stdio[0], stdin ? 'pipe' : 'ignore');
           assert.ok(!args.some(arg => /^(--(?:yolo|yes|full-auto|no-sandbox|allow-all|skip-permissions)|-y)$/.test(arg)));
           spawned = child.spawn(process.execPath, [path.join(root, 'play.js'), id, scenario, observed, output, ...args], options);
+          if (stdin) { const end = spawned.stdin.end.bind(spawned.stdin); spawned.stdin.end = value => { input = value; return end(value); }; }
           const kill = spawned.kill.bind(spawned);
           spawned.kill = signal => { killed = true; return kill(signal); };
           return spawned;
@@ -57,6 +61,7 @@ test('every shipped CLI template against local executables', { concurrency: true
       assert.equal(journals.timing[0].seconds, 1); assert.equal(journals.timing[0].model, model);
       assert.equal(journals.usage.length, provider.quota.source === 'counter' ? 1 : 0);
       assert.deepEqual(JSON.parse(fs.readFileSync(observed)).args, expected);
+      assert.equal(input, stdin ? full : undefined);
       assert.equal(fs.existsSync(output), ['success', 'partial-write', 'bad-output'].includes(scenario));
       if (scenario === 'timeout') {
         assert.equal(killed, true); assert.ok(spawned.exitCode !== null || spawned.signalCode !== null);

@@ -4,7 +4,7 @@
 // Runs `codex exec` non-interactively with the user's own Codex login, returns only a short report
 // and records the run duration so routing can learn which models are slow.
 //
-//   node codex-run.js --model gpt-6.1-sol --effort medium --sandbox workspace-write \
+//   node codex-run.js --model gpt-6.2-sol --effort medium --sandbox workspace-write \
 //        [--resume <session-id>] [--category implementation --tier normal] [--search cached|live|disabled] < prompt.txt
 
 const fs = require('node:fs');

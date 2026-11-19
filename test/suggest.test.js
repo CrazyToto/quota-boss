@@ -7,7 +7,7 @@ const { suggestions, lines, statusLines, due, remember } = require('../scripts/s
 const NOW = Date.UTC(2026, 10, 17, 12);
 const DAY = 86400000;
 
-function snap({ profile = 'balanced', host = 'claude-code', c5h = 10, cWeek = 20, outcomes = [], missing = [], enabled = {}, result } = {}) {
+function snap({ profile = 'balanced', host = 'claude-code', c5h = 10, cWeek = 20, outcomes = [], missing = [], enabled = {}, result, newProviders, untested } = {}) {
   const providers = { claude: { enabled: true }, codex: { enabled: true }, grok: { enabled: true, cli: { command: 'grok' } },
     perplexity: { enabled: true }, copilot: { enabled: false, cli: { command: 'copilot' } } };
   for (const [id, on] of Object.entries(enabled)) providers[id] = { ...providers[id], enabled: on };
@@ -15,7 +15,7 @@ function snap({ profile = 'balanced', host = 'claude-code', c5h = 10, cWeek = 20
     config: { providers: { providers }, models: { models: { opus: { pool: 'claude' }, gpt: { pool: 'codex' }, 'grok-4': { pool: 'grok' },
       sonar: { pool: 'perplexity' }, 'copilot-x': { pool: 'copilot' } } } },
     limits: { claude: { five_hour: { used_percentage: c5h }, seven_day: { used_percentage: cWeek } } },
-    outcomes, missing, result };
+    outcomes, missing, result, newProviders, untested };
 }
 const fails = (model, n, result = 'fail', age = DAY) => Array.from({ length: n }, (_, i) => ({ t: NOW - age - i * 1000, model, result }));
 const ids = list => list.map(s => s.id);
@@ -77,6 +77,13 @@ test('rule 4: a missing CLI suggests turning the provider off, once per provider
   assert.deepEqual(suggestions(snap({ missing: ['codex'], host: 'codex' }), NOW), []);
 });
 
+test('rule 5: an enabled, installed provider without a passed self-test suggests running it', () => {
+  const [s] = suggestions(snap({ untested: ['grok'] }), NOW);
+  assert.deepEqual(s, { id: 'self-test:grok', text: 'grok is on but has not passed its self-test, so it gets no work', command: 'providers test grok' });
+  assert.deepEqual(ids(suggestions(snap({ untested: ['grok'], missing: ['grok'] }), NOW)), ['provider-off:grok'], 'a missing CLI comes first');
+  assert.deepEqual(suggestions(snap({ untested: ['copilot', 'claude', 'nope'] }), NOW), []);
+});
+
 test('rule 4 reads the routing table: only when every row of the pool lacks the CLI', () => {
   const rows = reasons => ({ candidates: reasons.map(reason => ({ pool: 'grok', reason })) });
   assert.deepEqual(ids(suggestions(snap({ result: rows(['CLI not installed', 'CLI not installed']) }), NOW)), ['provider-off:grok']);
@@ -134,6 +141,32 @@ test('due hides a suggestion shown in the last 24 hours; remember forgets one wh
     assert.deepEqual(due([a], NOW + 2000), [a], 'a went away and came back');
     fs.writeFileSync(path.join(home, 'suggestions.json'), '{bad');
     assert.deepEqual(due([a], NOW), [a], 'a broken file shows everything');
+  } finally {
+    if (saved === undefined) delete process.env.QUOTA_BOSS_HOME; else process.env.QUOTA_BOSS_HOME = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('providers new since an update are suggested until they are answered, explicit switches never', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const lib = require('../scripts/lib'), added = require('../scripts/new-providers');
+  assert.deepEqual(lines(suggestions(snap({ newProviders: ['junie-lite', 'jetbrains'] }), NOW)),
+    ['[quota-boss] Suggestion: New since your update: Junie Lite (free), JetBrains AI (Junie). Propose to the user: quota-boss setup']);
+  assert.deepEqual(suggestions(snap({ newProviders: ['bad id', 'no-help', 5] }), NOW), []);
+  assert.deepEqual(ids(suggestions(snap({ cWeek: 90, newProviders: ['junie-lite'], missing: ['grok'] }), NOW)), ['profile-frugal', 'new-providers']);
+  const saved = process.env.QUOTA_BOSS_HOME, home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-boss-suggest-'));
+  process.env.QUOTA_BOSS_HOME = home;
+  try {
+    const shown = () => ids(suggestions(snap({ newProviders: added.pending() }), NOW));
+    assert.deepEqual(shown(), [], 'without a record nothing is new');
+    const old = Object.keys(lib.BUILTIN_PROVIDERS.providers).filter(id => !['junie-lite', 'jetbrains'].includes(id));
+    added.markKnown(old);
+    assert.deepEqual(added.pending(), ['junie-lite', 'jetbrains']);
+    assert.deepEqual(shown(), ['new-providers']);
+    lib.writeJson(path.join(home, 'config', 'providers.json'), { providers: { jetbrains: { enabled: false } } });
+    assert.deepEqual(added.pending(), ['junie-lite'], 'a provider switched on purpose is never new');
+    added.markKnown(['junie-lite']);
+    assert.deepEqual(shown(), [], 'an answered provider is not suggested again');
   } finally {
     if (saved === undefined) delete process.env.QUOTA_BOSS_HOME; else process.env.QUOTA_BOSS_HOME = saved;
     fs.rmSync(home, { recursive: true, force: true });

@@ -444,7 +444,7 @@ test('saving session and changed-mode prompt show large hints and retain the pre
   const expected = formatTable(routeTable({ ...config, ...p, bossModel: 'claude-opus-5-5', bossEffort: null,
     size: 'medium', limits: quota, history: state.history, selfTests: state.selfTests,
     outcomes: lib.readOutcomes(now, config.thresholds), runs: require('../scripts/latency').readRuns(now), now, previousPool: 'codex' }), { ladder: false });
-  assert.match(require('../scripts/session-routing').build(p, config).table, /implementation=Opus 5\.5\(self\)\[large:GPT-6\.1-Sol\(codex-worker,low,model=gpt-6\.1-sol\)\]/);
+  assert.match(require('../scripts/session-routing').build(p, config).table, /implementation=Opus 5\.5\(self\)\[large:GPT-6\.2-Sol\(codex-worker,low,model=gpt-6\.2-sol\)\]/);
   const changed = invoke(prompt.main, input());
   assert.ok(changed.stdout.includes('. New routing:\n' + expected + '\n'));
   assert.match(changed.stdout, /\[large:/);

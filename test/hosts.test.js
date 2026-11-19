@@ -265,8 +265,8 @@ test.describe('hosts and diagnostics', () => {
     const result = route({ ...config, host: 'codex', limits: { codex: { primary: { used_percent: 85 } } } });
     assert.ok(result.candidates.filter(c => c.pool === 'claude' && c.model !== 'claude-fable-5-2').every(c => c.via === 'claude-worker'));
     const codex = result.candidates.filter(c => c.pool === 'codex');
-    assert.ok(codex.filter(c => c.model === 'gpt-6.1-sol').every(c => c.via === 'self'), 'an unknown boss is assumed to run the cheap near-best model');
-    assert.ok(codex.filter(c => c.model !== 'gpt-6.1-sol').every(c => c.via === 'codex-subagent'));
+    assert.ok(codex.filter(c => c.model === 'gpt-6.2-sol').every(c => c.via === 'self'), 'an unknown boss is assumed to run the cheap near-best model');
+    assert.ok(codex.filter(c => c.model !== 'gpt-6.2-sol').every(c => c.via === 'codex-subagent'));
     assert.match(formatTable(result), /claude-worker/);
     config.providers.providers.grok.enabled = true;
     config.models.models.grok = { pool: 'grok', label: 'Grok', cost: 1, scores: { implementation: 8 } };

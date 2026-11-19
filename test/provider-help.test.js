@@ -66,7 +66,7 @@ test('the Codex host description leaves the worker warning to its switch', () =>
 });
 
 test('docs-only providers explain the self-test gate when enabled', () => {
-  for (const id of ['grok', 'antigravity']) {
+  for (const id of ['grok', 'antigravity', 'junie-lite', 'jetbrains']) {
     for (const text of [help.switchEffect(id, true)]) {
       assert.ok(text.includes("Not run end to end by the maintainer yet, built from the vendor's documentation."));
       assert.ok(text.includes('Quota Boss gives it no work until quota-boss providers test ' + id + ' passes.'));
@@ -74,4 +74,17 @@ test('docs-only providers explain the self-test gate when enabled', () => {
     assert.doesNotMatch(help.switchEffect(id, false), /Not run end to end/);
   }
   assert.doesNotMatch(help.switchEffect('copilot', true), /Not run end to end/);
+});
+
+test('both Junie providers say plainly what is known about training and how to turn data sharing off', () => {
+  for (const id of ['junie-lite', 'jetbrains']) {
+    const text = help.PROVIDER_HELP[id].warning;
+    assert.match(text, /do not say whether/);
+    assert.ok(text.includes('https://www.jetbrains.com/legal/docs/terms/product_data_collection_faq/'));
+    assert.ok(text.includes('Settings | Appearance & Behavior | System Settings | Data Sharing'));
+    assert.equal(defaults.providers[id].trainsOnData, false); assert.equal(defaults.providers[id].enabled, false);
+    assert.equal(defaults.providers[id].evidence, 'docs'); assert.equal(defaults.providers[id].cli.promptVia, 'stdin');
+  }
+  assert.ok(defaults.providers['junie-lite'].cli.args.includes('--model=junie-lite'));
+  assert.match(help.PROVIDER_HELP['junie-lite'].what, /free/i);
 });

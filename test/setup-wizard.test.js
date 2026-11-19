@@ -19,8 +19,8 @@ const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code
  * Plays one setup. Enter takes each default, so `answers` is the list of typed lines in order.
  * `programs` maps tool ids to their state before install; `afterInstall` to their state after it.
  */
-function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError } = {}) {
-  const queue = [...answers], said = [], commands = [], installs = [], logged = [], keyed = [], opened = [], graphs = [];
+function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError, userProviders = {}, use, selfTestPassed = () => true } = {}) {
+  const queue = [...answers], said = [], commands = [], installs = [], logged = [], keyed = [], opened = [], graphs = [], marked = [];
   let installed = false;
   const stateOf = id => (installed && afterInstall[id]) || programs[id] || 'ok';
   const fake = {
@@ -34,14 +34,14 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
     openPage: url => opened.push(url),
   };
   const result = setup([], args => { commands.push(args); const error = runError?.(args); if (error) throw error; return ''; }, {
-    interactive: true, tools: fake, setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}) },
+    interactive: true, tools: fake, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
     ask: question => { said.push(question); return queue.length ? queue.shift() : ''; }, say: line => said.push(line), clear: () => {},
   });
-  return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, left: queue };
+  return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, marked, left: queue };
 }
 
-// Enter on: start, profile, host, 2 own (Codex, Perplexity), 3 other, the free offers question, api question.
-const START = [''], FIRST_TWO = ['', '', ''], OWN = ['', ''], OTHER_NONE = ['', '', ''], FREE_NONE = [''], NO_API = [''];
+// Enter on: start, profile, host, 2 own (Codex, Perplexity), 5 other (Junie Lite first, then 4 plans), the free offers question, api question.
+const START = [''], FIRST_TWO = ['', '', ''], OWN = ['', ''], OTHER_NONE = ['', '', '', '', ''], FREE_NONE = [''], NO_API = [''];
 // Chooses "one by one" (option 4, or 5 when "keep" is listed first), then answers the 10 offers in setup order:
 // 0 Mistral, 1 Zen GLM, 2 Zen DeepSeek, 3 OpenRouter, 4 Cloudflare, then the rest.
 const freeAnswers = (picks, option = '4') => [option, ...Array.from({ length: 10 }, (_, index) => picks[index] ?? '')];
@@ -49,14 +49,22 @@ const MISTRAL = freeAnswers({ 0: 'y' });
 const flow = (other, free, rest) => [...START, ...FIRST_TWO, ...OWN, ...other, ...free, ...NO_API, ...rest];
 
 test('nothing is saved or installed without the one confirmation', () => {
-  const { result, commands, installs } = play(flow(['y', '', ''], FREE_NONE, ['n']), { programs: { copilot: 'missing' } });
+  const { result, commands, installs } = play(flow(['', 'y', '', '', ''], FREE_NONE, ['n']), { programs: { copilot: 'missing' } });
   assert.deepEqual(commands, []);
   assert.deepEqual(installs, []);
   assert.equal(result, TEXT.aborted);
 });
 
+test('a confirmed setup marks every shown provider as offered, an aborted one marks none', () => {
+  const providers = { ...baseProviders(), 'junie-lite': provider(false), jetbrains: provider(false) };
+  const aborted = play(flow(OTHER_NONE, FREE_NONE, ['n']), { providers });
+  assert.deepEqual(aborted.marked, []);
+  const confirmed = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers });
+  assert.deepEqual([...confirmed.marked].sort(), ['antigravity', 'codex', 'copilot', 'grok', 'jetbrains', 'junie-lite', 'kilo-free', 'opencode-free']);
+});
+
 test('one yes installs what the choices need and turns them on', () => {
-  const { said, commands, installs } = play(flow(['y', '', ''], FREE_NONE, ['y']), { programs: { copilot: 'missing' }, afterInstall: { copilot: 'ok' } });
+  const { said, commands, installs } = play(flow(['', 'y', '', '', ''], FREE_NONE, ['y']), { programs: { copilot: 'missing' }, afterInstall: { copilot: 'ok' } });
   assert.deepEqual(installs, ['copilot']);
   assert.deepEqual(commands, [['on', '--host', 'claude-code', 'balanced'], ['use', 'copilot', 'on']]);
   assert.match(said, /npm install copilot/);
@@ -64,7 +72,7 @@ test('one yes installs what the choices need and turns them on', () => {
 });
 
 test('a provider whose program is missing afterwards stays off and says why', () => {
-  const { said, commands } = play(flow(['y', '', ''], FREE_NONE, ['y']), { programs: { copilot: 'missing' }, afterInstall: { copilot: 'missing' }, installOutput: '- copilot: FAILED (EACCES)' });
+  const { said, commands } = play(flow(['', 'y', '', '', ''], FREE_NONE, ['y']), { programs: { copilot: 'missing' }, afterInstall: { copilot: 'missing' }, installOutput: '- copilot: FAILED (EACCES)' });
   assert.deepEqual(commands, [['on', '--host', 'claude-code', 'balanced']]);
   assert.match(said, /FAILED \(EACCES\)/);
   assert.match(said, /Stayed off because the program is missing: GitHub Copilot/);
@@ -369,4 +377,61 @@ test('Claude Code restores its boss pool without a Claude switch', () => {
   const result = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: { ...baseProviders(), claude: provider(false) } });
   assert.ok(result.commands.some(c => c.join(' ') === 'use claude on'));
   assert.doesNotMatch(result.said, /Claude models \(Opus, Sonnet, Haiku\)/);
+});
+
+const withLite = () => ({ ...baseProviders(), 'junie-lite': provider(false), jetbrains: provider(false) });
+
+test('Junie Lite is preselected and turned on when the provider exists and was never turned off', () => {
+  const { said, commands } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: withLite() });
+  assert.match(said, /Junie Lite \(free\) \(on\)/);
+  assert.deepEqual(commands.slice(1), [['use', 'junie-lite', 'on']]);
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: withLite(), programs: { junie: 'missing' } }).commands.slice(1), []);
+});
+
+test('an explicit off for Junie Lite is kept, from the user providers file or the project', () => {
+  for (const options of [{ userProviders: { providers: { 'junie-lite': { enabled: false } } } }, { use: { providersOff: ['junie-lite'] } }]) {
+    const { said, commands } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: withLite(), ...options });
+    assert.match(said, /Junie Lite \(free\) \(off\)/);
+    assert.deepEqual(commands.slice(1), []);
+  }
+  assert.deepEqual(play(flow(['n', '', '', '', ''], FREE_NONE, ['y']), { providers: withLite() }).commands.slice(1), []);
+  assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['y'])).commands.slice(1), []);
+});
+
+test('the Junie Lite screen has no plan note, JetBrains AI has one', () => {
+  const { said, commands } = play(flow(['', '', '', '', 'y'], FREE_NONE, ['y']), { providers: withLite() });
+  const screen = name => said.slice(said.indexOf(name), said.indexOf(TEXT.turnOn, said.indexOf(name)));
+  assert.ok(!screen('Junie Lite (free) (').includes(TEXT.onlyWithPlan));
+  assert.ok(screen('JetBrains AI (Junie) (').includes(TEXT.onlyWithPlan));
+  assert.ok(said.indexOf('Junie Lite (free) (') < said.indexOf('GitHub Copilot ('));
+  assert.deepEqual(commands.slice(1), [['use', 'junie-lite', 'on'], ['use', 'jetbrains', 'on']]);
+});
+
+test('a provider that needs a self-test is turned on without one and tested after the login, unless that login stays open', () => {
+  const docs = () => ({ ...baseProviders(), 'junie-lite': provider(false, { evidence: 'docs', cli: { command: 'junie' } }), jetbrains: provider(false) });
+  const done = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: docs() });
+  assert.deepEqual(done.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test'], ['providers', 'test', 'junie-lite']]);
+  assert.match(done.said, /Testing Junie Lite/);
+  const pending = [{ id: 'junie', command: 'junie', checkable: true, optional: false, newWindow: true }];
+  const open = play(flow(OTHER_NONE, FREE_NONE, ['y', 'n']), { providers: docs(), pending });
+  assert.deepEqual(open.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test']]);
+  assert.match(open.said, /Still not logged in: Junie CLI \(junie\)/);
+  const declined = play(flow(OTHER_NONE, FREE_NONE, ['y', 'n']), { providers: docs(), pending: [{ ...pending[0], checkable: false }] });
+  assert.deepEqual(declined.commands.slice(1), [['use', 'junie-lite', 'on', '--no-test']], 'a declined login that cannot be checked skips the test');
+});
+
+test('a provider an update turned on without a self-test is tested by setup; one that passed is not', () => {
+  const on = () => ({ ...baseProviders(), 'junie-lite': provider(true, { evidence: 'docs', cli: { command: 'junie' } }), jetbrains: provider(false) });
+  const waiting = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: on(), selfTestPassed: () => false });
+  assert.deepEqual(waiting.commands.slice(1), [['providers', 'test', 'junie-lite']]);
+  const passed = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: on() });
+  assert.deepEqual(passed.commands.slice(1), []);
+});
+
+test('the Junie login shows its hint and runs junie on yes', () => {
+  const pending = [{ id: 'junie', command: 'junie', hint: 'In Junie choose "Continue with JetBrains account", log in in your browser, then type /exit.', checkable: true, optional: false, newWindow: true }];
+  const { said, logged, opened } = play(flow(OTHER_NONE, FREE_NONE, ['y', 'y']), { providers: withLite(), pending });
+  assert.match(said, /Login 1 of 1: Junie CLI\.\s+This\s+runs:\s+junie/);
+  assert.match(said, /Continue\s+with\s+JetBrains\s+account/);
+  assert.deepEqual(logged, ['junie']); assert.deepEqual(opened, []);
 });

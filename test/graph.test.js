@@ -402,11 +402,11 @@ test('the setup wizard continues and prints the skipped graph line once', t => {
   const outside = path.join(f.root, 'victim');
   fs.writeFileSync(outside, 'keep');
   if (!symlink(t, outside, path.join(path.dirname(f.file), 'linked'), 'file')) return;
-  const answers = ['', '', '', 'y', ...Array(7).fill(''), 'y'];
+  const answers = ['', '', '', 'y', ...Array(9).fill(''), 'y'];
   const said = [], commands = [];
   const { setup } = require('../scripts/setup-wizard');
   const result = setup([], args => { commands.push(args); return ''; }, {
-    interactive: true,
+    interactive: true, markKnown: () => {},
     options: f.options,
     project: { directory: f.directory, profile: 'balanced', host: 'claude-code',
       allowTrainingProviders: false },

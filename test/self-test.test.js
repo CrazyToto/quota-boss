@@ -211,6 +211,18 @@ test.describe('provider self-tests', () => {
     };
     assert.match(selfTest('trial', opts), /PASS tiny 0.0 s/);
   });
+  test('a stdin template gets the prompt on stdin and never in argv', () => {
+    config.providers.providers.trial.cli = { command: 'trial', promptVia: 'stdin', args: ['--model={model}'] };
+    delete config.models.models.tiny.efforts;
+    const opts = options();
+    opts.spawnSync = (_file, args, spawnOptions) => {
+      if (args[0] === 'init') { directories.push(spawnOptions.cwd); return { status: 1 }; }
+      assert.deepEqual(args, ['--model=vendor/tiny']); assert.deepEqual(spawnOptions.stdio, ['pipe', 'pipe', 'pipe']);
+      fs.writeFileSync(path.join(spawnOptions.cwd, 'quota-boss-self-test.txt'), spawnOptions.input.match(/[a-f0-9]{48}/)[0]);
+      return { status: 0 };
+    };
+    assert.match(selfTest('trial', opts), /PASS tiny/);
+  });
   test('providers command validates options before any CLI can run', () => {
     for (const args of [['providers', 'test'], ['providers', 'test', 'grok', '--bad', 'x'], ['providers', 'test', 'grok', '--model'],
       ['providers', 'test', 'grok', '--effort', 'low', '--effort', 'high']]) assert.throws(() => cli.run(args), /Usage/);

@@ -13,6 +13,7 @@ const MAX_PROMPT = 200 * 1024;
 const TIMEOUT_MS = 10 * 60 * 1000;
 const TAIL_CHARS = 256 * 1024;
 const NO_WORK = /auto-rejecting|rejected permission/i;
+const AUTH_MISSING = /^Cannot find authorization\. Please authenticate before running Junie\.\r?$/m;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
 const FAILURES = [
@@ -71,7 +72,7 @@ function selection(options, config, project) {
   })) {
     throw new Error('CLI template disables sandbox or permission checks.');
   }
-  return { provider, cli, claude, model, args, effort: options.effort || cli.defaultEffort || '-' };
+  return { provider, cli, claude, model, args, stdin: claude || cli.promptVia === 'stdin', effort: options.effort || cli.defaultEffort || '-' };
 }
 
 /** npm shims are data, never shell code: accept only a literal JS entry below node_modules. */
@@ -206,10 +207,12 @@ function execute(plan, deps = {}) {
   });
 }
 
-function classify(result, expectChanges, before, after, env, claude = false) {
+function classify(result, expectChanges, before, after, env, claude = false, junie = false) {
   if (result.timedOut) return { kind: 'limited', reason: '10-minute timeout' };
   if (result.noWork || (!claude && NO_WORK.test(result.stdout || '')) || NO_WORK.test(result.stderr || '')) return { kind: 'no-work', reason: 'permission rejected' };
   if (result.error) return { kind: 'failed', reason: 'could not run CLI' + (result.error.code ? ' (' + result.error.code + ')' : '') };
+  // Junie prints its login hint and still exits 0, so this one exact line counts even on success.
+  if (junie && ['stdout', 'stderr'].some(stream => AUTH_MISSING.test(result[stream] || ''))) return { kind: 'unavailable', reason: 'not logged in' };
   let envelopeError;
   if (claude && result.claude && (result.claude.is_error === true || result.claude.subtype !== 'success')) {
     const status = result.claude.api_error_status, subtype = result.claude.subtype;
@@ -256,8 +259,10 @@ async function run(argv, deps = {}) {
   if (Buffer.byteLength(prompt) < 1 || Buffer.byteLength(prompt) > MAX_PROMPT || prompt.includes('\0')) throw new Error('Prompt on stdin must be 1 byte to 200 KiB, without NUL.');
   const fullPrompt = 'Your working directory is ' + cwd + ' and every file is inside it. Use relative file paths.\n\n' + prompt;
   const promptKiB = platform === 'win32' ? 24 : 100;
-  if (!selected.claude && Buffer.byteLength(fullPrompt) > promptKiB * 1024) throw new Error('Final prompt exceeds the ' + promptKiB + ' KiB argv limit on ' + platform + '.');
-  const executable = (deps.findExecutable || lib.findExecutable)(selected.cli.command, env, platform, cwd);
+  if (!selected.stdin && Buffer.byteLength(fullPrompt) > promptKiB * 1024) throw new Error('Final prompt exceeds the ' + promptKiB + ' KiB argv limit on ' + platform + '.');
+  // A Windows .bat launcher is replaced by the native exe it would start, with the environment it would set.
+  const native = (deps.nativeLauncher || lib.nativeLauncher)(selected.cli.command, env, platform, cwd);
+  const executable = native ? native.file : (deps.findExecutable || lib.findExecutable)(selected.cli.command, env, platform, cwd);
   if (!executable) throw new Error('CLI not found on the trusted PATH.');
   const target = invocation(executable, platform);
   const args = selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt));
@@ -265,7 +270,7 @@ async function run(argv, deps = {}) {
   const before = options['expect-changes'] ? status() : null;
   const now = deps.now || Date.now;
   const started = now();
-  const result = await execute(spawnPlan(target, args, env, platform, cwd, selected.claude ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
+  const result = await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
   const seconds = Math.max(0, Math.round((now() - started) / 1000));
   const after = options['expect-changes'] ? status() : null;
   if (selected.claude && !result.stdoutTruncated) {
@@ -279,7 +284,7 @@ async function run(argv, deps = {}) {
   const tokens = usage && ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'].some(key => validNumber(usage[key]))
     ? { input: (validNumber(usage.input_tokens) ? usage.input_tokens : 0) + (validNumber(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0),
       cached: validNumber(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0, output: validNumber(usage.output_tokens) ? usage.output_tokens : 0 } : null;
-  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude);
+  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude, path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'junie');
   const ok = outcome.kind === 'ok';
   const recording = [], errors = [];
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };

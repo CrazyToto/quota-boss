@@ -656,10 +656,20 @@ function bossScore(model) {
   return 0.6 * score('architecture') + 0.4 * score('review');
 }
 
-/** Candidates need id, score and cost. Within half a point of the best, the cheapest boss wins. */
+/** Higher version first, e.g. gpt-6.10-sol before gpt-6.9-sol; 0 when equal. */
+function newerFirst(a, b) {
+  const x = (a.match(/\d+/g) || []).map(Number), y = (b.match(/\d+/g) || []).map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (y[i] || 0) - (x[i] || 0);
+  return 0;
+}
+// gpt-6-sol and gpt-6.2-sol share the family gpt-#-sol.
+const familyKey = id => id.replace(/\d+(\.\d+)*/g, '#');
+
+/** Candidates need id, score and cost. Within half a point of the best, the cheapest boss wins, on a tie the newest of a family. */
 function pickBoss(candidates) {
   const top = Math.max(...candidates.map(c => c.score));
-  return candidates.filter(c => c.score >= top - 0.5).sort((a, b) => a.cost - b.cost || b.score - a.score || a.id.localeCompare(b.id))[0] ?? null;
+  return candidates.filter(c => c.score >= top - 0.5).sort((a, b) => a.cost - b.cost || b.score - a.score
+    || (familyKey(a.id) === familyKey(b.id) ? newerFirst(a.id, b.id) : 0) || a.id.localeCompare(b.id))[0] ?? null;
 }
 
 /** Read user-visible cache models for the models CLI only. */
@@ -911,7 +921,9 @@ function validateProviders(config) {
         || p.cli.defaultEffort !== undefined && !CLI_EFFORTS.includes(p.cli.defaultEffort)
         || !Array.isArray(p.cli.args) || p.cli.args.length > 100
         || p.cli.args.some(a => typeof a !== 'string' || a.length > 4096 || /[\x00-\x1f\x7f]/.test(a))
-        || !p.cli.args.some(a => a.includes('{prompt}'))) throw new Error('Invalid CLI argument template.');
+        || p.cli.promptVia !== undefined && p.cli.promptVia !== 'stdin'
+        // A stdin prompt must not also land in argv, and an argv prompt needs its placeholder.
+        || p.cli.args.some(a => a.includes('{prompt}')) === (p.cli.promptVia === 'stdin')) throw new Error('Invalid CLI argument template.');
     }
   }
   for (const id of Object.keys(config.caps ?? {})) {
@@ -1174,13 +1186,69 @@ function trustedPathEntries(env, platform, cwd) {
   });
   return { key, entries };
 }
+/**
+ * Windows launchers that are .bat files re-parsing %* (unsafe for a prompt): the native exe they start instead, found
+ * through the version file in the tool's data folder, plus the environment the launcher sets.
+ */
+const NATIVE_LAUNCHERS = Object.freeze({
+  // Same precedence as the shim: JUNIE_DATA_DIR, then JUNIE_DATA, then the home default; JUNIE_VERSION beats `current`.
+  junie: { dataEnv: ['JUNIE_DATA_DIR', 'JUNIE_DATA'], versionEnv: 'JUNIE_VERSION', dataHome: ['.local', 'share', 'junie'], exe: ['junie', 'junie.exe'], env: { JUNIE_DATA: 'data', EJ_RUNNER_PWD: 'cwd' } },
+});
+/** Windows environment names ignore case, so a plain object copy needs a case-blind lookup. */
+function envValue(env, name, platform = process.platform) {
+  if (platform !== 'win32') return env[name];
+  const key = Object.keys(env).find(k => k.toUpperCase() === name.toUpperCase());
+  return key === undefined ? undefined : env[key];
+}
+/** env plus extra, dropping Windows case variants of the extra names so the child sees one value each. */
+function mergeEnv(env, extra, platform = process.platform) {
+  const upper = new Set(Object.keys(extra).map(k => k.toUpperCase()));
+  const base = platform === 'win32' ? Object.fromEntries(Object.entries(env).filter(([k]) => !upper.has(k.toUpperCase()))) : env;
+  return { ...base, ...extra };
+}
+// Inherited variables a CLI must not see: a JUNIE_API_KEY token bills paid credits instead of the account login, and
+// JUNIE_PROJECT could point Junie at another folder than the checked working folder.
+const CHILD_ENV_DROP = Object.freeze({ junie: ['JUNIE_API_KEY', 'JUNIE_PROJECT'] });
+/** The environment a provider CLI starts with: the native launcher's values merged in, unsafe inherited names dropped. */
+function childEnv(command, env, native, platform = process.platform) {
+  const merged = native ? mergeEnv(env, native.env, platform) : env;
+  const drop = Object.hasOwn(CHILD_ENV_DROP, command) ? CHILD_ENV_DROP[command] : [];
+  if (!drop.length) return merged;
+  const same = (a, b) => platform === 'win32' ? a.toUpperCase() === b.toUpperCase() : a === b;
+  return Object.fromEntries(Object.entries(merged).filter(([key]) => !drop.some(name => same(key, name))));
+}
+function nativeLauncher(name, env = process.env, platform = process.platform, cwd = process.cwd()) {
+  if (platform !== 'win32' || !Object.hasOwn(NATIVE_LAUNCHERS, name)) return null;
+  const spec = NATIVE_LAUNCHERS[name], home = envValue(env, 'USERPROFILE', platform);
+  const data = spec.dataEnv.map(key => envValue(env, key, platform)).find(Boolean) || (home ? path.join(home, ...spec.dataHome) : '');
+  if (!absoluteExecutablePath(data, platform)) return null;
+  try {
+    const root = fs.realpathSync(data), here = path.resolve(cwd);
+    let current = null;
+    try { current = fs.realpathSync(here); } catch { /* a missing cwd is no alias */ }
+    // Stricter than the PATH rule: nothing inside the working folder (a repo) may supply the program.
+    if (!fs.statSync(root).isDirectory() || current !== null && isInsideDirectory(root, current, platform)) return null;
+    const version = (envValue(env, spec.versionEnv, platform) || readBounded(path.join(root, 'current'), 64)).trim();
+    if (!/^[0-9]+(\.[0-9]+)*$/.test(version)) return null;
+    const file = path.join(root, 'versions', version, ...spec.exe);
+    regularStat(file);
+    // A linked version folder must not lead out of the data folder.
+    const real = fs.realpathSync(file);
+    if (!isInsideDirectory(real, root, platform) || !regularStat(real).isFile()) return null;
+    const values = { data: root, cwd: here };
+    return { file: real, env: Object.fromEntries(Object.entries(spec.env).map(([key, value]) => [key, values[value]])) };
+  } catch { return null; }
+}
 /** Resolve only absolute PATH directories, excluding cwd and aliases of cwd. */
 function findExecutable(name, env = process.env, platform = process.platform, cwd = process.cwd()) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) return null;
+  // A tool with an unsafe launcher: its native exe, else only a real .exe on the trusted PATH, never a script shim.
+  const native = platform === 'win32' && Object.hasOwn(NATIVE_LAUNCHERS, name);
+  if (native) { const found = nativeLauncher(name, env, platform, cwd); if (found) return found.file; }
   const p = platform === 'win32' ? path.win32 : path.posix;
   for (const item of trustedPathEntries(env, platform, cwd).entries) {
     const dir = item.replace(/^"|"$/g, '');
-    const extensions = platform === 'win32' ? (/\.(exe|cmd|ps1)$/i.test(name) ? [''] : ['.exe', '.cmd', '.ps1']) : [''];
+    const extensions = native ? ['.exe'] : platform === 'win32' ? (/\.(exe|cmd|ps1)$/i.test(name) ? [''] : ['.exe', '.cmd', '.ps1']) : [''];
     for (const ext of extensions) {
       const file = p.join(dir, name + ext);
       try {
@@ -1284,9 +1352,9 @@ function askLine(question) {
   try { return buffer.toString('utf8', 0, fs.readSync(0, buffer, 0, buffer.length, null)).trim(); } catch { return ''; }
 }
 
-module.exports = { cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
-  sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, limitValues,
+  sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };
 
 /** Read-only revision evidence; Git never refreshes the index or writes objects. */

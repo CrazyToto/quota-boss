@@ -536,3 +536,88 @@ test('a link the user made is refused as a parent, and a link in the temporary f
     assert.equal(fs.existsSync(path.join(root, 'real', 'b.json')), false);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('Windows Junie resolves only to the native exe of the current version inside its data folder', { skip: process.platform !== 'win32' && 'Windows paths only' }, t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qb-junie-'))), data = path.join(root, 'data'), cwd = path.join(root, 'work');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const exe = version => path.join(data, 'versions', version, 'junie', 'junie.exe');
+  fs.mkdirSync(path.dirname(exe('4100.8')), { recursive: true }); fs.writeFileSync(exe('4100.8'), ''); fs.mkdirSync(cwd);
+  fs.writeFileSync(path.join(data, 'junie.bat'), '@echo off'); fs.writeFileSync(path.join(root, 'junie.bat'), '@echo off');
+  const env = { JUNIE_DATA_DIR: data, PATH: root, PATHEXT: '.BAT' }, resolve = () => lib.nativeLauncher('junie', env, 'win32', cwd);
+  const write = version => fs.writeFileSync(path.join(data, 'current'), version);
+  assert.equal(resolve(), null, 'missing current');
+  write('4100.8\r\n');
+  assert.deepEqual(resolve(), { file: exe('4100.8'), env: { JUNIE_DATA: data, EJ_RUNNER_PWD: cwd } });
+  assert.equal(lib.findExecutable('junie', env, 'win32', cwd), exe('4100.8'));
+  assert.equal(lib.nativeLauncher('junie', env, 'linux', cwd), null); assert.equal(lib.nativeLauncher('grok', env, 'win32', cwd), null);
+  assert.equal(lib.nativeLauncher('junie', { USERPROFILE: path.join(root, 'nobody') }, 'win32', cwd), null);
+  assert.equal(lib.nativeLauncher('junie', { ...env, JUNIE_DATA_DIR: 'relative' }, 'win32', cwd), null);
+  assert.equal(lib.nativeLauncher('junie', env, 'win32', data), null, 'the working folder never supplies the program');
+  for (const bad of ['..\\x','../4100.8', '4100.8/../4100.8', '', 'v1', '4100.8 x']) { write(bad); assert.equal(resolve(), null, bad); }
+  write('4200'); assert.equal(resolve(), null, 'missing exe');
+  fs.mkdirSync(exe('4200'), { recursive: true }); assert.equal(resolve(), null, 'exe is a folder');
+  fs.rmSync(exe('4200'), { recursive: true });
+  // Only the native exe counts: the .bat launcher on PATH or in the data folder is never returned.
+  assert.equal(lib.findExecutable('junie', env, 'win32', cwd), null);
+  const outside = path.join(root, 'outside', 'junie'); fs.mkdirSync(outside, { recursive: true }); fs.writeFileSync(path.join(outside, 'junie.exe'), '');
+  let linked = true;
+  try { fs.symlinkSync(path.join(root, 'outside'), path.join(data, 'versions', '4300'), 'junction'); } catch { linked = false; }
+  if (linked) { write('4300'); assert.equal(resolve(), null, 'linked version folder leads out'); }
+  try { fs.mkdirSync(path.dirname(exe('4400')), { recursive: true }); fs.symlinkSync(path.join(outside, 'junie.exe'), exe('4400'), 'file'); write('4400'); assert.equal(resolve(), null, 'linked exe leads out'); }
+  catch (error) { if (error.code !== 'EPERM') throw error; }
+  if (!linked) t.diagnostic('folder links unavailable');
+});
+
+test('Windows Junie follows the shim precedence, never trusts a data folder inside the repo, and falls back to a PATH exe only', { skip: process.platform !== 'win32' && 'Windows paths only' }, t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qb-junie2-'))), cwd = path.join(root, 'work');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const install = (data, version) => {
+    const file = path.join(data, 'versions', version, 'junie', 'junie.exe');
+    fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, ''); fs.writeFileSync(path.join(data, 'current'), version);
+    return file;
+  };
+  const a = path.join(root, 'a'), b = path.join(root, 'b'), inRepo = path.join(cwd, 'sub', 'data');
+  const fromA = install(a, '1.0'), fromB = install(b, '2.0'), fromRepo = install(inRepo, '3.0'), fromA9 = install(a, '9.0');
+  fs.writeFileSync(path.join(a, 'current'), '1.0');
+  const file = env => lib.nativeLauncher('junie', env, 'win32', cwd)?.file ?? null;
+  assert.equal(file({ JUNIE_DATA: a }), fromA, 'JUNIE_DATA alone is used like the shim does');
+  assert.equal(file({ JUNIE_DATA: a, JUNIE_DATA_DIR: b }), fromB, 'JUNIE_DATA_DIR wins');
+  assert.equal(file({ junie_data_dir: b }), fromB, 'names ignore case on Windows');
+  assert.equal(file({ JUNIE_DATA: a, JUNIE_VERSION: '9.0' }), fromA9, 'JUNIE_VERSION beats current');
+  assert.equal(file({ JUNIE_DATA: a, JUNIE_VERSION: '..\\..\\b\\versions\\2.0' }), null, 'JUNIE_VERSION is validated too');
+  assert.equal(file({ JUNIE_DATA_DIR: inRepo }), null, 'a data folder inside the working folder never supplies the program');
+  assert.equal(fs.existsSync(fromRepo), true);
+  // Fallback when the data layout is unknown: a real exe on the trusted PATH, but never a .bat/.cmd/.ps1 shim.
+  const bin = path.join(root, 'bin'); fs.mkdirSync(bin);
+  for (const ext of ['.bat', '.cmd', '.ps1']) fs.writeFileSync(path.join(bin, 'junie' + ext), '@echo off');
+  const env = { USERPROFILE: path.join(root, 'nobody'), PATH: bin };
+  assert.equal(lib.findExecutable('junie', env, 'win32', cwd), null);
+  fs.writeFileSync(path.join(bin, 'junie.exe'), '');
+  assert.equal(lib.findExecutable('junie', env, 'win32', cwd), path.join(bin, 'junie.exe'));
+  assert.equal(lib.findExecutable('junie', { ...env, JUNIE_DATA: a }, 'win32', cwd), fromA, 'the data folder exe comes first');
+});
+
+test('childEnv drops the Junie token and project for Junie only, ignoring case on Windows', () => {
+  const env = { junie_api_key: 'k', JUNIE_PROJECT: '/other', KEEP: '1' };
+  assert.deepEqual(lib.childEnv('junie', env, null, 'win32'), { KEEP: '1' });
+  assert.deepEqual(lib.childEnv('junie', env, null, 'linux'), { junie_api_key: 'k', KEEP: '1' });
+  assert.deepEqual(lib.childEnv('junie', { JUNIE_API_KEY: 'k' }, { env: { JUNIE_DATA: 'd' } }, 'win32'), { JUNIE_DATA: 'd' });
+  assert.equal(lib.childEnv('codex', env, null, 'win32'), env);
+});
+
+test('mergeEnv leaves one value per Windows name', () => {
+  assert.deepEqual(lib.mergeEnv({ Junie_Data: 'old', ej_runner_pwd: 'x', KEEP: '1' }, { JUNIE_DATA: 'new', EJ_RUNNER_PWD: 'y' }, 'win32'),
+    { KEEP: '1', JUNIE_DATA: 'new', EJ_RUNNER_PWD: 'y' });
+  assert.deepEqual(lib.mergeEnv({ junie_data: 'a' }, { JUNIE_DATA: 'b' }, 'linux'), { junie_data: 'a', JUNIE_DATA: 'b' });
+  assert.equal(lib.envValue({ Path: 'p' }, 'PATH', 'win32'), 'p');
+  assert.equal(lib.envValue({ Path: 'p' }, 'PATH', 'linux'), undefined);
+});
+
+test('a stdin prompt template must not carry {prompt}, and an argv template must', () => {
+  const check = cli => () => lib.validateProviders({ providers: { trial: { label: 'Trial', kind: 'free', enabled: false, quota: { source: 'none' },
+    worker: 'cli-worker', tos: 'official-cli', trainsOnData: false, cli: { command: 'trial', ...cli } } } });
+  assert.doesNotThrow(check({ promptVia: 'stdin', args: ['--model=x'] }));
+  assert.doesNotThrow(check({ args: ['-p', '{prompt}'] }));
+  for (const cli of [{ promptVia: 'stdin', args: ['-p', '{prompt}'] }, { args: ['-p'] }, { promptVia: 'argv', args: ['-p', '{prompt}'] }, { promptVia: 'file', args: [] }])
+    assert.throws(check(cli), /Invalid CLI argument template/, JSON.stringify(cli));
+});

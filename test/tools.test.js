@@ -307,3 +307,37 @@ test('non-uv tool installed but not found yet shows generic message', () => {
   const options = { platform: 'linux', env: {}, find, spawnSync };
   assert.match(tools.install(['opencode-free'], options), /installed; open a new terminal if it is not found yet/);
 });
+
+test('Junie is one paste-only CLI for both JetBrains providers, logged in with the JetBrains account', () => {
+  assert.deepEqual(tools.enabledIds({ providers: { providers: { 'junie-lite': { enabled: true, cli: { command: 'junie' } }, jetbrains: { enabled: true, cli: { command: 'junie' } } } } }), ['junie']);
+  const m = machine({ have: { junie: '1.0.0' } });
+  const [junie] = tools.check(['junie'], { ...m.options, find: () => null });
+  assert.equal(junie.state, 'manual');
+  assert.match(junie.note, /curl -fsSL https:\/\/junie\.jetbrains\.com\/install\.sh \| bash/);
+  assert.match(tools.check(['junie'], { ...m.options, find: () => null, platform: 'win32' })[0].note, /irm https:\/\/junie\.jetbrains\.com\/install\.ps1 \| iex/);
+  // Outside Windows the login sits in the OS keychain: it cannot be checked, and a token does not count as a login.
+  for (const env of [{}, { JUNIE_API_KEY: 'x' }]) {
+    assert.match(tools.logins(['junie'], { ...m.options, env }), /junie: cannot be checked automatically; if not done yet, run: junie$/);
+    assert.deepEqual(tools.pendingLogins(['junie'], { ...m.options, env }).map(login => [login.id, login.command, login.checkable, /JetBrains account/.test(login.hint)]),
+      [['junie', 'junie', false, true]]);
+  }
+  // On Windows the saved login folder is the check: missing, a plain file, empty or only empty files means not logged in.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-junie-'));
+  try {
+    const win = { ...m.options, platform: 'win32', home }, store = path.join(home, '.junie', 'dpapi_credentials');
+    assert.equal(tools.logins(['junie'], win), '- junie: NOT logged in, run: junie');
+    assert.deepEqual(tools.pendingLogins(['junie'], win).map(login => [login.command, login.checkable, login.newWindow]), [['junie', true, true]]);
+    fs.mkdirSync(path.join(home, '.junie'));
+    fs.writeFileSync(store, 'sealed');
+    assert.equal(tools.logins(['junie'], win), '- junie: NOT logged in, run: junie');
+    fs.rmSync(store); fs.mkdirSync(store);
+    assert.equal(tools.logins(['junie'], win), '- junie: NOT logged in, run: junie');
+    fs.writeFileSync(path.join(store, 'a'), ''); fs.mkdirSync(path.join(store, 'sub'));
+    assert.equal(tools.logins(['junie'], win), '- junie: NOT logged in, run: junie');
+    fs.writeFileSync(path.join(store, 'b'), 'sealed');
+    assert.equal(tools.logins(['junie'], win), '- junie: logged in');
+    assert.deepEqual(tools.pendingLogins(['junie'], win), []);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  // The login check never starts the CLI.
+  assert.ok(!m.calls.some(call => call[0] === 'junie' && call[1] !== '--version'));
+});

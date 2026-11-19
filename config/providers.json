@@ -122,6 +122,52 @@
       "tos": "official-cli",
       "trainsOnData": false
     },
+    "junie-lite": {
+      "evidence": "docs",
+      "label": "Junie Lite (JetBrains, free)",
+      "kind": "free",
+      "enabled": false,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "$comment": "The account default model uses paid credits, so the free model is always named. The task comes on stdin.",
+        "command": "junie",
+        "promptVia": "stdin",
+        "args": [
+          "--input-format=text",
+          "--output-format=text",
+          "--model=junie-lite"
+        ]
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
+    "jetbrains": {
+      "evidence": "docs",
+      "label": "JetBrains AI (Junie)",
+      "kind": "subscription",
+      "enabled": false,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "$comment": "The task comes on stdin.",
+        "command": "junie",
+        "promptVia": "stdin",
+        "args": [
+          "--input-format=text",
+          "--output-format=text",
+          "--model={model}",
+          "--effort={effort}"
+        ],
+        "defaultModel": "gpt-6-luna"
+      },
+      "tos": "official-cli",
+      "trainsOnData": false
+    },
     "openrouter": {
       "label": "OpenRouter",
       "kind": "api",

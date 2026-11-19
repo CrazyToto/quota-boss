@@ -47,7 +47,9 @@ npx quota-boss@latest
 
 This works the same on Windows, macOS and Linux. To see first what would change, add `--dry-run`. The installer backs
 up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
-everything again. Run the first command again to update.
+everything again. Run the first command again to update. When an update adds providers, it asks once per new provider
+(`Turn on? [y/N]`; Junie Lite defaults to yes). Without a terminal it names them and points to `quota-boss setup`, and
+the session start suggests that until you answer. Providers you turned on or off before are never asked about.
 
 <details>
 <summary>Other ways to install</summary>
@@ -106,7 +108,7 @@ The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `
 ```
 You ─► Claude Code (Opus = boss: plan, classify, delegate, verify)
         │  every prompt: "Claude 5h 41% wk 49% | Codex 5h 3% wk 12% | profile balanced | mode normal"
-        ├─► codex-worker  ─► Codex (GPT-6.1-Sol, effort medium) ─► implements, runs tests, 10-line report
+        ├─► codex-worker  ─► Codex (GPT-6.2-Sol, effort medium) ─► implements, runs tests, 10-line report
         ├─► gpt-advisor   ─► Codex read-only ─► independent second opinion
         ├─► sonnet-worker ─► Sonnet, larger implementation
         ├─► haiku-worker  ─► Haiku, small edits, tests, docs
@@ -256,6 +258,6 @@ your keys, and on [models.dev](https://github.com/anomalyco/models.dev) for chec
 
 [MIT](LICENSE)
 
-Not affiliated with or endorsed by Anthropic, OpenAI, Perplexity, GitHub, Google, xAI, Mistral, OpenRouter,
+Not affiliated with or endorsed by Anthropic, OpenAI, Perplexity, GitHub, Google, xAI, JetBrains, Mistral, OpenRouter,
 Cloudflare, Cohere, NVIDIA, Z.ai, OpenCode or Ollama. Their names are used only to say which services this tool can
 work with.

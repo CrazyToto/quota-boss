@@ -5,6 +5,7 @@
 const yours = 'Your subscriptions', more = 'Other subscriptions', free = 'Free offers';
 
 const UNCONFIRMED_TRAINING = 'We could not confirm whether it trains on your data, so Quota Boss treats it as if it does.';
+const JUNIE_DATA = 'JetBrains\' docs do not say whether Junie CLI data is used for training. Its product data collection FAQ says detailed code-related data sharing is on by default for non-commercial licenses (free accounts, likely student licenses too); turn it off in a JetBrains IDE under Settings | Appearance & Behavior | System Settings | Data Sharing. Source: https://www.jetbrains.com/legal/docs/terms/product_data_collection_faq/';
 const SCRIPTED_CLAUDE_WARNING = 'Claude then runs as a scripted helper. Anthropic\'s consumer terms allow scripted access only with an API key or where Anthropic explicitly permits it, so a Claude plan may be at risk. Set ANTHROPIC_API_KEY for the helper, or run: quota-boss use claude off';
 
 const PROVIDER_HELP = Object.freeze({
@@ -20,6 +21,12 @@ const PROVIDER_HELP = Object.freeze({
     on: 'Source-heavy research uses your Perplexity plan instead of Claude or ChatGPT.',
     off: 'Claude does research with its own web search, which uses Claude limit.',
     catch: 'Manual: you copy and paste each time, because automating the website is not allowed.', needs: 'A Perplexity plan.' },
+  'junie-lite': { group: more, name: 'Junie Lite (free)', what: 'JetBrains\' free Junie Lite model through the official Junie CLI. JetBrains\' docs say it does not expire; its announcement says the offer is valid until 31 Dec 2026 and the model is not trained on your code.',
+    on: 'Small and routine coding tasks that cost none of your paid limits, whenever the free model is not busy.',
+    off: 'Small tasks use your paid limits instead.',
+    catch: 'No request limit is published. When the model is busy Junie retries for about 5 minutes and then gives up, which happens often at peak times. JetBrains changes the model behind it without notice: its docs name GPT-6 Luna, its announcement Qwen 3.6 27B, and a test in November 2026 ran Qwen 3.6 27B. Junie trusts the project folder by itself and loads its MCP servers, hooks and skills. You paste one install command yourself.',
+    needs: 'Only a free JetBrains account, logged in once in Junie; setup starts that login. Do not set JUNIE_API_KEY: that token bills paid credits.',
+    warning: JUNIE_DATA },
   copilot: { group: more, name: 'GitHub Copilot', what: 'GitHub Copilot through its official command-line program.',
     on: 'One more limit for normal coding tasks, so Claude and ChatGPT last longer.',
     off: 'Nothing is lost if you have no Copilot plan.',
@@ -32,6 +39,11 @@ const PROVIDER_HELP = Object.freeze({
     on: 'One more limit for normal coding tasks and research.', off: 'Nothing is lost if you do not use Google\'s AI.',
     catch: 'You install it by hand. Quota Boss runs it in auto mode, so it can edit files without you approving each step.', needs: 'A Google account.',
     warning: 'Account risk. Google\'s Antigravity terms call using third-party software to reach the service a breach and allow suspending your account, and people report such suspensions. Quota Boss only starts Google\'s own program, but whether that is allowed is unclear.' },
+  jetbrains: { group: more, name: 'JetBrains AI (Junie)', what: 'Your JetBrains AI plan through the official Junie CLI, with models such as GPT, Claude and Gemini.',
+    on: 'One more limit for normal coding tasks.', off: 'Nothing is lost if you have no JetBrains AI plan.',
+    catch: 'Uses your JetBrains AI credits, and Quota Boss cannot see how many are left. Junie trusts the project folder by itself and loads its MCP servers, hooks and skills. You paste one install command yourself.',
+    needs: 'JetBrains AI Pro or Ultimate, which is included for verified GitHub Education students, and your JetBrains account logged in once in Junie.',
+    warning: JUNIE_DATA },
   'mistral-api': { group: free, preset: true, name: 'Mistral', what: 'Mistral\'s free Experiment API plan by API key, added through the OpenCode program.',
     on: 'A large free allowance for small tasks, though only 2 requests a minute are reported.',
     off: 'Small tasks use your paid limits instead.',

@@ -25,7 +25,7 @@ function evidenceStatus(id, models = {}, selfTests = {}, command = null, find = 
 function failure(result, output, correct) {
   if (result.error?.code === 'ENOENT') return 'not installed';
   if (result.error?.code === 'ETIMEDOUT') return 'timed out';
-  if (/authentication required|not logged in|unauthorized|\b401\b|api key/i.test(output)) return 'not signed in';
+  if (/authentication required|not logged in|cannot find authorization|unauthorized|\b401\b|api key/i.test(output)) return 'not signed in';
   if (/model not found|unknown model|invalid model|not available/i.test(output)) return 'model not available';
   if (/rate limit|\b429\b|too many requests|quota exceeded|exceeded (your )?quota|out of quota|overloaded|\b503\b/i.test(output)) return 'rate limited';
   if (result.status !== 0) {
@@ -70,8 +70,9 @@ function selfTest(id, options = {}) {
       let result;
       if (!cli) result = { status: null, error: Object.assign(new Error('Not installed'), { code: 'ENOENT' }) };
       else {
-        try { result = lib.runExecutable(executable, args, { platform, env, spawnSync: run, workingDirectory: directory,
-          stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: options.timeout ?? 180000, maxBuffer: 1024 * 1024 }); }
+        const stdin = provider.cli.promptVia === 'stdin', native = lib.nativeLauncher(provider.cli.command, env, platform, directory);
+        try { result = lib.runExecutable(executable, args, { platform, env: lib.childEnv(provider.cli.command, env, native, platform), spawnSync: run, workingDirectory: directory,
+          stdio: [stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'], ...(stdin ? { input: prompt } : {}), encoding: 'utf8', timeout: options.timeout ?? 180000, maxBuffer: 1024 * 1024 }); }
         catch (error) { result = { status: null, error }; }
       }
       const ran = result.status != null || result.pid > 0 || result.error?.code === 'ETIMEDOUT';

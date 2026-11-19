@@ -3,6 +3,7 @@
 // summary; after that every change goes through the same validated commands as the CLI.
 // A provider ends up on only if its program is really there, so a choice can never point at nothing.
 
+const path = require('node:path');
 const lib = require('./lib');
 const tools = require('./tools');
 const { PRESETS, MODEL_PATTERN } = require('./add-api');
@@ -13,11 +14,15 @@ const BACK = Symbol('back');
 const WIDTH = 76;
 const OPENCODE = 'opencode-free';
 const OWN = ['codex', 'perplexity'];
-const OTHER = ['copilot', 'grok', 'antigravity'];
+// Free and practically unlimited, so it is the one choice that starts on.
+const LITE = 'junie-lite';
+const JUNIE = 'junie';
+const OTHER = ['copilot', 'grok', 'antigravity', 'jetbrains'];
 const FREE = ['mistral-api', 'zen-glm', 'zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
 const GRAPH = 'graphify';
 const graph = require('./graph');
-const CHOICES = ['claude', ...OWN, ...OTHER, ...FREE, GRAPH];
+const newProviders = require('./new-providers');
+const CHOICES = ['claude', ...OWN, LITE, ...OTHER, ...FREE, GRAPH];
 const USABLE = new Set(['ok', 'outdated']);
 const TOTAL_SECTIONS = 6;
 const YES = ['y', 'yes'], NO = ['n', 'no'];
@@ -77,6 +82,7 @@ const enabledNow = (config, id) => {
 /** Which program a choice depends on; null means it needs none. */
 function toolOf(id) {
   if (id === 'perplexity') return null;
+  if (id === LITE || id === 'jetbrains') return JUNIE;
   if (Object.hasOwn(tools.REGISTRY, id)) return id;
   return OPENCODE;
 }
@@ -284,14 +290,31 @@ function walk(screens) {
   }
 }
 
+const needsTest = (config, id) => config.providers.providers[id]?.evidence === 'docs' && !!config.providers.providers[id]?.cli;
+
+/** Self-tests, once the logins are done, for the providers this run turned on and for chosen ones that are on but never passed
+ *  (an update may have turned them on); routing gives them work only after a pass. A login left open or declined skips its test. */
+function selfTests(w, commands, failedOn, open, usable) {
+  const turnedOn = commands.filter(command => command[0] === 'use' && command[2] === 'on' && command.includes('--no-test')).map(command => command[1]);
+  const waiting = Object.keys(w.config.providers.providers).filter(id => w.state.choices[id] && usable(toolOf(id)) && enabledNow(w.config, id)
+    && needsTest(w.config, id) && !w.selfTestPassed(id));
+  const ids = [...new Set([...turnedOn, ...waiting])].filter(id => !failedOn.has(id) && !w.declined.has(toolOf(id)))
+    .filter(id => !open.some(line => [nameOf(id), tools.REGISTRY[toolOf(id)]?.label].some(name => name && line.startsWith(name + ' ('))));
+  return ids.map(id => {
+    w.io.say(w.text.testing(nameOf(id)));
+    try { return String(w.run(['providers', 'test', id])).trim(); } catch (error) { return w.text.problem('providers test ' + id, error.message); }
+  });
+}
+
 function buildCommands(w, usable) {
   const { state, project, config } = w;
   const commands = [['on', '--host', state.host, state.profile]];
   if (state.host === 'claude-code' && config.providers.providers.claude && !enabledNow(config, 'claude')) commands.push(['use', 'claude', 'on']);
-  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), ...OTHER, 'kilo-free']) {
+  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), LITE, ...OTHER, 'kilo-free']) {
     const want = state.choices[id] && usable(toolOf(id));
     // Codex and Perplexity replace the old per-project worker switches, so they change this project only.
-    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off', ...(OWN.includes(id) ? ['--project'] : [])]);
+    // A provider that needs a self-test is tested after the logins below, not before them.
+    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off', ...(OWN.includes(id) ? ['--project'] : []), ...(want && needsTest(config, id) ? ['--no-test'] : [])]);
   }
   for (const id of Object.keys(PRESETS)) {
     const want = state.choices[id] && usable(OPENCODE), present = !!config.providers.providers[id];
@@ -322,9 +345,12 @@ function logins(w, usable) {
   pending.forEach((login, index) => {
     w.io.clear();
     w.io.say(w.text.loginTitle + '\n' + '-'.repeat(WIDTH) + '\n');
-    say(w, [w.text.loginAsk(index + 1, pending.length, tools.REGISTRY[login.id].label, login.command), login.newWindow ? w.text.loginWindow : w.text.loginInline]);
+    const label = tools.REGISTRY[login.id].label;
+    say(w, [w.text.loginAsk(index + 1, pending.length, label, login.command), ...(login.hint ? [login.hint] : []),
+      login.newWindow ? w.text.loginWindow : w.text.loginInline]);
     w.io.say('');
     if (yesNo(w, w.text.loginNow, false, 'none')) w.tools.runLogin(login.id, w.options);
+    else w.declined.add(login.id);
   });
   const open = pending.length ? w.tools.pendingLogins(ids, w.options).filter(login => login.id !== OPENCODE && login.checkable) : [];
   const keys = usable(OPENCODE) ? apiKeys(w) : [];
@@ -364,10 +390,12 @@ function finish(w) {
   const graphResult = w.state.choices[GRAPH] && usable(GRAPH) && !resultLines.some(line => /^- graphify: FAILED/.test(line))
     ? w.setupGraph(w.directory, w.options) : '';
   const problems = [];
-  const failedAddApi = new Set();
-  for (const command of buildCommands(w, usable)) {
+  const failedAddApi = new Set(), failedOn = new Set();
+  const commands = buildCommands(w, usable);
+  for (const command of commands) {
     try { w.run(command); } catch (error) {
       if (command[0] === 'add-api') failedAddApi.add(command[1]);
+      if (command[0] === 'use') failedOn.add(command[1]);
       problems.push(w.text.problem(command.join(' '), error.message));
     }
   }
@@ -385,9 +413,11 @@ function finish(w) {
   const logged = logins(w, usable);
   const dropped = dropUnkeyed(w, usable);
   const open = logged.filter(line => !dropped.some(name => line.startsWith(name + ' (')));
+  const tested = selfTests(w, commands, failedOn, open, usable);
   w.io.clear();
   w.io.say(w.text.doneTitle + '\n' + '-'.repeat(WIDTH) + '\n');
   report();
+  if (tested.length) say(w, ['', ...tested]);
   if (open.length) say(w, ['', w.text.loginsOpen(open.join(', '))]);
   if (dropped.length) say(w, ['', w.text.droppedNoKey(dropped.join(', '))]);
   const ready = chosen(w, FREE).filter(id => usable(toolOf(id)) && !failedAddApi.has(id) && (w.state.training || !mayTrain(id))).map(id => nameOf(id))
@@ -398,11 +428,22 @@ function finish(w) {
   say(w, ['', w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.addLater]);
 }
 
-function initialState(config, project) {
+/** Junie Lite starts on unless it was turned off on purpose, globally or for this project. */
+function liteDefault(config, active, userProviders) {
+  if (enabledNow(config, LITE)) return true;
+  return !!config.providers.providers[LITE] && userProviders.providers?.[LITE]?.enabled !== false && !lib.projectUse(active).providersOff.includes(LITE);
+}
+
+function initialState(config, project, active, userProviders) {
   const choices = {};
   for (const id of ['claude', ...OWN, ...OTHER, ...FREE]) choices[id] = enabledNow(config, id);
+  choices[LITE] = liteDefault(config, active, userProviders);
   choices[GRAPH] = false;
   return { profile: project.profile, host: project.host, choices, apis: [], training: project.allowTrainingProviders };
+}
+
+function userProviders() {
+  try { return lib.readProviderConfig(path.join(lib.getPaths().quotaBossHome, 'config', 'providers.json')); } catch { return {}; }
 }
 
 /** Runs the setup on a terminal; anywhere else it only says how to start one and changes nothing. */
@@ -414,7 +455,8 @@ function setup(args, run, deps = {}) {
   const active = deps.project || lib.findProjectConfig();
   const config = deps.config || lib.loadConfig(active);
   const project = lib.normalizeProject(active);
-  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: deps.options, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools, state: initialState(config, project), confirmed: false,
+  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: deps.options, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools, state: initialState(config, project, active, deps.userProviders || userProviders()), confirmed: false, declined: new Set(),
+    selfTestPassed: deps.selfTestPassed || (id => require('./self-test').evidenceStatus(id, config.models, lib.readState().selfTests, config.providers.providers[id]?.cli?.command).startsWith('self-test passed')),
     io: { ask: deps.ask || lib.askLine, say: deps.say || console.log, clear: deps.clear || console.clear } };
 
   w.state.choices.claude = w.state.choices.claude && USABLE.has(w.tools.check(['claude'], w.options)[0]?.state);
@@ -429,6 +471,7 @@ function setup(args, run, deps = {}) {
     { ...switchScreen(w, GRAPH, 1), applies: () => asksForGraph(w) },
     ...OWN.map(id => ({ ...switchScreen(w, id, 2), applies: () => id !== hostPool(w) })),
     { ...switchScreen(w, 'claude', 3), applies: () => w.state.host !== 'claude-code' },
+    switchScreen(w, LITE, 3),
     ...OTHER.map(id => switchScreen(w, id, 3, text.onlyWithPlan)),
     freeScreen(w),
     ...FREE.map(id => ({ ...switchScreen(w, id, 4), applies: () => w.state.freeChoice === 'one-by-one' })),
@@ -437,6 +480,8 @@ function setup(args, run, deps = {}) {
     summaryScreen(w),
   ]);
   if (!w.confirmed) return text.aborted;
+  // Every provider the setup showed is answered, so no update asks about it again.
+  (deps.markKnown || newProviders.markKnown)([...CHOICES, OPENCODE].filter(id => Object.hasOwn(config.providers.providers, id)));
   finish(w);
   return '';
 }

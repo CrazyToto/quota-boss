@@ -39,10 +39,10 @@ test('calibrated Claude boss keeps small and medium normal implementation and de
   for (const limits of [{}, savingParams.limits]) for (const size of ['small', 'medium', 'large']) {
     const result = route({ ...savingParams, limits, size });
     const winner = result.rows.find(c => c.tier === 'normal' && c.category === 'implementation');
-    assert.equal(winner.model, size === 'large' ? 'gpt-6.1-sol' : 'claude-opus-5-5');
+    assert.equal(winner.model, size === 'large' ? 'gpt-6.2-sol' : 'claude-opus-5-5');
     if (size !== 'large') {
       assert.equal(winner.via, 'self');
-      assert.equal(normal(result).find(c => c.model === 'gpt-6.1-sol').reason, 'lost: handover costs more than it saves (' + size + ')');
+      assert.equal(normal(result).find(c => c.model === 'gpt-6.2-sol').reason, 'lost: handover costs more than it saves (' + size + ')');
     } else assert.equal(winner.via, 'codex-worker');
   }
 });
@@ -331,7 +331,7 @@ test.describe('boss effort sources and CLI', () => {
     t.mock.method(lib, 'currentBossModel', () => project.host === 'codex' ? 'gpt-6.1-sol' : 'claude-opus-5-5');
     t.mock.method(lib, 'currentBossEffort', () => null);
     t.mock.method(lib, 'readProviderLimits', () => savingParams.limits);
-    assert.match(cli.run(['route', 'implementation', 'normal']), /implementation=Opus 5\.5\(self\).*\[large:GPT-6\.1-Sol\(codex-worker,low,model=gpt-6\.1-sol\)\]/);
+    assert.match(cli.run(['route', 'implementation', 'normal']), /implementation=Opus 5\.5\(self\).*\[large:GPT-6\.2-Sol\(codex-worker,low,model=gpt-6\.2-sol\)\]/);
     for (const size of ['small', 'medium', 'large']) {
       assert.doesNotMatch(cli.run(['route', '--size', size]), /\[large:/);
     }

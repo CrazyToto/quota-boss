@@ -20,11 +20,13 @@ Prices are USD per million tokens at the standard rate.
 | Model | Input | Cached | Output | `cost` |
 |---|---|---|---|---|
 | GPT-6 Astra | 10.00 | 1.00 | 50.00 | 32 |
+| GPT-6.2 Astra | 8.00 | 0.40 | 40.00 | 20 |
 | Claude Fable 5.2 | 8.00 | 0.20 | 40.00 | 17 |
 | GPT-5.6 Sol | 4.00 | 0.40 | 20.00 | 13 |
 | Claude Opus 5.5 | 4.00 | 0.20 | 20.00 | 10 |
 | GPT-5.6 Terra | 2.00 | 0.20 | 12.00 | 6.8 |
 | GPT-6 Sol | 2.00 | 0.20 | 10.00 | 6.5 |
+| GPT-6.2 Sol | 2.00 | 0.10 | 10.00 | 5 |
 | GPT-6.1 Sol | 2.00 | 0.10 | 10.00 | 5 |
 | Claude Sonnet 5.5 | 2.00 | 0.10 | 10.00 | 5 |
 | GPT-6.1 Terra | 1.00 | 0.05 | 5.00 | 2.5 |
@@ -45,7 +47,7 @@ the vendor's own runs; harness, effort and metric differ between rows, so compar
 | Task type | Best public signal | What it shows |
 |---|---|---|
 | implementation | DeepSWE v1.1, SWE-bench Pro, FrontierCode (vendor) | Gemini 4 Argon 77.9%, GPT-6.1 Sol 75.2% (high), GPT-6 Astra 74.1%, Gemini 3.8 Flash 73.7%, Grok 4.7 71.0%, GPT-6 Sol 68.8%, GPT-6 Luna 66.6% (max) on DeepSWE. Claude reports FrontierCode instead: Sonnet 5.5 52.1% (xhigh, v1.1), Haiku 5.5 46.4% (v1.1), Fable 5.2 49.1% and Opus 5.5 45.5% (v2.0). GPT-5.6 Sol/Terra/Luna 64.6/63.4/62.7% on SWE-bench Pro. |
-| debugging | Terminal-Bench 4.1 board (Snorkel), 2026-11-09 | Opus 5.5 65.8%, Sonnet 5.5 63.9%, GPT-6.1 Sol 60.9%, GPT-6 Astra 60.3%, GPT-6 Sol 50.3%, Grok 4.7 38.8%, GPT-5.6 Sol 38.5%, GPT-5.6 Terra 21.5%, Gemini 3.8 Flash 18.2%, GPT-5.6 Luna 17.6%, GPT-6 Luna 15.2%. Vendor Terminal-Bench 4.0: Gemini 4 Argon 57.4%, GPT-6.1 Terra 50.3% (max), Haiku 5.5 39.2%. |
+| debugging | Terminal-Bench 4.1 board (Snorkel), 2026-11-09 | Opus 5.5 65.8%, Sonnet 5.5 63.9%, GPT-6.1 Sol 60.9%, GPT-6 Astra 60.3%, GPT-6 Sol 50.3%, Grok 4.7 38.8%, GPT-5.6 Sol 38.5%, GPT-5.6 Terra 21.5%, Gemini 3.8 Flash 18.2%, GPT-5.6 Luna 17.6%, GPT-6 Luna 15.2%. Vals Terminal-Bench 4.0 (2026-11-19): GPT-6.2 Astra 63.1%, GPT-6.2 Sol 60.6%, GPT-6 Astra 59.6%, GPT-6.1 Sol 55.1%. Vendor Terminal-Bench 4.0: Gemini 4 Argon 57.4%, GPT-6.1 Terra 50.3% (max), Haiku 5.5 39.2%. |
 | architecture | proxies only: Humanity's Last Exam with tools, ARC-AGI-2, GPQA Diamond | No benchmark measures software design. HLE with tools (Anthropic): Fable 5.2 74.2%, Opus 5.5 67.7%, Sonnet 5.5 64.5%, Haiku 5.5 57.4%. ARC-AGI-2 (ARC Prize, verified): Gemini 4 Argon 91.3%, GPT-6 Sol 89.6%, Grok 4.7 61.4%, GPT-6 Luna 59.3%. |
 | review | Qodo real-bug PR benchmark (F1), CodePanel, MacroscopeBench, Martian Code Review Bench | All from review-product vendors with different metrics. Qodo F1: Opus 5.5 56.8%, Sonnet 5.5 54.9%, GPT-6 Sol 48.7%, Gemini 3.8 Flash 47.0%, GPT-6 Astra 46.6%, GPT-6 Luna 42.2%. CodePanel bugs caught: GPT-6.1 Sol 89%, Gemini 4 Argon 82%, GPT-5.6 Sol 72%, Haiku 5.5 64%. MacroscopeBench: GPT-6.1 Terra 82.3, Fable 5.2 78.5. |
 | research | BrowseComp, HLE with tools, WANDR (vendor) | GPT-6 Astra 91.5% and GPT-5.6 Sol/Terra/Luna 90.4/87.5/83.3% on BrowseComp; Fable 5.2 82.1% and Opus 5.5 72.3% on WANDR. No public research numbers for GPT-6.1 Sol, Terra, GPT-6 Sol, Luna, Grok or Gemini. |

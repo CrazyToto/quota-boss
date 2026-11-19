@@ -690,3 +690,63 @@ test('a busy threshold file postpones the one-time migration and the shipped thr
   assert.deepEqual(readJSON(user), { mine: 1 });
   assert.ok(fs.existsSync(path.join(f.home, 'defaults/thresholds.json')));
 });
+
+test('providers new since the last version: a fresh install knows all, an update asks once, answers and switches stick', t => {
+  const f = fixture(t), lib = require('../scripts/lib'), added = require('../scripts/new-providers');
+  const saved = Object.fromEntries(['QUOTA_BOSS_HOME', 'CLAUDE_CONFIG_DIR'].map(key => [key, process.env[key]]));
+  process.env.QUOTA_BOSS_HOME = f.home; process.env.CLAUDE_CONFIG_DIR = f.claude;
+  t.after(() => { for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
+  const shipped = Object.keys(lib.BUILTIN_PROVIDERS.providers), fresh = ['junie-lite', 'jetbrains'];
+  const installOnce = () => { const before = added.beforeInstall(); f.run(); added.recordInstall(before); };
+  const offer = (answers, interactive = true) => {
+    const said = [], asked = [], used = [];
+    added.offer({ interactive, say: line => said.push(line), ask: q => { asked.push(q); return answers.shift() ?? ''; }, use: (id, action) => { used.push(action === 'on' ? id : id + ' ' + action); return id + ' ' + action; } });
+    return { said: said.join('\n'), asked, used };
+  };
+  const previousVersion = () => {
+    lib.writeState({ knownProviders: undefined });
+    write(path.join(f.home, 'defaults', 'providers.json'), JSON.stringify({ providers: Object.fromEntries(shipped.filter(id => !fresh.includes(id)).map(id => [id, {}])) }));
+  };
+  installOnce();
+  assert.deepEqual(lib.readState().knownProviders, shipped, 'a fresh install records every shipped provider');
+  assert.deepEqual(offer([]), { said: '', asked: [], used: [] });
+
+  previousVersion();
+  installOnce();
+  assert.deepEqual(added.pending(), fresh);
+  const quiet = offer([], false);
+  assert.match(quiet.said, /^New providers since your last version: Junie Lite \(free\), JetBrains AI \(Junie\)\. To turn them on, run: quota-boss setup$/);
+  assert.deepEqual([quiet.asked, quiet.used], [[], []]);
+  assert.deepEqual(added.pending(), fresh, 'without a terminal nothing counts as answered');
+  installOnce();
+  assert.deepEqual(added.pending(), fresh, 'a second update keeps the earlier record');
+
+  const asked = offer(['', '']);
+  assert.deepEqual(asked.asked, ['Turn on Junie Lite (free)? [Y/n] ', 'Turn on JetBrains AI (Junie)? [y/N] ']);
+  assert.match(asked.said, /Junie Lite \(free\): JetBrains' free Junie Lite model/);
+  assert.deepEqual(asked.used, ['junie-lite'], 'Enter keeps Junie Lite on and JetBrains off');
+  assert.deepEqual(added.pending(), []);
+  assert.deepEqual(offer(['y', 'y']).asked, [], 'answered providers are never asked again');
+
+  previousVersion();
+  installOnce();
+  assert.deepEqual(offer(['n', 'yes']).used, ['junie-lite off', 'jetbrains'], 'a no to a default yes is saved as off');
+
+  previousVersion();
+  installOnce();
+  const said = [];
+  added.offer({ interactive: true, say: line => said.push(line), ask: () => 'y', use: id => { if (id === 'jetbrains') throw new Error('locked'); return 'on'; } });
+  assert.match(said.join(' '), /Could not turn on jetbrains: locked/);
+  assert.deepEqual(added.pending(), ['jetbrains'], 'a yes that could not be saved is asked again');
+  previousVersion();
+  write(path.join(f.home, 'config', 'providers.json'), JSON.stringify({ providers: { jetbrains: { enabled: true } } }));
+  write(path.join(f.home, 'config', 'use.json'), JSON.stringify({ providersOff: ['junie-lite'] }));
+  installOnce();
+  assert.deepEqual(added.pending(), [], 'a provider already turned on or off is never new');
+  fs.rmSync(path.join(f.home, 'defaults'), { recursive: true, force: true });
+  fs.rmSync(path.join(f.home, 'config', 'providers.json'));
+  fs.rmSync(path.join(f.home, 'config', 'use.json'));
+  lib.writeState({ knownProviders: undefined });
+  installOnce();
+  assert.deepEqual(added.pending(), [], 'an update from an unknown version asks about nothing');
+});

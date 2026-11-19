@@ -157,11 +157,11 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.deepEqual(row.options, ['consensus']);
     assert.equal(config.models.models[row.consensus.model].pool, 'codex');
     assert.equal(row.consensus.effort, 'high');
-    // Astra and GPT-6.1 Sol are rated equal here, so the far cheaper one gives the second opinion.
-    assert.match(formatTable(r), /option:consensus=GPT-6\.1-Sol,high/);
+    // Astra and GPT-6.2 Sol are rated equal here, so the far cheaper one gives the second opinion.
+    assert.match(formatTable(r), /option:consensus=GPT-6\.2-Sol,high/);
     assert.ok(r.rows.filter(c => c !== row).every(c => !c.options.includes('consensus')));
     // A stored consensus or workers field from before 0.2.0 changes nothing.
-    for (const old of [{ consensus: false }, { workers: { codex: false, gpt: false } }]) assert.match(formatTable(route({ ...config, ...old })), /option:consensus=GPT-6\.1-Sol,high/);
+    for (const old of [{ consensus: false }, { workers: { codex: false, gpt: false } }]) assert.match(formatTable(route({ ...config, ...old })), /option:consensus=GPT-6\.2-Sol,high/);
     for (const extra of [{ providers: lib.mergeProviders(config.providers, { providers: { codex: { enabled: false } } }) },
       { limits: { codex: { primary: { used_percent: 100 } } } },
       { caps: { codex: { weekly: 20 } }, limits: { codex: { secondary: { used_percent: 20 } } } },

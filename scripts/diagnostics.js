@@ -33,6 +33,15 @@ function openCodeOffers(providers, listModels) {
   });
 }
 
+/** Codex models listed for the user that are newer than every configured Codex model of the same family. Only a hint: nothing is changed. */
+function newerCodexModels(models, cache) {
+  const { newerFirst, familyKey } = require('./route');
+  const own = Object.entries(models || {}).filter(([, m]) => m?.pool === 'codex').map(([id]) => id);
+  return (Array.isArray(cache) ? cache : []).map(item => item?.slug).filter(slug => typeof slug === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(slug) && !own.includes(slug))
+    .filter(slug => { const family = own.filter(id => familyKey(id) === familyKey(slug)); return family.length && family.every(id => newerFirst(slug, id) < 0); })
+    .map(slug => 'Info: Codex offers ' + slug + ', newer than every configured model of its family. Routing ignores it until it is in config/models.json; update Quota Boss or add it there.');
+}
+
 function skillCount(folder) {
   let dir, count = 0;
   try {
@@ -212,6 +221,7 @@ function doctor(probe = false, options = {}) {
       const [what, fix] = note.slice(6).split('. Add it to ');
       problem(what, 'add it to ' + fix.replace(/\.$/, ''));
     }
+    lines.push(...newerCodexModels(config.models.models, lib.readCodexModels()));
     for (const [id, p] of Object.entries(config.providers.providers)) if (p.enabled !== false && p.evidence === 'docs')
       lines.push(id + ': ' + require('./self-test').evidenceStatus(id, config.models, state.selfTests, p.cli?.command));
   }
@@ -291,4 +301,4 @@ function report(options = {}) {
   return redactReport(lines.join('\n'), env);
 }
 
-module.exports = { report, redactReport, doctor, version, older, openCodeOffers };
+module.exports = { report, redactReport, doctor, version, older, openCodeOffers, newerCodexModels };

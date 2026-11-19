@@ -179,3 +179,22 @@ test('doctor examines at most five hundred entries per skills folder', t => {
   assert.equal(reads, 500);
   assert.equal(closed, true);
 });
+
+test('doctor names a Codex model newer than every configured one of its family and changes nothing', t => {
+  const f = fixture(t, 'claude-code'), paths = lib.getPaths();
+  const { newerCodexModels } = require('../scripts/diagnostics');
+  const models = { 'gpt-6.1-sol': { pool: 'codex' }, 'gpt-6.2-sol': { pool: 'codex' }, 'gpt-6-astra': { pool: 'codex' }, 'jetbrains-gpt-6.2-sol': { pool: 'jetbrains' } };
+  const listed = slugs => newerCodexModels(models, slugs.map(slug => ({ slug })));
+  assert.deepEqual(listed(['gpt-6.2-sol', 'gpt-6.1.5-sol', 'gpt-6.1-sol', 'gpt-5.6-sol', 'gpt-7-nova', 'jetbrains-gpt-6.3-sol', 'bad\nid', 7]), [], 'only a really newer model of a known family');
+  assert.equal(listed(['gpt-6.3-sol', 'gpt-6.2-astra']).length, 2);
+  assert.match(listed(['gpt-6.10-sol'])[0], /^Info: Codex offers gpt-6\.10-sol, newer than every configured model of its family\./);
+  assert.deepEqual(newerCodexModels(models, null), []);
+  lib.writeJson(path.join(paths.codexDir, 'models_cache.json'), { models: [
+    { slug: 'gpt-9.1-sol', visibility: 'list' }, { slug: 'gpt-9.1-luna', visibility: 'hide' }, { slug: 'gpt-6.1-sol', visibility: 'list' }] });
+  const before = snapshot(paths.quotaBossHome);
+  const output = f.run();
+  assert.match(output, /Info: Codex offers gpt-9\.1-sol, newer than every configured model of its family/);
+  assert.doesNotMatch(output, /gpt-9\.1-luna|offers gpt-6\.1-sol/, 'hidden and configured models are not named');
+  checkCount(output);
+  assert.deepEqual(snapshot(paths.quotaBossHome), before, 'the notice never changes config');
+});

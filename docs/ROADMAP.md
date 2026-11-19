@@ -13,7 +13,7 @@ Ideas and reports are welcome as issues.
 - Changesets for releases.
 - Grok is untested, because no plan was available. If you have one, run `quota-boss providers test grok` and report
   the result.
-- Unverified candidates: Tencent CodeBuddy, Cursor CLI, JetBrains Junie, and Cerebras (it needs a verified payment
+- Unverified candidates: Tencent CodeBuddy, Cursor CLI, and Cerebras (it needs a verified payment
   method).
 - Optional `rtk` as an external tool (its engine is BUSL). Fallback ideas from claude-code-router and LiteLLM.
 

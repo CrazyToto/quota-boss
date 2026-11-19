@@ -1,6 +1,7 @@
 'use strict';
 const path = require('path');
 const lib = require('./lib');
+const newProviders = require('./new-providers');
 
 // Few, high-confidence rules. Nothing changes automatically: the boss proposes the command to the user once.
 const MAX = 2;
@@ -32,6 +33,9 @@ function suggestions(snap, now = Date.now()) {
     if (project.profile === 'frugal' && values.length && values.every(v => v !== undefined && v <= 40)) {
       out.push({ id: 'profile-balanced', text: 'every Claude window is at most 40% used, so frugal saves nothing', command: 'set profile balanced' });
     }
+    // Built-in providers added by an update and not answered yet; setup asks about each of them.
+    const added = newProviders.suggestion(snap?.newProviders);
+    if (added) out.push(added);
     const providers = config.providers?.providers ?? {}, models = config.models?.models ?? {};
     const own = hostPool(project.host);
     const candidate = id => ID.test(id) && id !== 'claude' && id !== own && Object.hasOwn(providers, id) && providers[id]?.enabled !== false;
@@ -58,6 +62,9 @@ function suggestions(snap, now = Date.now()) {
     for (const c of rows) if (c && typeof c.pool === 'string') pools.set(c.pool, (pools.get(c.pool) ?? true) && c.reason === 'CLI not installed');
     for (const [pool, all] of pools) if (all) missing.add(pool);
     for (const id of [...missing].sort()) off(id, 'the ' + id + ' CLI is not installed');
+    // Rule 5: on and installed, but without a passed self-test routing gives it no work.
+    for (const id of (Array.isArray(snap?.untested) ? snap.untested : []).filter(id => candidate(id) && !missing.has(id)).sort())
+      out.push({ id: 'self-test:' + id, text: id + ' is on but has not passed its self-test, so it gets no work', command: 'providers test ' + id });
     return out.slice(0, MAX);
   } catch { return []; }
 }
@@ -94,7 +101,11 @@ function gather(project, config, now = Date.now()) {
   const providers = config.providers?.providers ?? {}, own = hostPool(project.host);
   const missing = Object.entries(providers).filter(([id, p]) => p?.enabled !== false && id !== 'claude' && id !== own
     && typeof p?.cli?.command === 'string' && !lib.findExecutable(p.cli.command)).map(([id]) => id);
-  return { project, config, limits, outcomes: lib.readOutcomes(now, config.thresholds), missing };
+  const selfTests = lib.readState().selfTests, { evidenceStatus } = require('./self-test');
+  const untested = Object.entries(providers).filter(([id, p]) => p?.enabled !== false && p?.evidence === 'docs' && typeof p?.cli?.command === 'string'
+    && Object.values(config.models?.models ?? {}).some(m => m?.pool === id && m.enabled !== false)
+    && !missing.includes(id) && !evidenceStatus(id, config.models, selfTests, p.cli.command).startsWith('self-test passed')).map(([id]) => id);
+  return { project, config, limits, outcomes: lib.readOutcomes(now, config.thresholds), missing, untested, newProviders: newProviders.pending() };
 }
 
 /** Suggestion lines for a project, e.g. for quota-boss status. Never throws. */

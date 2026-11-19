@@ -1,6 +1,6 @@
 # Providers, pools and user caps
 
-Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok and Antigravity). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
+Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok, Antigravity, Junie Lite and JetBrains AI). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
 
 
 Quota Boss is not tied to Claude + Codex. Any subscription or API can be added as a **provider** (= quota pool),
@@ -107,7 +107,9 @@ nothing, and routing skips them by itself when they are spent.
 ## Installing provider CLIs
 
 The terminal setup (`quota-boss setup`, started through `/boss-setup`) collects the CLIs your choices need into one
-summary and asks once. The installer does the same for already enabled providers.
+summary and asks once. The installer does the same for already enabled providers. After an update the installer asks
+once about each provider the new version added (state.json keeps `knownProviders`); confirming the setup summary marks
+every provider it showed as answered.
 
 - `quota-boss tools`: one line per tool with state, exact command and source, then `Installable: <ids>`.
 - `quota-boss tools install <id...>`: installs the agreed ids in one run and reports each one. A failure does not stop the rest.
@@ -124,6 +126,7 @@ summary and asks once. The installer does the same for already enabled providers
 | graphify (optional, not a provider) | `uv tool install graphifyy`, then `graphify install`; asked in setup | no | not needed |
 | grok | paste xAI's script yourself; setup shows the command | no | none |
 | antigravity | by hand from Google's guide | no | none |
+| junie (junie-lite, jetbrains) | paste JetBrains' script yourself; setup shows the command | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
 
 Commands live in `scripts/tools.js`, not in `providers.json`, so a config file can never supply one. npm and uv are
 pinned to the public registries, and environment overrides for them are removed before they start.
@@ -138,6 +141,29 @@ on APIs added this way. Added models start with cautious scores and improve from
 Use an API key in OpenCode, never a subscription login: Anthropic and Google do not allow those in other tools.
 
 The maintainer tool `node tools/free-models.js <models-dev.json> [<openrouter.json>]` checks free presets and lists new free candidates from local files. It opens no network connections. The weekly GitHub workflow downloads both lists and reports changes.
+
+## Junie Lite and JetBrains AI
+
+Both run JetBrains' official [Junie CLI](https://junie.jetbrains.com/docs/junie-headless.html) headless, with the task
+on stdin (`--input-format=text`), never in argv. On Windows Quota Boss starts the native `junie.exe` that the
+`junie.bat` launcher would start (version from `<data>/current`, data folder `JUNIE_DATA_DIR` or
+`%USERPROFILE%\.local\share\junie`, path checked to stay inside it) and sets `JUNIE_DATA` and `EJ_RUNNER_PWD` like the
+launcher does. Log in once by running `junie` and choosing "Continue with JetBrains account"; setup starts this.
+Do not set `JUNIE_API_KEY`: that token (from junie.jetbrains.com/tokens) switches Junie to usage-based billing with
+paid credits. Junie prints its "Cannot find authorization" hint with exit code 0, so cli-run reports that line as
+unavailable.
+
+- **junie-lite** is JetBrains' free [Junie Lite](https://junie.jetbrains.com/blog/junie-lite/) tier: only a JetBrains
+  account and no published request limit. Its [docs](https://junie.jetbrains.com/docs/junie-lite.html) say it does
+  not expire; the announcement says the offer is valid until 31 Dec 2026, inference stays on JetBrains' servers and
+  is not used to train the model. When the model is busy Junie retries for about 5 minutes and then exits with code 1, with no fallback. The
+  model behind it changes without notice: the docs name OpenAI GPT-6 Luna, the announcement Qwen 3.6 27B, and a test
+  run on 2026-11-19 used Qwen 3.6 27B. Every call passes `--model=junie-lite`, because the
+  account default model uses paid credits.
+  Setup turns it on by default unless you turned it off before (`quota-boss use junie-lite off`).
+- **jetbrains** uses a JetBrains AI Pro or Ultimate plan, which is included for verified GitHub Education students.
+  Models are chosen with `--model`; only `jetbrains-gpt-6-luna` is on by default.
+- Headless Junie trusts the project folder by itself and loads its MCP servers, hooks and skills.
 
 Antigravity stays off by default and shows an account warning, because Google's terms treat third-party access to the
 service as a breach and it is unclear whether starting Google's own program from another tool counts.
@@ -204,5 +230,10 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **Other free API offers** are off until you add them. Each shows its limit and warning first. Gemini's unpaid tier
   lets Google use your content and lets humans read it, NVIDIA NIM is reported as for prototyping and evaluation only,
   and where we could not confirm a service's training policy Quota Boss treats it as if it trains on your data.
+  The one exception is Junie Lite and JetBrains AI, by the user's decision, so the free tier works out of the box:
+  they are marked trainsOnData: false, although JetBrains' docs do not say whether Junie CLI data is used for training.
+  JetBrains' [product data collection FAQ](https://www.jetbrains.com/legal/docs/terms/product_data_collection_faq/)
+  says detailed code-related data sharing is on by default for non-commercial licenses (free accounts, likely student
+  licenses too). Turn it off in a JetBrains IDE under Settings | Appearance & Behavior | System Settings | Data Sharing.
 - **OpenCode** is for API keys only. Never use a subscription login there.
 - **Free plans** can be limited, for example to testing, and some may train on your data. Check before relying on one.

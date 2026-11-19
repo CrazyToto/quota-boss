@@ -1,7 +1,7 @@
 'use strict';
 
 const { CATEGORIES, TIERS, EFFORT_ORDER, sanitizeLabel, normalizeProject, computeModes, historySettings,
-  recentOutcomes, unavailableModels, rateLimitedModels, providerContext, QUOTA_WINDOWS, validProviderId, validCliModel, cliArgsForModel, BUILTIN_PROVIDERS, tightenCaps, bossScore, pickBoss } = require('./lib');
+  recentOutcomes, unavailableModels, rateLimitedModels, providerContext, QUOTA_WINDOWS, validProviderId, validCliModel, cliArgsForModel, BUILTIN_PROVIDERS, tightenCaps, bossScore, pickBoss, newerFirst, familyKey } = require('./lib');
 const { medianSeconds, speedFactor } = require('./latency');
 const lib = require('./lib');
 const { validSelfTest } = require('./self-test');
@@ -47,13 +47,8 @@ function bossModelId(bossModel, registry, pool) {
   const families = pool === 'claude' ? ['fable', 'opus', 'sonnet', 'haiku'] : ['astra', 'sol', 'terra', 'luna'];
   const family = families.find(word => String(bossModel).toLowerCase().split(/[^a-z0-9]+/).includes(word));
   if (family) {
-    const versions = id => (id.match(/\d+/g) || []).map(Number);
     const matches = own.filter(model => model.id.toLowerCase().split(/[^a-z0-9]+/).includes(family));
-    matches.sort((a, b) => {
-      const x = versions(a.id), y = versions(b.id);
-      for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (y[i] || 0) - (x[i] || 0);
-      return a.id.localeCompare(b.id);
-    });
+    matches.sort((a, b) => newerFirst(a.id, b.id) || a.id.localeCompare(b.id));
     if (matches.length) return matches[0].id;
   }
   const able = pool === 'claude' ? own.filter(model => !['sonnet', 'haiku'].includes(model.agentModel) && !/^claude-(sonnet|haiku)/.test(model.id)) : own;
@@ -203,12 +198,14 @@ function effortCost(model, effort, thresholds) {
 }
 
 function probabilityOrder(a, b, previousPool) {
-  return b.P - a.P || Number(b.pool === previousPool) - Number(a.pool === previousPool) || a.model.localeCompare(b.model);
+  return b.P - a.P || Number(b.pool === previousPool) - Number(a.pool === previousPool)
+    // On a full tie the newer model of the same family wins, so a new release is used before its predecessor.
+    || (a.pool === b.pool && familyKey(a.model) === familyKey(b.model) ? newerFirst(a.model, b.model) : 0) || a.model.localeCompare(b.model);
 }
 
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
 function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {},
-  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable } = {}) {
+  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
   if (!['small', 'medium', 'large'].includes(size)) size = null;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(bossEffort)) bossEffort = null;
   if (caps) providers = { ...providers, caps: tightenCaps(providers.caps ?? {}, caps) };
@@ -229,9 +226,13 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
   const unavailable = unavailableModels(learned, now, thresholds);
   const rateLimited = rateLimitedModels(learned, now, thresholds);
   const categories = CATEGORIES.filter(c => !Array.isArray(models.categories) || models.categories.includes(c));
-  const registry = Object.entries(models.models || {}).filter(([, m]) => m && Object.hasOwn(providers.providers, m.pool) && providers.providers[m.pool].enabled !== false
+  const codexKnown = new Set(Array.isArray(codexModels) ? codexModels : lib.readCodexModels(true).map(item => item.slug));
+  const codexFamilies = new Set([...codexKnown].map(familyKey)), codexMissing = slug => !codexKnown.has(slug) && codexFamilies.has(familyKey(slug));
+  const registry = Object.entries(models.models || {}).filter(([id, m]) => m && Object.hasOwn(providers.providers, m.pool) && providers.providers[m.pool].enabled !== false
     && m.enabled !== false && typeof m.cost === 'number' && Number.isFinite(m.cost) && m.cost >= 0
-    && (m.cliModel === undefined || validCliModel(m.cliModel)))
+    && (m.cliModel === undefined || validCliModel(m.cliModel))
+    // An older Codex CLI does not offer a newer release: a model missing from its cache while the cache lists others of its family is skipped.
+    && (m.pool !== 'codex' || (host === 'codex' && id === bossModel) || !codexMissing(m.cliModel || id)))
     .map(([id, model]) => ({ ...model, id, passes: learned.filter(e => e.model === id && e.result === 'pass').length,
       normalPasses: learned.filter(e => e.model === id && e.result === 'pass' && ['normal', 'critical'].includes(e.tier)).length }));
   const boss = bossModelId(bossModel, registry, bossPool);
@@ -467,4 +468,4 @@ function formatExplain(result) {
       : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's') : '')).join('\n');
 }
 
-module.exports = { bossModelId, bossModelNote, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice };
+module.exports = { bossModelId, bossModelNote, newerFirst, familyKey, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice };

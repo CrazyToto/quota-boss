@@ -122,7 +122,7 @@ test('unknown boss maps by pool family and highest version, or the default pick'
   const config = lib.loadConfig();
   for (const [host, reported, expected, label] of [
     ['claude-code', 'claude-opus-5-6', 'claude-opus-5-5', 'Opus 5.5'],
-    ['codex', 'gpt-6.2-sol', 'gpt-6.1-sol', 'GPT-6.1-Sol']
+    ['codex', 'gpt-6.3-sol', 'gpt-6.2-sol', 'GPT-6.2-Sol']
   ]) {
     const result = route({ ...config, host, bossModel: reported, size: 'small' });
     assert.ok(result.candidates.some(c => c.model === expected && c.via === 'self'));
@@ -143,14 +143,39 @@ test('unknown boss maps by pool family and highest version, or the default pick'
   assert.doesNotMatch(unsafe.note, /\x1b/);
 });
 
+test('on a full tie the newer model of the same family wins, other ties stay alphabetical', () => {
+  const twin = { pool: 'codex', label: 'M', cost: 1, scores: { implementation: 9 }, efforts: ['medium'] };
+  const pick = ids => select(route({ thresholds: { relayCost: { normal: 0.000001 } }, limits: limits(0, 0, 0, 0),
+    models: { categories: ['implementation'], models: Object.fromEntries(ids.map(id => [id, { ...twin }])) } }), 'normal', 'implementation').model;
+  assert.equal(pick(['gpt-6.1-sol', 'gpt-6.2-sol']), 'gpt-6.2-sol');
+  assert.equal(pick(['gpt-6.10-sol', 'gpt-6.9-sol']), 'gpt-6.10-sol');
+  assert.equal(pick(['gpt-6-sol', 'gpt-6.2-sol']), 'gpt-6.2-sol');
+  assert.equal(pick(['gpt-6.1-astra', 'gpt-6.2-sol']), 'gpt-6.1-astra', 'different families keep the name order');
+  const shipped = route({ ...lib.loadConfig(), limits: limits(0, 0, 0, 0) });
+  assert.ok(shipped.rows.every(row => row.model !== 'gpt-6.1-sol'), 'the shipped GPT-6.2-Sol replaces its equally rated predecessor');
+});
+
+test('a Codex model missing from the Codex model cache while its family is listed is not routed', () => {
+  const config = lib.loadConfig();
+  const used = models => route({ ...config, limits: limits(10, 10, 0, 0), codexModels: models }).rows.map(row => row.model);
+  const older = Object.entries(config.models.models).filter(([, m]) => m.pool === 'codex').map(([id, m]) => m.cliModel || id).filter(id => !id.startsWith('gpt-6.2'));
+  assert.ok(used(older).every(model => !model.startsWith('gpt-6.2')));
+  assert.ok(used([]).some(model => model.startsWith('gpt-6.2')));
+  assert.ok(used(['gpt-6-luna']).some(model => model.startsWith('gpt-6.2')), 'only a family the cache knows is gated');
+  const boss = route({ ...config, host: 'codex', bossModel: 'gpt-6.2-sol', limits: limits(10, 10, 0, 0), codexModels: older });
+  assert.ok(boss.rows.some(row => row.model === 'gpt-6.2-sol' && row.via === 'self'), 'the running boss model is never gated');
+  const claudeBoss = route({ ...config, host: 'claude-code', bossModel: 'gpt-6.2-sol', limits: limits(10, 10, 0, 0), codexModels: older });
+  assert.ok(claudeBoss.rows.every(row => !row.model.startsWith('gpt-6.2')), 'on another host the gate still applies');
+});
+
 test('critical uses probability floors and utility; manual research stays optional', () => {
   const config = lib.loadConfig();
-  // With nothing used at all, Sonnet 5.5 at high (measured cost 1.1) ties with GPT-6.1 Sol at high (1.65) for implementation. A little Claude use decides it.
+  // With nothing used at all, Sonnet 5.5 at high (measured cost 1.1) ties with GPT-6.2 Sol at high (the flat 1.25 until it is measured) for implementation. A little Claude use decides it.
   const result = route({ ...config, limits: limits(10, 10, 0, 0) });
   assert.equal(result.rows.length, 18);
   assert.equal(select(result, 'critical', 'architecture').model, 'claude-opus-5-5');
   const implementation = select(result, 'critical', 'implementation');
-  assert.equal(implementation.model, 'gpt-6.1-sol');
+  assert.equal(implementation.model, 'gpt-6.2-sol');
   assert.equal(implementation.via, 'codex-worker');
   assert.equal(implementation.effort, 'high');
   assert.equal(result.rows.some(row => row.pool === 'perplexity'), false);
@@ -473,7 +498,7 @@ test('weekly projections blend recent pace with a trusted window average', () =>
 function effortCandidate({ category = 'architecture', tier = 'normal', thresholds = {}, outcomes = [], efforts = LEVELS_FOR_TEST,
   pool = 'codex', providers } = {}) {
   return route({ models: { categories: [category], models: { worker: { pool, label: 'Worker', cost: 1, efforts,
-    scores: { architecture: 10, implementation: 10 } } } }, thresholds, outcomes, providers, now: clock })
+    scores: { architecture: 10, implementation: 10 } } } }, thresholds, outcomes, providers, now: clock, codexModels: [] })
     .candidates.find(c => c.tier === tier);
 }
 const LEVELS_FOR_TEST = ['low', 'medium', 'high', 'xhigh'];
