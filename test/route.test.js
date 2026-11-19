@@ -269,7 +269,7 @@ test('weaker Claude models get workers that can edit, and every route they use a
   for (const worker of ['haiku-worker', 'researcher', 'sonnet-worker']) assert.ok(table.includes('(' + worker + ')'), worker);
 });
 
-test('a CLI relay counts against Claude, so direct Haiku beats a free relay on trivial jobs', () => {
+test('free first: an equally rated free relay beats direct Haiku on trivial jobs, even with thin evidence', () => {
   const free = lib.BUILTIN_PROVIDERS.providers['kilo-free'];
   const providers = { ...lib.BUILTIN_PROVIDERS,
     providers: { ...lib.BUILTIN_PROVIDERS.providers, 'kilo-free': { ...free, enabled: true, trainsOnData: false } } };
@@ -278,9 +278,26 @@ test('a CLI relay counts against Claude, so direct Haiku beats a free relay on t
     relayed: { pool: 'kilo-free', label: 'Free', cost: 0, scores: { mechanical: 8 } }
   } };
   const pick = thresholds => select(route({ models, providers, thresholds, limits: limits(0, 0, 0, 0) }), 'trivial', 'mechanical');
-  assert.equal(pick({}).via, 'haiku-worker');
-  assert.equal(pick({ relayCost: { trivial: 0.000001 } }).via, 'haiku-worker');
+  assert.equal(pick({}).via, 'cli-worker:kilo-free');
+  assert.equal(pick({}).reason, 'won: free and about as likely to succeed');
+  // The displaced paid worker is the next ladder step; normal work needs verified passes first.
+  assert.equal(pick({}).ladder[1].via, 'haiku-worker');
+  assert.equal(select(route({ models, providers, limits: limits(0, 0, 0, 0) }), 'normal', 'mechanical').via, 'haiku-worker');
   assert.equal(pick({ relayCost: { trivial: 0.000001 }, thinEvidenceFactor: 1 }).via, 'cli-worker:kilo-free');
+  // A margin of 0 needs the free route to be at least as likely, and a free route below the margin loses.
+  const weaker = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 6 } } } };
+  assert.equal(select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0) }), 'trivial', 'mechanical').via, 'haiku-worker');
+  // While the winner's pool is tight the wider margin applies, so the weaker free route takes the job; critical never goes free first.
+  const tight = select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0), thresholds: { freeFirst: { margin: 0, tightMargin: 0.2, tightPrice: 0.5 } } }), 'trivial', 'mechanical');
+  assert.equal(tight.via, 'cli-worker:kilo-free');
+  const critical = route({ models, providers, limits: limits(0, 0, 0, 0) }).candidates.filter(c => c.tier === 'critical' && c.won);
+  assert.ok(critical.every(c => c.model !== 'relayed'));
+  // Below minP the likeliest route stays, free or not; a bad config margin is clamped to at most 0.2.
+  const low = { ...models, models: { 'claude-haiku-5-5': { ...models.models['claude-haiku-5-5'], scores: { mechanical: 1 } }, relayed: { ...models.models.relayed, scores: { mechanical: 0 } } } };
+  assert.equal(select(route({ models: low, providers, limits: limits(0, 0, 0, 0), thresholds: { minP: { trivial: 0.99 } } }), 'trivial', 'mechanical').via, 'haiku-worker');
+  const apart = { ...models, models: { 'claude-haiku-5-5': { ...models.models['claude-haiku-5-5'], scores: { mechanical: 10 } }, relayed: { ...models.models.relayed, scores: { mechanical: 2 } } } };
+  const huge = select(route({ models: apart, providers, limits: limits(0, 0, 0, 0), thresholds: { minP: { trivial: 0 }, freeFirst: { margin: 5 } } }), 'trivial', 'mechanical');
+  assert.equal(huge.via, 'haiku-worker');
 });
 
 const LEVELS = ['low', 'medium', 'high', 'xhigh'];
@@ -608,6 +625,7 @@ test('thin evidence discounts estimated pools until verified passes across categ
   assert.ok(lead > 1.15 && lead < 1.20);
   for (const count of [0, 2, 3]) {
     const result = thinRoute(Array.from({ length: count }, () => freePass()));
+    // A cost-0 trial subscription is no free offer, so utility alone decides.
     assert.equal(trivialWinner(result), count < 3 ? 'haiku' : 'free');
     assert.equal(freeCandidate(result).thinEvidence, count < 3);
     assert.ok(result.candidates.filter(c => ['claude', 'codex'].includes(c.pool)).every(c => !c.thinEvidence));

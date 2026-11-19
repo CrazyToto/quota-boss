@@ -313,6 +313,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
           inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, prior: successProbability(model, category, tier, [], thresholds, now, effort), price, thinEvidence, jobCost,
+          free: model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
           seconds,
@@ -401,11 +402,28 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const bestUtility = Math.max(...eligible.map(c => c.utility));
         winner = eligible.filter(c => c.utility >= bestUtility * 0.98).sort((a, b) => probabilityOrder(a, b, previousPool))[0];
       }
+      // Free first: outside critical work a free route about as likely to succeed as a paid worker takes the job, so paid
+      // limits last longer. The margin grows while that worker's pool is tight (raw scarcity, without the boss surcharge).
+      // The boss doing a job itself stays: that already beat every handover. minP and every filter above still apply.
+      // Normal work goes free only after verified passes (no thin evidence), so trivial passes earn it. Among free routes
+      // the likelier wins; within 0.01 utility (which includes speed) decides. The paid winner stays next on the ladder.
+      let displaced = null;
+      if (winner && !belowThreshold && tier !== 'critical' && !winner.free && winner.via !== 'self') {
+        const rule = thresholds.freeFirst ?? {};
+        const scarcity = poolPrice(winner.pool, limits, history, thresholds, now, modes);
+        const tight = Number.isFinite(scarcity) && scarcity > positive(rule.tightPrice, 2);
+        const margin = clamp(finite(tight ? rule.tightMargin : rule.margin, tight ? 0.05 : 0.02), 0, 0.2);
+        const free = eligible.filter(c => c.free && (tier === 'trivial' || !c.thinEvidence) && c.P >= winner.P - margin)
+          .sort((a, b) => (Math.abs(b.P - a.P) > 0.01 ? b.P - a.P : 0) || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
+        if (free) { displaced = winner; winner = free; }
+      }
+      const freeFirst = !!displaced;
       for (const candidate of evaluated) {
         if (candidate === winner) {
           candidate.won = true;
           candidate.reason = !Number.isFinite(candidate.price) ? 'won: critical self emergency fallback'
-            : belowThreshold ? 'won: best P below minP' : 'won: highest utility (2% ties: P, then previous pool)';
+            : belowThreshold ? 'won: best P below minP' : freeFirst ? 'won: free and about as likely to succeed'
+              : 'won: highest utility (2% ties: P, then previous pool)';
         } else if (!candidate.reason) {
           candidate.reason = candidate.P < minimum && !belowThreshold ? 'lost: below minP'
             : !eligible.includes(candidate) ? 'lost: critical self fallback required'
@@ -426,7 +444,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const different = steps.filter(c => c.pool !== winner.pool);
         const next = [...(different.length ? different : steps)].sort((a, b) =>
           (stronger.length ? b.utility - a.utility : 0) || probabilityOrder(a, b, previousPool))[0];
-        if (next) ladder.push(step(next));
+        if (displaced) ladder.push(step(displaced));
+        else if (next) ladder.push(step(next));
         const advisors = tier === 'critical' && category === 'architecture'
           ? evaluated.filter(c => c.pool === 'codex'
             && !c.capabilityReason
