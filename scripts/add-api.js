@@ -7,9 +7,6 @@ const lib = require('./lib');
 const { PROVIDER_HELP } = require('./provider-help');
 
 const PRESETS = Object.freeze({
-  'mistral-api': { label: 'Mistral Experiment', model: 'mistral/codestral-latest', keyPage: 'https://admin.mistral.ai/organization/api-keys', free: true, trains: true,
-    gets: 'about 1 billion tokens a month, 2 requests a minute',
-    limit:'about 1 billion tokens a month and 2 requests a minute (reported by OmniRoute, check your console)' },
   'openrouter-free': { label: 'OpenRouter free', model: 'openrouter/cohere/north-mini-code:free', keyPage: 'https://openrouter.ai/settings/keys', free: true, trains: true,
     keyHint: 'A balance of 0 is normal: this offer only uses a free model, so it costs nothing.',
     gets: '50 calls a day',
@@ -40,6 +37,13 @@ const PRESETS = Object.freeze({
     gets: 'no published limit',
     limit: 'free, no published limit' },
 });
+
+const RETIRED = [
+  { id: 'zen-glm', reason: 'OpenCode retired the free Zen GLM model',
+    matches: provider => provider?.cli?.defaultModel === 'opencode/glm-5.3-flash-free' },
+  { id: 'mistral-api', reason: 'Mistral ended free API access',
+    matches: provider => provider?.custom === true && provider.kind !== 'api' },
+];
 
 const USAGE = 'Usage: quota-boss add-api [<preset>|<id> <provider/model> --trains <yes|no> [--free] [--budget <amount> <calls|usd|tokens> <daily|weekly|monthly>]]';
 // Passed as one argument to OpenCode: must contain a provider and can never look like a flag.
@@ -135,4 +139,4 @@ function remove(args) {
   return 'API removed: ' + id;
 }
 
-module.exports = { PRESETS, MODEL_PATTERN, add, remove, update, modelEntries };
+module.exports = { PRESETS, RETIRED, MODEL_PATTERN, add, remove, update, modelEntries };

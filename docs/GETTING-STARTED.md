@@ -72,7 +72,6 @@ request, and SambaNova asks for a payment method.
 | Offer | How to add | Rough limit | May train on your data |
 |---|---|---|---|
 | OpenRouter free models (needs OpenCode) | choose it in the setup | 50 requests/day | treated as yes |
-| Mistral Experiment (needs OpenCode) | choose it in the setup | about 1 billion tokens/month, 2 requests/minute (reported, check your console) | yes, unless you turn it off in Mistral's Admin area |
 | Cloudflare Workers AI (needs OpenCode) | choose it in the setup | 10,000 Neurons/day | treated as yes |
 | Cohere trial (needs OpenCode) | choose it in the setup | 1,000 calls/month | treated as yes |
 | Gemini API (needs OpenCode) | choose it in the setup | not confirmed | yes, and humans may read it |

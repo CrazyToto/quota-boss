@@ -12,7 +12,7 @@ If the spec has `WORKDIR:`, pass `--cwd "<WORKDIR>"` to the runner; use `git -C 
    <self-contained boss spec, file scope, acceptance criteria>
    QUOTA_BOSS_PROMPT
    ```
-   Omit optional flags the boss did not supply; use `--expect-changes` when file changes are required. In PowerShell, pipe a single-quoted here-string (`@'` / `'@`, each delimiter on its own line) to the same command instead of the heredoc.
+   Omit optional flags the boss did not supply; use `--expect-changes` when file changes are required. In PowerShell, pipe a single-quoted here-string (`@'` / `'@`, each delimiter on its own line) to the same command instead of the heredoc. Start the line with `node`: put no `cd ... &&` in front (pass `--cwd <dir>` for another folder), because permission rules do not match a chained heredoc command.
    The runner enforces provider policy, closes child stdin, kills the process tree at 10 minutes, classifies failures and records feedback, usage and timing. Never add sandbox-disabling flags or secrets.
    If the host moves the call to the background, do not start it again: end your turn, wait for the host's notification that it finished, then read its output and continue.
    Never retry after a `FAILED` line; pass its class and reason to the boss. Do not record feedback, timing or usage again.

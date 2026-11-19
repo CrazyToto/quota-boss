@@ -4,6 +4,20 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-19
+
+### Added
+
+- Free trials: on trivial work an untested free route takes the job when it is within 0.15 of the route that would win otherwise, so free offers can prove themselves. Per category a route gets at most 3 trial jobs and none after a logged fail there; the least tried goes first, and the route that would have won is the next ladder step.
+
+### Fixed
+
+- Worker instructions say to start the run command with `node` and pass `--cwd` instead of `cd <dir> &&`: permission rules do not match a chained heredoc, so the call was denied in headless runs and asked for permission in interactive ones.
+
+### Removed
+
+- The Mistral free preset: Mistral ended free API access (API keys now need billing and pay-as-you-go). Setup and the session start offer to remove a Mistral free entry you added. Mistral still works as a paid custom API.
+
 ## [0.4.1] - 2026-11-19
 
 ### Fixed

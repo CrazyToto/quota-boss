@@ -313,6 +313,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
           inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, prior: successProbability(model, category, tier, [], thresholds, now, effort), price, thinEvidence, jobCost,
+          tried: learned.filter(e => e.model === model.id && e.category === category && ['pass', 'fail'].includes(e.result)),
           free: model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
@@ -407,9 +408,10 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       // The boss doing a job itself stays: that already beat every handover. minP and every filter above still apply.
       // Normal work goes free only after verified passes (no thin evidence), so trivial passes earn it. Among free routes
       // the likelier wins; within 0.01 utility (which includes speed) decides. The paid winner stays next on the ladder.
-      let displaced = null;
+      let displaced = null, trialRun = false;
+      const rule = thresholds.freeFirst ?? {};
+      const original = winner;
       if (winner && !belowThreshold && tier !== 'critical' && !winner.free && winner.via !== 'self') {
-        const rule = thresholds.freeFirst ?? {};
         const scarcity = poolPrice(winner.pool, limits, history, thresholds, now, modes);
         const tight = Number.isFinite(scarcity) && scarcity > positive(rule.tightPrice, 2);
         const margin = clamp(finite(tight ? rule.tightMargin : rule.margin, tight ? 0.05 : 0.02), 0, 0.2);
@@ -417,15 +419,35 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           .sort((a, b) => (Math.abs(b.P - a.P) > 0.01 ? b.P - a.P : 0) || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
         if (free) { displaced = winner; winner = free; }
       }
-      const freeFirst = !!displaced;
+      // Trial: a free route can only prove itself with work. On trivial work an untested free route takes the job when it
+      // is within trialMargin of the route that would win without free first, unless that is the boss itself or a free
+      // route with verified passes. In each category a route gets at most probationPasses trial jobs and no trial after
+      // a logged fail there; the least tried goes first, so free routes take turns. A failed trial costs one step: the
+      // route that would have won is next on the ladder, with no extra effort step for the trial.
+      const trialMargin = clamp(finite(rule.trialMargin, 0.15), 0, 0.3);
+      const settled = winner && winner.free && !winner.thinEvidence;
+      if (original && !belowThreshold && tier === 'trivial' && trialMargin > 0 && original.via !== 'self' && !settled) {
+        const probation = positive(thresholds.probationPasses, 3);
+        const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
+          && c.tried.length < probation && !c.tried.some(e => e.result === 'fail');
+        const trial = eligible.filter(open)
+          .sort((a, b) => a.tried.length - b.tried.length || b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
+        if (trial && trial !== original && trial !== winner) {
+          displaced = original;
+          winner = trial; trialRun = true;
+        }
+      }
+      const freeFirst = !!displaced || trialRun;
       for (const candidate of evaluated) {
         if (candidate === winner) {
           candidate.won = true;
           candidate.reason = !Number.isFinite(candidate.price) ? 'won: critical self emergency fallback'
-            : belowThreshold ? 'won: best P below minP' : freeFirst ? 'won: free and about as likely to succeed'
+            : belowThreshold ? 'won: best P below minP' : trialRun ? 'won: free trial, its own results decide next time'
+              : freeFirst ? 'won: free and about as likely to succeed'
               : 'won: highest utility (2% ties: P, then previous pool)';
         } else if (!candidate.reason) {
-          candidate.reason = candidate.P < minimum && !belowThreshold ? 'lost: below minP'
+          candidate.reason = trialRun && candidate === displaced ? 'lost: a free trial took the job, this is the next step'
+            : candidate.P < minimum && !belowThreshold ? 'lost: below minP'
             : !eligible.includes(candidate) ? 'lost: critical self fallback required'
               : belowThreshold ? 'lost: lower P in threshold fallback' : 'lost: lower utility or tie-break';
         }
@@ -435,7 +457,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const ladder = [step(winner)];
         const levels = effortLevels(registry.find(model => model.id === winner.model));
         const index = levels.indexOf(winner.effort);
-        if (index >= 0 && index < levels.length - 1) ladder.push({ ...step(winner), effort: levels[index + 1] });
+        if (!trialRun && index >= 0 && index < levels.length - 1) ladder.push({ ...step(winner), effort: levels[index + 1] });
         const alternatives = eligible.filter(c => c !== winner);
         // Escalate one step at a time: the cheapest model about as likely to succeed, preferably from another pool.
         // The margin keeps equally rated models in play after a few logged passes nudge the winner's P up.

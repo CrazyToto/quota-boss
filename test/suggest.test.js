@@ -31,6 +31,18 @@ test('the retired Zen GLM registration gets a removal suggestion', () => {
   assert.deepEqual(suggestions(input, NOW), []);
 });
 
+test('only a stored free Mistral registration gets a removal suggestion', () => {
+  const input = snap();
+  const providers = input.config.providers.providers;
+  assert.deepEqual(suggestions(input, NOW), []);
+  providers['mistral-api'] = { custom: true, enabled: false, kind: 'free', cli: { defaultModel: 'mistral/codestral-latest' } };
+  assert.deepEqual(suggestions(input, NOW), [{
+    id: 'retired:mistral-api', text: 'Mistral ended free API access', command: 'remove-api mistral-api',
+  }]);
+  providers['mistral-api'].kind = 'api';
+  assert.deepEqual(suggestions(input, NOW), []);
+});
+
 test('rule 1: Claude week at 80% suggests frugal, 79% does not', () => {
   const [s] = suggestions(snap({ cWeek: 85 }), NOW);
   assert.deepEqual(s, { id: 'profile-frugal', text: 'Claude week is 85% used', command: 'set profile frugal' });

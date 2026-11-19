@@ -126,6 +126,20 @@ Hard floor: candidates with `P < minP[tier]` (critical 0.75, normal 0.55, trivia
 candidate remains (then best P wins and the row is flagged `belowThreshold`).
 Ties (within 2%): higher P, then same pool as the previous step of the session (keeps prompt cache warm).
 
+### Free first and free trials
+
+Free routes are free or local providers at cost 0 (`freeFirst` in `config/thresholds.json`). Critical work never changes, and
+neither does a job the boss does itself.
+
+- **Free first.** A free route takes a job from a paid worker when its `P` is at least the paid worker's `P` minus
+  `margin` (0.02), or `tightMargin` (0.05) while that worker's pool is tight. Normal work needs a free route with
+  `probationPasses` verified passes.
+- **Free trial.** A free route can only prove itself with work. On trivial work a free route with fewer than `probationPasses` jobs in that category takes
+  the job when its `P` is within `trialMargin` (0.15) of the route that would win otherwise, unless that route is a free route
+  with verified passes. Per category a route gets at most `probationPasses` trial jobs and none after a logged fail there.
+  The least tried goes first, so free routes take turns. A failed trial costs one step: the route that would have won is
+  next on the ladder. A `trialMargin` of 0 turns trials off.
+
 ## 5. Effort and escalation ladder
 
 Only the model the boss actually runs on is `self`. Every other model is a worker, so an overqualified boss hands work down:

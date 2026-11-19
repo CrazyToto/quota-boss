@@ -195,7 +195,7 @@ OpenCode free is a disabled example marked trainsOnData: true; enabling it also 
 `quota-boss set training on` for each project. Ollama is an advanced option marked trainsOnData: false, separate from `/boss-setup`.
 Kilo Free is also off by default. Setup can install its CLI; no account or key was needed in testing. Kilo allows 200 anonymous free requests per hour per IP address. Free models may change. See [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication). Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
 All three have zero-cost, conservatively scored models; routing uses max(cost, 0.2) to avoid division by zero.
-Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: the setup asks once for all of them, only those that do not train on your data, or one by one. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
+Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: the setup asks once for all of them, only those that do not train on your data, or one by one. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
 Example scores and training flags are conservative configuration declarations; check the selected service/model terms before changing them.
 
 ## Untested providers
@@ -227,9 +227,7 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **ChatGPT through Codex** documents `codex exec` for scripts, and it reuses your saved login. OpenAI recommends an API
   key for automation and [says not to use a ChatGPT login in CI for public or open-source repositories](https://learn.chatgpt.com/docs/non-interactive-mode).
   Use that login on your own machine only, never on a CI runner.
-- **Mistral by API key** uses your own key, which you can create on the free Experiment plan at
-  [admin.mistral.ai](https://admin.mistral.ai/organization/api-keys). Requests on that plan may be used for training unless you
-  opt out under Privacy > Anonymous improvement data. Its limits are as reported by OmniRoute, so check them in your console.
+- **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
 - **OpenCode Zen** needs no key. Quota Boss offers only the two free models whose providers, [according to OpenCode](https://opencode.ai/docs/zen/),
   keep no data and do not train on it: GLM-5.3-Flash and DeepSeek V4.1 Flash. They are free for a limited time.
 - **Other free API offers** are off until you add them. Each shows its limit and warning first. Gemini's unpaid tier

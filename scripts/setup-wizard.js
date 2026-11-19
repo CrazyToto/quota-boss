@@ -6,7 +6,7 @@
 const path = require('node:path');
 const lib = require('./lib');
 const tools = require('./tools');
-const { PRESETS, MODEL_PATTERN } = require('./add-api');
+const { PRESETS, RETIRED, MODEL_PATTERN } = require('./add-api');
 const { PROVIDER_HELP, CODE_GRAPH_HELP, UNCONFIRMED_TRAINING, SCRIPTED_CLAUDE_WARNING } = require('./provider-help');
 const { TEXT } = require('./setup-text');
 
@@ -18,7 +18,7 @@ const OWN = ['codex', 'perplexity'];
 const LITE = 'junie-lite';
 const JUNIE = 'junie';
 const OTHER = ['copilot', 'grok', 'antigravity', 'jetbrains'];
-const FREE = ['mistral-api', 'zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
+const FREE = ['zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
 const GRAPH = 'graphify';
 const graph = require('./graph');
 const newProviders = require('./new-providers');
@@ -94,8 +94,15 @@ const asksForGraph = w => !lib.detectCodeIntel(w.directory).graphify;
 const hostPool = w => ({ 'claude-code': 'claude', codex: 'codex' }[w.state.host]);
 const choicesOf = w => CHOICES.filter(id => id !== hostPool(w));
 const chosen = (w, ids) => ids.filter(id => w.state.choices[id]);
-const retiredZen = config => config.providers.providers['zen-glm']?.custom === true && enabledNow(config, 'zen-glm');
-const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id) && !(id === 'zen-glm' && retiredZen(w.config)));
+// The same test as the session-start suggestion, so setup and suggest never disagree about a retired offer.
+const retiredApis = config => RETIRED.filter(({ id, matches }) => {
+  const provider = config.providers.providers[id];
+  return provider?.custom === true && matches(provider) && enabledNow(config, id);
+});
+const keptApis = w => {
+  const retired = retiredApis(w.config).map(({ id }) => id);
+  return Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id) && !retired.includes(id));
+};
 const mayTrain = id => id === 'kilo-free' || PRESETS[id].trains;
 const keyStored = (stored, name, provider) => stored.includes(name.toLowerCase()) || stored.includes(provider.toLowerCase());
 
@@ -225,7 +232,6 @@ function trainingScreen(w) {
     w.io.say(w.text.trainingTitle + '\n');
     const warnings = chosen(w, FREE).filter(mayTrain).map(id => [nameOf(id), (helpOf(id).warning || '').replace(UNCONFIRMED_TRAINING, '').trim()]).filter(([, text]) => text);
     say(w, [w.text.trainingNames(trainers(w).join(', ')), '', w.text.trainingOn, w.text.trainingOff, ...(warnings.length ? ['', ...warnings.map(([name, text]) => name + ': ' + text)] : [])]);
-    if (w.state.choices['mistral-api']) say(w, ['', ...w.text.optOut, w.text.optOutAdvice]);
     w.io.say('');
     const answer = yesNo(w, w.text.trainingAsk, w.state.training);
     if (answer === BACK) return BACK;
@@ -257,7 +263,7 @@ function summaryScreen(w) {
     frame(w, 6);
     const on = [...chosen(w, choicesOf(w)).map(id => nameOf(id)), ...w.state.apis.map(api => api.id)];
     const off = choicesOf(w).filter(id => !w.state.choices[id] && (id !== GRAPH || asksForGraph(w))).map(id => nameOf(id));
-    if (retiredZen(w.config)) off.push('zen-glm');
+    off.push(...retiredApis(w.config).map(({ id }) => id));
     const blocked = w.state.training ? [] : trainers(w);
     say(w, [w.text.profile + ': ' + w.state.profile, w.text.assistant + ': ' + w.state.host, w.text.turnedOn + ': ' + (on.join(', ') || w.text.none),
       w.text.turnedOff + ': ' + (off.join(', ') || w.text.none), w.text.training + ': ' + (w.state.training ? w.text.on : w.text.off)]);
@@ -327,7 +333,7 @@ function buildCommands(w, usable) {
     if (want && !enabledNow(config, id)) commands.push(['add-api', id]);
     if (!want && present) commands.push(['remove-api', id]);
   }
-  if (retiredZen(config)) commands.push(['remove-api', 'zen-glm']);
+  for (const { id } of retiredApis(config)) commands.push(['remove-api', id]);
   if (usable(OPENCODE)) {
     for (const api of state.apis) commands.push(['add-api', api.id, api.model, '--trains', api.trains ? 'yes' : 'no', ...(api.free ? ['--free'] : [])]);
   }
@@ -425,7 +431,6 @@ function finish(w) {
   const ready = chosen(w, FREE).filter(id => usable(toolOf(id)) && !failedAddApi.has(id) && (w.state.training || !mayTrain(id))).map(id => nameOf(id))
     .filter(name => !dropped.includes(name) && !open.some(line => line.startsWith(name + ' (')));
   if (ready.length) say(w, ['', w.text.freeReady(ready.join(', '))]);
-  if (w.state.choices['mistral-api'] && !dropped.includes(nameOf('mistral-api')) && !w.state.training && usable(toolOf('mistral-api'))) say(w, ['', w.text.reminder, ...w.text.optOut, w.text.optOutAdvice]);
   if (graphResult) say(w, ['', graphResult, ...(w.state.host === 'claude-code' ? [w.text.graphNext] : [])]);
   say(w, ['', w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.addLater]);
 }

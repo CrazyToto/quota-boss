@@ -286,7 +286,7 @@ test('free first: an equally rated free relay beats direct Haiku on trivial jobs
   assert.equal(pick({ relayCost: { trivial: 0.000001 }, thinEvidenceFactor: 1 }).via, 'cli-worker:kilo-free');
   // A margin of 0 needs the free route to be at least as likely, and a free route below the margin loses.
   const weaker = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 6 } } } };
-  assert.equal(select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0) }), 'trivial', 'mechanical').via, 'haiku-worker');
+  assert.equal(select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0), thresholds: { freeFirst: { trialMargin: 0 } } }), 'trivial', 'mechanical').via, 'haiku-worker');
   // While the winner's pool is tight the wider margin applies, so the weaker free route takes the job; critical never goes free first.
   const tight = select(route({ models: weaker, providers, limits: limits(0, 0, 0, 0), thresholds: { freeFirst: { margin: 0, tightMargin: 0.2, tightPrice: 0.5 } } }), 'trivial', 'mechanical');
   assert.equal(tight.via, 'cli-worker:kilo-free');
@@ -299,6 +299,46 @@ test('free first: an equally rated free relay beats direct Haiku on trivial jobs
   const huge = select(route({ models: apart, providers, limits: limits(0, 0, 0, 0), thresholds: { minP: { trivial: 0 }, freeFirst: { margin: 5 } } }), 'trivial', 'mechanical');
   assert.equal(huge.via, 'haiku-worker');
 });
+test('free trial: an untested free route gets trivial work until its own results decide', () => {
+  const free = lib.BUILTIN_PROVIDERS.providers['kilo-free'];
+  const providers = { ...lib.BUILTIN_PROVIDERS, providers: { ...lib.BUILTIN_PROVIDERS.providers,
+    'kilo-free': { ...free, enabled: true, trainsOnData: false }, 'kilo-two': { ...free, enabled: true, trainsOnData: false } } };
+  const models = { categories: ['mechanical'], models: {
+    'claude-haiku-5-5': { pool: 'claude', label: 'Haiku', agentModel: 'haiku', cost: 0.25, scores: { mechanical: 8 } },
+    relayed: { pool: 'kilo-free', label: 'Free', cost: 0, scores: { mechanical: 6 } },
+  } };
+  const at = (result, extra = {}) => ({ t: clock, model: 'relayed', category: 'mechanical', tier: 'trivial', result, ...extra });
+  const pickRow = (result, tier) => result.rows.find(row => row.tier === tier && row.category === 'mechanical');
+  const pick = (outcomes = [], thresholds = {}, m = models, tier = 'trivial') =>
+    pickRow(route({ models: m, providers, thresholds, outcomes, now: clock, limits: limits(0, 0, 0, 0) }), tier);
+  // Below the free-first margin but within trialMargin: the free route gets its trial, the paid worker is next.
+  const trial = pick();
+  assert.equal(trial.via, 'cli-worker:kilo-free');
+  assert.equal(trial.reason, 'won: free trial, its own results decide next time');
+  assert.deepEqual(trial.ladder.map(step => step.via), ['cli-worker:kilo-free', 'haiku-worker']);
+  const all = route({ models, providers, now: clock, limits: limits(0, 0, 0, 0) }).candidates;
+  assert.equal(all.find(c => c.tier === 'trivial' && c.model === 'claude-haiku-5-5').reason, 'lost: a free trial took the job, this is the next step');
+  // A fail in another category does not end this trial.
+  assert.equal(pick([at('fail', { category: 'research' })]).via, 'cli-worker:kilo-free');
+  // Normal work never gets a trial, and a trialMargin of 0 turns it off.
+  assert.equal(pick([], {}, models, 'normal').via, 'haiku-worker');
+  assert.equal(pick([], { freeFirst: { trialMargin: 0 } }).via, 'haiku-worker');
+  // One verified fail ends the trial; enough passes end the thin evidence, so the regular rules decide again.
+  assert.equal(pick([at('fail')]).via, 'haiku-worker');
+  assert.equal(pick([at('pass')]).via, 'cli-worker:kilo-free');
+  const proven = pick([at('pass'), at('pass'), at('pass')]);
+  assert.notEqual(proven.reason, 'won: free trial, its own results decide next time');
+  // A free route far below the winner gets no trial, and the margin is clamped to at most 0.3.
+  const far = { ...models, models: { ...models.models, relayed: { ...models.models.relayed, scores: { mechanical: 1 } } } };
+  assert.equal(pick([], { freeFirst: { trialMargin: 5 } }, far).via, 'haiku-worker');
+  // Two untested free routes take turns: the less tried one goes first.
+  const two = { ...models, models: { ...models.models, other: { pool: 'kilo-two', label: 'Other', cost: 0, scores: { mechanical: 6 } } } };
+  const first = pick([], {}, two).model;
+  const second = pick([at('pass', { model: first })], {}, two).model;
+  assert.notEqual(first, second);
+  assert.ok(['relayed', 'other'].includes(second));
+});
+
 
 const LEVELS = ['low', 'medium', 'high', 'xhigh'];
 const codexFamily = { categories: ['implementation', 'mechanical'], models: {

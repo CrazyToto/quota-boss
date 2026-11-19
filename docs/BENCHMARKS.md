@@ -323,3 +323,26 @@ or delegated):
 
 Boss on now costs about 5% (medium) and 7% (large) more than boss off on average, within the run-to-run spread: one
 large run was cheaper than both off runs. The first prompt is about 870 tokens longer than with boss off.
+
+### Claude Code with Junie Lite on (2026-11-19)
+
+Claude host, Opus 5.5 boss, Junie Lite on and the routing table naming it for trivial implementation and mechanical work,
+2 runs per arm. Every run passed all hidden checks. USD is the Claude estimate; no Codex usage.
+
+| Task | off USD | on USD | off s | on s |
+| --- | --- | --- | --- | --- |
+| small | 0.190, 0.188 | 0.216, 0.200 | 21, 20 | 22, 19 |
+| docs | 0.229, 0.212 | 0.228, 0.225 | 31, 27 | 26, 24 |
+| mixed (first try) | 0.326, 0.311 | 0.551, 0.406 | 52, 48 | 72, 62 |
+| mixed (after the fix) | same | 0.374, 0.359 | same | 58, 54 |
+
+Junie Lite did no work. On mixed the boss tried it for the four chores, but the bench permissions denied the call:
+the boss had put `cd <dir> &&` in front of the `cli-run.js` heredoc, and permission rules do not match a chained heredoc
+(a plain `node ... <<'EOF'` call passes; checked with a one-line Haiku test). In an interactive session this shows a
+permission prompt instead. Fix: the worker instructions now say to start the line with `node` and pass `--cwd`.
+After the fix the boss did the chores itself on both runs, because each was one or two edits (the two-turn rule).
+Small and docs were done by the boss for the same reason.
+
+Boss on cost about 10% more on small, 3% more on docs and 15% more on mixed than boss off, from the longer rules
+prompt, with no delegation to make up for it. Junie Lite has to prove itself on jobs larger than the two-turn rule; the
+new free trial rule gives untested free routes such jobs.

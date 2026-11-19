@@ -25,7 +25,8 @@ that turn your agent into an orchestrator. Your best model plans, decides and ch
 to a cheaper model on one of your subscriptions (**Claude**, **ChatGPT / Codex**, **GitHub Copilot**, **Grok**,
 **Google Antigravity / Gemini**, **JetBrains AI**), to **Perplexity** for research, or to a free offer such as
 **Junie Lite** or a local model you have switched on. When a free route is about as likely to succeed as a paid
-worker, it gets the job, so your paid limits last longer.
+worker, it gets the job, so your paid limits last longer. An untested free route gets a few small jobs to prove itself;
+its own results decide after that.
 
 - **It saves Claude where it counts.** On a large benchmark task with the Claude 5-hour limit 75% used, the boss used
   about a third less Claude for the same hidden test results ([numbers](#does-it-pay-off)).
@@ -165,7 +166,7 @@ in [bench/](bench/README.md), and `quota-boss savings` shows the numbers for you
 | Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
 | Free CLI offers | Junie Lite, Kilo | Junie Lite is on by default: one yes installs Junie, opens the login and tests it |
-| Free API offers | Mistral, OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
+| Free API offers | OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
 | Local models | Ollama | `/boss-local` |
 | Anything else | Any API with a key | `/boss-add-api` |
 

@@ -147,10 +147,11 @@
   },
   "thinEvidenceFactor": 0.75,
   "freeFirst": {
-    "$comment": "Outside critical work a free route (cost 0, provider kind free or local) replaces a paid worker when its P is at least that worker's P minus margin; tightMargin applies while that worker's raw pool price is above tightPrice (1 = no pressure, 4 = full). The boss doing a job itself is never replaced.",
+    "$comment": "Outside critical work a free route (cost 0, provider kind free or local) replaces a paid worker when its P is at least that worker's P minus margin; tightMargin applies while that worker's raw pool price is above tightPrice (1 = no pressure, 4 = full). On trivial work a free route with fewer than probationPasses logged jobs and no fail in that category also takes the job within trialMargin, least tried first, until its own results decide. The boss doing a job itself is never replaced.",
     "margin": 0.02,
     "tightMargin": 0.05,
-    "tightPrice": 2
+    "tightPrice": 2,
+    "trialMargin": 0.15
   },
   "minEffort": {
     "architecture": "medium"

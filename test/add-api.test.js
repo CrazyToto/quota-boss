@@ -24,9 +24,8 @@ test('no arguments lists the presets', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /cohere:/);
   assert.doesNotMatch(result.stdout, /groq:|sambanova:/);
-  assert.match(result.stdout, /mistral-api:.*may train/);
+  assert.doesNotMatch(result.stdout, /mistral-api:|zen-glm:/);
   assert.match(result.stdout, /gemini-api:.*\n\s+Warning:.*humans may read/);
-  assert.doesNotMatch(result.stdout, /mistral-api:.*\n\s+Warning:/);
 });
 
 test('a preset registers a working, enabled provider with a zero-cost model', () => {
@@ -46,10 +45,14 @@ test('a preset registers a working, enabled provider with a zero-cost model', ()
   assert.match(cli(dir, 'providers').stdout, /cohere/);
 });
 
-test('Mistral next steps show its provider login and key page', () => {
-  const output = cli(home(), 'add-api', 'mistral-api').stdout;
-  assert.match(output, /opencode auth login -p mistral/);
-  assert.match(output, /https:\/\/admin\.mistral\.ai\/organization\/api-keys/);
+test('Mistral can still be registered as a paid custom API', () => {
+  const dir = home();
+  assert.notEqual(cli(dir, 'add-api', 'mistral-api').status, 0);
+  const result = cli(dir, 'add-api', 'mistral-api', 'mistral/codestral-latest', '--trains', 'yes');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /opencode auth login -p mistral/);
+  assert.equal(saved(dir, 'providers').providers['mistral-api'].kind, 'api');
+  assert.ok(saved(dir, 'models').models['mistral-api-api'].cost > 0);
 });
 
 test('a preset that may train says how to allow it', () => {

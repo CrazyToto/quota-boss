@@ -2,6 +2,7 @@
 const path = require('path');
 const lib = require('./lib');
 const newProviders = require('./new-providers');
+const { RETIRED } = require('./add-api');
 
 // Few, high-confidence rules. Nothing changes automatically: the boss proposes the command to the user once.
 const MAX = 2;
@@ -24,8 +25,8 @@ function suggestions(snap, now = Date.now()) {
     if (!Number.isFinite(now)) return [];
     const out = [];
     const providers = config.providers?.providers ?? {}, models = config.models?.models ?? {};
-    if (providers['zen-glm']?.cli?.defaultModel === 'opencode/glm-5.3-flash-free') {
-      out.push({ id: 'retired:zen-glm', text: 'OpenCode retired the free Zen GLM model', command: 'remove-api zen-glm' });
+    for (const { id, reason, matches } of RETIRED) {
+      if (matches(providers[id])) out.push({ id: 'retired:' + id, text: reason, command: 'remove-api ' + id });
     }
     const claude = lib.providerWindows('claude', limits);
     const week = used(claude.weekly, now);
