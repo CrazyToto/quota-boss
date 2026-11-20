@@ -11,8 +11,8 @@ sandbox-test/
 /PLAN.md
 /RELEASE-PLAN.md
 
-# Raw recordings of the demo session.
-/docs/demo/raw/
-
 # Local code graph (Graphify): machine-specific paths, regenerated on demand.
 /graphify-out/
+
+# Worker copies made by quota-boss worktree add.
+/.claude/worktrees/
