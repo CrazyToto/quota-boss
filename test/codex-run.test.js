@@ -78,7 +78,7 @@ test('usage limit is reported as FAILED with a feedback hint and non-zero exit',
   const result = exec(['--model', 'gpt-6.1-sol'], { QUOTA_BOSS_CODEX_JS: fakeCodex(dir, 'limit'), QUOTA_BOSS_HOME: dir });
   assert.equal(result.status, 1);
   assert.match(result.stdout, /^codex-run: FAILED \(usage limit\)/);
-  assert.match(result.stdout, /feedback gpt-6\.1-sol implementation normal unavailable/);
+  assert.match(result.stdout, /feedback gpt-6\.1-sol implementation normal fail --kind quota/);
 });
 
 test('Windows child PATH drops Microsoft Store aliases and keeps everything else', () => {

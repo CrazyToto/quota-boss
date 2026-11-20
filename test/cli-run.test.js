@@ -205,7 +205,7 @@ test('Claude JSON errors classify API statuses even on exit zero and record the 
       if (kind === 'failed') assert.equal(h.records.feedback.length, 0);
       else {
         assert.deepEqual(h.records.feedback[0][0], { model: CLAUDE_MODEL, category: 'mechanical', tier: 'normal',
-          result: kind === 'structural' ? 'fail' : kind, effort: 'high' });
+          result: kind === 'structural' ? 'fail' : kind, ...(kind === 'structural' ? { kind } : {}), effort: 'high' });
         assert.match(result.report.split('\n')[0], /feedback recorded$/);
       }
       assert.equal(h.records.timing[0].ok, false); assert.equal(h.records.usage.length, 0);
@@ -316,8 +316,8 @@ test('Claude JSON keeps timeout, permission markers, regex failures and nonzero 
   h.deps.spawn = () => { queueMicrotask(() => { child.stdout.write(JSON.stringify({ subtype: 'success' })); timers[0].callback(); }); return child; };
   h.deps.kill = () => child.emit('close', null);
   const result = await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
-  assert.equal(timers[0].ms, 600000); assert.match(result.report, /FAILED \(limited: 10-minute timeout\)/);
-  assert.equal(h.records.feedback[0][0].result, 'limited'); assert.equal(h.records.usage.length, 0);
+  assert.equal(timers[0].ms, 600000); assert.match(result.report, /FAILED \(timeout: 10-minute timeout\)/);
+  assert.equal(h.records.feedback[0][0].result, 'fail'); assert.equal(h.records.feedback[0][0].kind, 'timeout'); assert.equal(h.records.usage.length, 0);
 });
 
 test('Claude missing, non-object, invalid and multiple JSON outputs fail and retain the raw tail', async () => {
@@ -546,6 +546,7 @@ test('each failure pattern produces the expected feedback, timing and counter us
   const classes = {
     limited: ['rate limit', 'HTTP 429', 'too many requests', 'quota exceeded', 'request too large', 'overloaded', 'high demand', 'status: 503'],
     unavailable: ['error: 401', 'unauthorized', 'API key', 'model not found', 'provider not found'],
+    context: ['context length exceeded', 'maximum context exceeded', 'too many tokens'],
     structural: ['HTTP 400', 'status: 422', 'invalid request', 'unsupported parameter', 'message format'],
     'no-work': ['auto-rejecting', 'rejected permission'],
     failed: ['ordinary error'],
@@ -558,7 +559,8 @@ test('each failure pattern produces the expected feedback, timing and counter us
     assert.equal(h.records.usage.length, 1); assert.equal(h.records.usage[0][2], 'calls');
     if (kind === 'failed') { assert.equal(h.records.feedback.length, 0); return; }
     const entry = h.records.feedback[0][0];
-    assert.equal(entry.result, ['structural', 'no-work'].includes(kind) ? 'fail' : kind);
+    if (['structural', 'context'].includes(kind)) assert.equal(entry.kind, kind);
+    assert.equal(entry.result, ['structural', 'context', 'no-work'].includes(kind) ? 'fail' : kind);
     assert.equal(entry.model, 'tiny'); assert.equal(entry.category, 'mechanical'); assert.equal(entry.tier, 'trivial');
     assert.match(result.report.split('\n')[0], /feedback recorded$/);
   });
@@ -645,7 +647,7 @@ test('expect-changes compares both Git snapshots; missing Git cannot prove no wo
   }
 });
 
-test('timeout uses injected Windows taskkill /T /F before the parent exits, and records limited', async () => {
+test('timeout uses injected Windows taskkill /T /F before the parent exits, and records fail kind timeout', async () => {
   const h = harness(); const timers = []; const cancelled = []; const calls = [];
   h.deps.platform = 'win32'; h.deps.findExecutable = () => 'C:\\trusted\\trial.exe';
   h.deps.setTimeout = (callback, ms) => { const timer = { callback, ms }; timers.push(timer); return timer; };
@@ -661,8 +663,8 @@ test('timeout uses injected Windows taskkill /T /F before the parent exits, and 
   };
   const result = await runner.run(['--provider', 'trial'], h.deps);
   assert.equal(timers[0].ms, 600000); assert.equal(runner.TIMEOUT_MS, 600000);
-  assert.match(result.report, /FAILED \(limited: 10-minute timeout\)/);
-  assert.equal(h.records.feedback[0][0].result, 'limited'); assert.equal(h.records.timing[0].ok, false);
+  assert.match(result.report, /FAILED \(timeout: 10-minute timeout\)/);
+  assert.equal(h.records.feedback[0][0].result, 'fail'); assert.equal(h.records.feedback[0][0].kind, 'timeout'); assert.equal(h.records.timing[0].ok, false);
   assert.equal(h.records.usage.length, 1); assert.equal(cancelled.length, 2);
 });
 
@@ -1015,5 +1017,15 @@ test('Junie: text output or an own output file gets no report file', async () =>
     const result = await runner.run(['--provider', 'jetbrains', '--model', 'j'], h.deps);
     assert.equal(result.code, 0, result.report);
     assert.deepEqual(h.records.spawns[0].args, own.map(arg => arg.replace('{model}', 'gpt-6-luna')));
+  }
+});
+
+
+test('Claude context errors override structural status without scanning successful answers', async () => {
+  for (const message of ['context length exceeded', 'maximum context exceeded', 'too many tokens']) {
+    const h = claudeHarness({ subtype: 'error_during_execution', is_error: true, api_error_status: 400, result: message }, 0);
+    await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
+    assert.equal(h.records.feedback[0][0].result, 'fail');
+    assert.equal(h.records.feedback[0][0].kind, 'context');
   }
 });

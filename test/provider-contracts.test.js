@@ -12,7 +12,7 @@ const shipped = require('../config/providers.json').providers;
 const registry = require('../config/models.json').models;
 const root = path.join(__dirname, 'fixtures', 'fake-cli');
 const cases = { success: ['ok', null], 'bad-output': ['ok', null], 'partial-write': ['failed', null],
-  timeout: ['limited', 'limited'], 'auth-error': ['unavailable', 'unavailable'], 'rate-limit': ['limited', 'limited'], cancel: ['failed', null], 'no-change': ['no-work', 'fail'] };
+  timeout: ['timeout', 'fail'], 'auth-error': ['unavailable', 'unavailable'], 'rate-limit': ['limited', 'limited'], cancel: ['failed', null], 'no-change': ['no-work', 'fail'] };
 
 // Keep the actual shipped template intact. Only the process-launch dependency redirects to Node.
 test('every shipped CLI template against local executables', { concurrency: true }, async t => {
@@ -67,6 +67,8 @@ test('every shipped CLI template against local executables', { concurrency: true
       assert.equal(input, stdin ? full : undefined);
       assert.equal(fs.existsSync(output), ['success', 'partial-write', 'bad-output'].includes(scenario));
       if (scenario === 'timeout') {
+        assert.match(result.report, /FAILED \(timeout: 10-minute timeout\)/);
+        assert.equal(journals.feedback[0].kind, 'timeout');
         assert.equal(killed, true); assert.ok(spawned.exitCode !== null || spawned.signalCode !== null);
         assert.throws(() => process.kill(spawned.pid, 0), /ESRCH|no such process/i);
       }

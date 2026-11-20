@@ -20,7 +20,9 @@ const JUNIE_LICENSE = /\b492\b|untrusted license|no (?:valid |active )?licen[cs]
 const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
+const CONTEXT_ERROR = /context length|maximum context|too many tokens/i;
 const FAILURES = [
+  ['context', CONTEXT_ERROR, 'context length exceeded'],
   ['structural', /\b(?:HTTP|status|error)[^\n]{0,20}\b(?:400|422)\b|invalid request|unsupported parameter|message format/i, 'invalid request'],
   ['limited', /rate limit|\b(?:HTTP|status|error)[^\n]{0,20}\b(?:429|503)\b|too many requests|quota exceeded|request too large|overloaded|high demand/i, 'provider limit'],
   ['unavailable', /\b(?:HTTP|status|error)[^\n]{0,20}\b401\b|unauthorized|api key|model not found|provider not found/i, 'provider unavailable'],
@@ -212,7 +214,7 @@ function execute(plan, deps = {}) {
 }
 
 function classify(result, expectChanges, before, after, env, claude = false, junie = false) {
-  if (result.timedOut) return { kind: 'limited', reason: '10-minute timeout' };
+  if (result.timedOut) return { kind: 'timeout', reason: '10-minute timeout' };
   if (result.noWork || (!claude && NO_WORK.test(result.stdout || '')) || NO_WORK.test(result.stderr || '')) return { kind: 'no-work', reason: 'permission rejected' };
   if (result.error) return { kind: 'failed', reason: 'could not run CLI' + (result.error.code ? ' (' + result.error.code + ')' : '') };
   // Junie prints its login hint and still exits 0, so this one exact line counts even on success.
@@ -225,7 +227,7 @@ function classify(result, expectChanges, before, after, env, claude = false, jun
   let envelopeError;
   if (claude && result.claude && (result.claude.is_error === true || result.claude.subtype !== 'success')) {
     const status = result.claude.api_error_status, subtype = result.claude.subtype;
-    const kind = [400, 422].includes(status) ? 'structural' : [429, 500, 502, 503, 504, 529].includes(status) ? 'limited'
+    const kind = CONTEXT_ERROR.test(result.claude.result || '') || CONTEXT_ERROR.test(result.stderr || '') ? 'context' : [400, 422].includes(status) ? 'structural' : [429, 500, 502, 503, 504, 529].includes(status) ? 'limited'
       : [401, 403].includes(status) ? 'unavailable' : null;
     const reason = clean(Number.isFinite(status) ? 'api_error_status ' + status
       : typeof subtype === 'string' && subtype !== 'success' ? subtype : 'error', env).replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -317,9 +319,10 @@ async function run(argv, deps = {}) {
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };
   record('timing', () => (deps.recordRun || latency.recordRun)({ t: now(), model: selected.model,
     category: options.category || null, tier: options.tier || null, seconds, ok, ...(tokens ? { tokens } : {}), ...(ran.length ? { ran } : {}) }));
-  const feedback = { limited: 'limited', unavailable: 'unavailable', structural: 'fail', 'no-work': 'fail' }[outcome.kind];
+  const feedback = { limited: 'limited', unavailable: 'unavailable', structural: 'fail', context: 'fail', timeout: 'fail', 'no-work': 'fail' }[outcome.kind];
   if (feedback) record('feedback', () => (deps.appendOutcome || lib.appendOutcome)({ model: selected.model,
     category: options.category || 'mechanical', tier: options.tier || 'trivial', result: feedback,
+    ...(['structural', 'context', 'timeout'].includes(outcome.kind) ? { kind: outcome.kind } : {}),
     ...(selected.effort !== '-' ? { effort: selected.effort } : {}) }, config.models, [], now()));
   if (selected.provider.quota?.source === 'counter' && (result.pid > 0 || result.status !== null)) {
     const units = Object.values(selected.provider.quota.windows).map(window => window.unit);

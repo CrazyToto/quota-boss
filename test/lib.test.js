@@ -480,6 +480,20 @@ test('feedback append preserves prior records and does not touch the journal on 
     lib.appendOutcome({ ...value, effort }, models, [], now + 1);
     assert.equal(lib.readOutcomes(now + 1).at(-1).effort, effort);
   }
+  for (const kind of lib.FAILURE_KINDS) {
+    const entry = lib.appendOutcome({ ...value, kind }, models, [], now + 1);
+    lib.appendOutcome({ ...value, model: kind, kind }, { models: { [kind]: {} } }, [], now + 1);
+    const ledger = lib.readState().trials[kind + '|review'];
+    if (['quota', 'outage', 'timeout'].includes(kind)) assert.equal(ledger, undefined);
+    assert.equal(entry.kind, kind);
+    if (['structural', 'context', 'check-fail'].includes(kind)) assert.equal(ledger.failed, now + 1);
+    assert.equal(lib.validOutcome(entry), true);
+    assert.equal(lib.failedHere(entry), ['structural', 'context', 'check-fail'].includes(kind));
+    assert.equal(lib.rateLimitedModels([entry], now + 1).has('rated'), ['quota', 'outage', 'timeout'].includes(kind));
+  }
+  assert.throws(() => lib.appendOutcome({ ...value, kind: 'unknown' }, models, [], now), /kind is invalid/);
+  assert.throws(() => lib.appendOutcome({ ...value, result: 'pass', kind: 'context' }, models, [], now), /kind requires a fail/);
+  assert.equal(lib.validOutcome({ ...value, t: now, kind: 'unknown' }), false);
   const journal = fs.readFileSync(lib.getPaths().outcomesFile, 'utf8');
   assert.throws(() => lib.appendOutcome({ ...value, effort: 'unknown' }, models, [], now), /effort.*invalid/i);
   assert.equal(fs.readFileSync(lib.getPaths().outcomesFile, 'utf8'), journal);

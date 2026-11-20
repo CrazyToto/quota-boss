@@ -129,7 +129,7 @@ function main() {
     ...(shellBlocked(result.stdout) ? ['Warning: Codex could not start a shell in its sandbox, so its commands and tests did not run. Verify outside Codex.'] : []),
     ...(ok ? report : []),
     ...(problem && /usage limit|not supported|newer version/i.test(problem)
-      ? ['Hint: log it so routing avoids this model: quota-boss feedback ' + options.model + ' ' + (options.category || 'implementation') + ' ' + (options.tier || 'normal') + ' unavailable'] : []),
+      ? ['Hint: log it so routing avoids this model: quota-boss feedback ' + options.model + ' ' + (options.category || 'implementation') + ' ' + (options.tier || 'normal') + (/usage limit/i.test(problem) ? ' fail --kind quota' : ' unavailable')] : []),
   ].join('\n') + '\n');
   process.exitCode = ok ? 0 : 1;
 }

@@ -91,7 +91,7 @@ function supportedInputs(model, method, provider) {
 function effortWeight(outcome, effort) {
   const done = EFFORT_ORDER.indexOf(outcome.effort), wanted = EFFORT_ORDER.indexOf(effort);
   if (done < 0 || wanted < 0 || done === wanted) return 1;
-  return (outcome.result === 'fail') === (done < wanted) ? 0.5 : 1;
+  return lib.qualityFailure(outcome) === (done < wanted) ? 0.5 : 1;
 }
 
 /** Registry prior plus a tier-weighted posterior; failures count twice. */
@@ -106,7 +106,7 @@ function successProbability(model, category, tier, outcomes = [], thresholds = {
     if (outcome.model !== model.id || outcome.category !== category) continue;
     const weight = (outcome.tier === tier ? 1 : 0.5) * effortWeight(outcome, effort);
     if (outcome.result === 'pass') wins += weight;
-    if (outcome.result === 'fail') fails += weight;
+    if (lib.qualityFailure(outcome)) fails += weight;
   }
   return (prior * n0 + wins) / (n0 + wins + 2 * fails);
 }
@@ -183,7 +183,7 @@ function effortFor(model, category, tier, thresholds, method, provider, learned 
   let index = levels.indexOf(levels.find(level => EFFORTS.indexOf(level) >= floor) ?? levels[levels.length - 1]);
   while (index < levels.length - 1) {
     const outcomes = learned.filter(e => e.model === model.id && e.category === category && e.tier === tier && e.effort === levels[index]);
-    const fails = outcomes.filter(e => e.result === 'fail').length;
+    const fails = outcomes.filter(lib.qualityFailure).length;
     if (fails < 2 || fails <= outcomes.filter(e => e.result === 'pass').length) break;
     index++;
   }
@@ -319,7 +319,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const jobCost = Math.max(model.cost, 0.2) * effortCost(model, self ? bossEffort : effort, thresholds) * (method === 'claude-worker' ? freshCli : 1);
         return { tier, category, model: model.id, cliModel: model.cliModel || null, label: sanitizeLabel(model.label), pool: model.pool, via: method,
           inputs, capabilityReason, effort, ...(self ? { chargedEffort: bossEffort } : {}), P, prior: successProbability(model, category, tier, [], thresholds, now, effort), price, thinEvidence, jobCost,
-          tried: learned.filter(e => e.model === model.id && e.category === category && ['pass', 'fail'].includes(e.result)),
+          tried: learned.filter(e => e.model === model.id && e.category === category && (e.result === 'pass' || lib.failedHere(e))),
           ledger: (v => v && typeof v === 'object' && !Array.isArray(v) ? v : {})(trials && typeof trials === 'object' && Object.hasOwn(trials, model.id + '|' + category) ? trials[model.id + '|' + category] : null),
           free: model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
@@ -425,7 +425,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         // A free route that failed in this category without a pass here never wins by free first, even when it has
         // passes elsewhere: it has to win a trial again, which the ledger keeps closed.
         const failedHere = c => !c.tried.some(e => e.result === 'pass')
-          && (c.tried.some(e => e.result === 'fail') || Number.isFinite(c.ledger.failed));
+          && (c.tried.some(lib.failedHere) || Number.isFinite(c.ledger.failed));
         const free = eligible.filter(c => c.free && !failedHere(c) && (tier === 'trivial' || !c.thinEvidence) && c.P >= winner.P - margin)
           .sort((a, b) => (Math.abs(b.P - a.P) > 0.01 ? b.P - a.P : 0) || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
         if (free) { displaced = winner; winner = free; }
@@ -446,7 +446,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         // route that would have won, not to the next trial. New trials open again after that.
         const retry = evaluated.some(c => c.free && failedAt(c) !== null && failedAt(c) > now - 3600000);
         const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
-          && count(c) < probation && !c.tried.some(e => e.result === 'fail') && failedAt(c) === null;
+          && count(c) < probation && !c.tried.some(lib.failedHere) && failedAt(c) === null;
         // During that hour an unproven free winner from free first is no fallback either: the retry goes to the original.
         if (retry && winner !== original && winner.thinEvidence) { winner = original; displaced = null; }
         const trial = retry ? null : eligible.filter(open)

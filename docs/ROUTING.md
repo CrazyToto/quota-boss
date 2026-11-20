@@ -20,7 +20,7 @@ and escalate through a ladder instead of always starting with the most expensive
 | profile (quality / balanced / frugal) | user-owned `QUOTA_BOSS_HOME/projects.json` real-path registration |
 | quota per pool and window: `used` (0-100), `resets_at`, `window_minutes` | status line (Claude), Codex logs |
 | usage history samples per pool | state.json `history[pool]` = last 48 samples `{t, u5, uw}` (deduplicated, >= 5 min apart) |
-| verified outcomes | `QUOTA_BOSS_HOME/outcomes.jsonl` lines `{t, model, category, tier, result: pass|fail|unavailable|limited, effort?}` |
+| verified outcomes | `QUOTA_BOSS_HOME/outcomes.jsonl` lines `{t, model, category, tier, result: pass|fail|unavailable|limited, kind?, effort?}` |
 
 ## 2. Success probability `P(model, category, tier)`
 
@@ -158,7 +158,7 @@ Each route row returns a **ladder** of up to 3 steps:
 2. same model @ next effort level (cheaper than a switch: same context and cache)
 3. After the effort step, the ladder takes the cheapest model about as likely to succeed (within `0.05` of the winner's `P`, or better), preferably from another pool. Only when no such model exists does it fall back to the most capable alternative.
 The boss escalates one step on a verified failure and logs the outcome:
-`node <QUOTA_BOSS_HOME>/scripts/quota-boss.js feedback <model> <category> <tier> pass|fail|unavailable|limited [--effort <level>]`. Pass the level the worker ran at when known. The model can be an id or a label from the table, such as `Opus 5.5`.
+`node <QUOTA_BOSS_HOME>/scripts/quota-boss.js feedback <model> <category> <tier> pass|fail|unavailable|limited [--kind <kind>] [--effort <level>]`. For fail outcomes, kind is quota, outage, structural, timeout, context, or check-fail (the default). Only check-fail lowers quality; structural and context still end a failed trial, while quota, outage, and timeout pause the model briefly. Flags can appear in either order. Pass the level the worker ran at when known. The model can be an id or a label from the table, such as `Opus 5.5`.
 When a test run decides the result, `verify --log <model> <category> <tier> [--effort <level>] -- <command>` logs pass or fail in the same call.
 `unavailable` (missing key or model) skips the model for 24 hours. `limited` (rate limit) pauses it for 15 minutes. Neither counts as a failure.
 

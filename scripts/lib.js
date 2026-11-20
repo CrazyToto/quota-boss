@@ -8,6 +8,9 @@ const MAX_LOG_BYTES = 512 * 1024;
 const CATEGORIES = ['architecture', 'debugging', 'implementation', 'review', 'research', 'mechanical'];
 const TIERS = ['critical', 'normal', 'trivial'];
 const RESULTS = ['pass', 'fail', 'unavailable', 'limited'];
+const FAILURE_KINDS = ['quota', 'outage', 'structural', 'timeout', 'context', 'check-fail'];
+const qualityFailure = value => value.result === 'fail' && (value.kind === undefined || value.kind === 'check-fail');
+const failedHere = value => qualityFailure(value) || value.result === 'fail' && ['structural', 'context'].includes(value.kind);
 const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 const RATE_LIMIT_MINUTES = 15;
 const PROFILES = ['quality', 'balanced', 'frugal'];
@@ -800,7 +803,8 @@ function recordUsageHistory(history, pool, limits, now = 0, thresholds = {}) {
 function validOutcome(value) {
   return value && Number.isFinite(value.t) && typeof value.model === 'string' && value.model.length > 0
     && value.model.length <= 256 && CATEGORIES.includes(value.category) && TIERS.includes(value.tier)
-    && RESULTS.includes(value.result);
+    && RESULTS.includes(value.result)
+    && (value.kind === undefined || value.result === 'fail' && FAILURE_KINDS.includes(value.kind));
 }
 
 /** Pure retention filter; count physical records before discarding invalid/old entries. */
@@ -829,6 +833,11 @@ function readOutcomes(now = Date.now(), thresholds = {}) {
 /** Feedback is an append-only journal; each validated record is one O_APPEND write. */
 function appendOutcome(value, models, cache = [], now = Date.now()) {
   const entry = { t: now, model: value?.model, category: value?.category, tier: value?.tier, result: value?.result };
+  if (value?.kind !== undefined) {
+    if (!FAILURE_KINDS.includes(value.kind)) throw new Error('Feedback kind is invalid; expected ' + FAILURE_KINDS.join('|') + '.');
+    if (entry.result !== 'fail') throw new Error('Feedback kind requires a fail result.');
+    entry.kind = value.kind;
+  }
   if (!validOutcome(entry)) throw new Error('Feedback requires a model, valid category, tier, and pass|fail|unavailable|limited.');
   if (!Object.hasOwn(object(models?.models), entry.model) && !cache.some(m => m?.slug === entry.model)) {
     const word = String(entry.model).toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -846,13 +855,13 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
   appendRegular(file, JSON.stringify(entry) + '\n');
   // Free trials are counted apart from the rolling quality history, so an expired or rotated outcome never
   // reopens a trial that was used up or failed. A new model id starts over.
-  if (!entry.bench && ['pass', 'fail'].includes(entry.result)) {
+  if (!entry.bench && (entry.result === 'pass' || failedHere(entry))) {
     try {
       updateState(current => {
         const trials = { ...object(current.trials) }, key = entry.model + '|' + entry.category;
         const before = object(trials[key]);
         trials[key] = { n: Math.min((Number.isInteger(before.n) ? before.n : 0) + 1, 10000),
-          ...(entry.result === 'fail' ? { failed: now } : Number.isFinite(before.failed) ? { failed: before.failed } : {}) };
+          ...(failedHere(entry) ? { failed: now } : Number.isFinite(before.failed) ? { failed: before.failed } : {}) };
         return { trials };
       });
     } catch { /* the outcome is logged; the trial count is best effort */ }
@@ -868,7 +877,7 @@ function unavailableModels(outcomes = [], now = 0, thresholds = {}) {
 /** A rate limit passes quickly, so the model only sits out a short while instead of a whole day. */
 function rateLimitedModels(outcomes = [], now = 0, thresholds = {}) {
   return new Set(recentOutcomes(outcomes, now, thresholds)
-    .filter(o => o.result === 'limited' && now - o.t < RATE_LIMIT_MINUTES * 60000).map(o => o.model));
+    .filter(o => (o.result === 'limited' || o.result === 'fail' && ['quota', 'outage', 'timeout'].includes(o.kind)) && now - o.t < RATE_LIMIT_MINUTES * 60000).map(o => o.model));
 }
 
 
@@ -1396,7 +1405,7 @@ function askLine(question) {
   try { return buffer.toString('utf8', 0, fs.readSync(0, buffer, 0, buffer.length, null)).trim(); } catch { return ''; }
 }
 
-module.exports = { NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

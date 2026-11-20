@@ -188,3 +188,14 @@ test.describe('same-pool delegation only when clearly cheaper', () => {
     assert.doesNotMatch(reason('gpt'), /same pool/);
   });
 });
+
+
+test('only check failures lower quality, including legacy outcomes', () => {
+  const candidate = { ...models.models.cheap, id: 'cheap' };
+  const probability = rows => successProbability(candidate, 'implementation', 'normal', rows, thresholds, now);
+  const prior = probability([]), legacy = probability([outcome('fail')]);
+  assert.ok(legacy < prior);
+  for (const kind of require('../scripts/lib').FAILURE_KINDS) {
+    assert.equal(probability([outcome('fail', { kind })]), kind === 'check-fail' ? legacy : prior, kind);
+  }
+});

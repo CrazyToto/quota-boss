@@ -347,6 +347,7 @@ test('free trial: an untested free route gets trivial work until its own results
   assert.equal(pick([], { freeFirst: { trialMargin: 0 } }).via, 'haiku-worker');
   // One verified fail ends the trial; enough passes end the thin evidence, so the regular rules decide again.
   assert.equal(pick([at('fail')]).via, 'haiku-worker');
+  for (const kind of ['structural', 'context', 'check-fail']) assert.equal(pick([at('fail', { kind })]).via, 'haiku-worker');
   assert.equal(pick([at('pass')]).via, 'cli-worker:kilo-free');
   const proven = pick([at('pass'), at('pass'), at('pass')]);
   assert.notEqual(proven.reason, 'won: free trial, its own results decide next time');
@@ -712,6 +713,8 @@ test('effort learning raises only levels with repeated excess failures', () => {
   const fails = [learnedAt('fail', 'medium'), learnedAt('fail', 'medium')];
   assert.equal(effortCandidate({ outcomes: fails.slice(0, 1) }).effort, 'medium');
   assert.equal(effortCandidate({ outcomes: fails }).effort, 'high');
+  for (const kind of ['quota', 'outage', 'timeout', 'structural', 'context'])
+    assert.equal(effortCandidate({ outcomes: fails.map(e => ({ ...e, kind })) }).effort, 'medium');
   assert.equal(effortCandidate({ outcomes: [...fails, learnedAt('pass', 'medium'), learnedAt('pass', 'medium')] }).effort, 'medium');
   const chain = [...fails, ...['high', 'xhigh'].flatMap(level => [learnedAt('fail', level), learnedAt('fail', level)])];
   assert.equal(effortCandidate({ outcomes: chain }).effort, 'xhigh');

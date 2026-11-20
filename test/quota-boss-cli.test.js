@@ -163,6 +163,20 @@ test('bad CLI input has a message, exit one, and causes no writes', () => {
   }
 });
 
+test('feedback accepts failure kind flags in either order and rejects invalid flags', () => {
+  const command = flags => invoke(cli.main, '', ['feedback', 'gpt-6-sol', 'review', 'normal', 'fail', ...flags]);
+  for (const kind of lib.FAILURE_KINDS) for (const flags of [['--kind', kind, '--effort', 'high'], ['--effort', 'high', '--kind', kind]]) {
+    assert.equal(command(flags).status, 0);
+    assert.equal(lib.readOutcomes().at(-1).kind, kind);
+    assert.equal(lib.readOutcomes().at(-1).effort, 'high');
+  }
+  for (const flags of [['--kind'], ['--kind', 'unknown'], ['--kind', 'quota', '--kind', 'outage'], ['--kind', '--effort'], ['--other', 'quota']]) {
+    const before = fs.readFileSync(lib.getPaths().outcomesFile, 'utf8');
+    assert.equal(command(flags).status, 1);
+    assert.equal(fs.readFileSync(lib.getPaths().outcomesFile, 'utf8'), before);
+  }
+});
+
 test('feedback records optional effort and rejects malformed effort flags', () => {
   const command = args => invoke(require('../scripts/quota-boss').main, '', args);
   const args = ['feedback', 'gpt-6-sol', 'review', 'normal', 'pass'];

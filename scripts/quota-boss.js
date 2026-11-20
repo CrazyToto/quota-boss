@@ -38,7 +38,7 @@ const USAGES = {
   'remove-api': 'remove-api <id>',
   'local': 'local [on <model>|off]',
   'savings': 'savings [--days N] [--all] [--details]',
-  'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--effort <level>]',
+  'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--kind <kind>] [--effort <level>]',
   'set': 'set <name> <value> (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
   'help': 'help',
 };
@@ -432,11 +432,18 @@ function run(args = process.argv.slice(2), options) {
     if (rest.length !== 1) throw new Error(usage(command));
     project.contextSuggest = context.parseSetting(rest[0]);
   } else if (command === 'feedback') {
-    if (rest.length !== 4 && (rest.length !== 6 || rest[4] !== '--effort' || rest[5].startsWith('--'))) throw new Error(usage(command));
-    const [name, category, tier, result, , effort] = rest;
+    if (rest.length < 4) throw new Error(usage(command));
+    const [name, category, tier, result] = rest;
+    const flags = {};
+    for (let i = 4; i < rest.length; i += 2) {
+      const flag = rest[i], value = rest[i + 1];
+      if (!['--kind', '--effort'].includes(flag) || flags[flag] !== undefined || !value || value.startsWith('--')) throw new Error(usage(command));
+      flags[flag] = value;
+    }
+    const effort = flags['--effort'], kind = flags['--kind'];
     const config = lib.loadConfig();
     const model = resolveModel(config.models.models, name) ?? name;
-    lib.appendOutcome({ model, category, tier, result, effort }, config.models, lib.readCodexModels(true));
+    lib.appendOutcome({ model, category, tier, result, effort, kind }, config.models, lib.readCodexModels(true));
     return 'Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + category + ' ' + tier + ' ' + result + (effort ? ' at ' + effort : '');
   } else if (['status', 'route'].includes(command)) {
     if (command !== 'route' && rest.length) throw new Error(usage(command));
