@@ -154,7 +154,7 @@ function choiceScreen(w, field, title, values, descriptions) {
 }
 
 const keyless = id => id === 'kilo-free' || PRESETS[id].keyless === true;
-const freeGroups = w => ({ all: FREE, 'no-training': FREE.filter(id => !mayTrain(id)), none: [], 'no-key': FREE.filter(keyless) });
+const freeGroups = w => ({ all: FREE.filter(id => id !== 'nvidia'), 'no-training': FREE.filter(id => !mayTrain(id)), none: [], 'no-key': FREE.filter(keyless) });
 
 function freeGroup(w, title, ids) {
   w.io.say(title);

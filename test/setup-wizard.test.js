@@ -110,7 +110,7 @@ test('Kilo uses its own CLI, needs no login, and stays off if install fails', ()
 
 test('turning an added offer off removes it', () => {
   const providers = { ...baseProviders(), 'zen-deepseek': provider(true, { custom: true }) };
-  const { commands } = play(flow(OTHER_NONE, freeAnswers({ 0: 'n' }), ['y']), { providers });
+  const { commands } = play(flow(OTHER_NONE, freeAnswers({ 0: 'n' }, '5'), ['y']), { providers });
   assert.deepEqual(commands.slice(1), [['remove-api', 'zen-deepseek']]);
 });
 
@@ -152,10 +152,10 @@ test('setup keeps a paid custom Mistral API', () => {
   assert.match(said, /Already added: mistral-api/);
 });
 
-test('one answer turns on every free offer, and offers left without a key are removed again', () => {
+test('one answer turns on the grouped free offers except NVIDIA, and missing keys are removed', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['2'], ['n', 'y', ...Array(6).fill('n')]), { stored: ['1 credentials'] });
   assert.ok(commands.some(c => c[0] === 'add-api' && c[1] === 'gemini-api'));
-  assert.deepEqual(commands.filter(c => c[0] === 'remove-api').map(c => c[1]), ['openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai']);
+  assert.deepEqual(commands.filter(c => c[0] === 'remove-api').map(c => c[1]), ['openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'zai']);
   assert.match(said, /humans may read/);
   assert.match(said, /Allow them in this folder/);
   assert.match(said, /Left out because no key was entered: OpenRouter Free/);
@@ -164,9 +164,17 @@ test('one answer turns on every free offer, and offers left without a key are re
   assert.doesNotMatch(said, /OpenCode Free/);
 });
 
+test('the add-all free offers choice excludes NVIDIA', () => {
+  const { commands } = play(flow(OTHER_NONE, ['2'], ['n', 'y', ...Array(6).fill('n')]), { stored: ['1 credentials'] });
+  assert.ok(commands.some(c => c[0] === 'add-api' && c[1] === 'zai'));
+  assert.ok(!commands.some(c => c[0] === 'add-api' && c[1] === 'nvidia'));
+  const oneByOne = play(flow(OTHER_NONE, freeAnswers({ 5: 'y' }), ['', 'y', 'y']), { stored: ['1 credentials'] });
+  assert.ok(oneByOne.commands.some(c => c[0] === 'add-api' && c[1] === 'nvidia'));
+});
+
 test('the no-training group adds only offers that do not train and asks no training question', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['1'], ['y']), { stored: ['1 credentials'] });
-  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
+  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek'], ['add-api', 'zai'], ['remove-api', 'zai']]);
   assert.doesNotMatch(said, /Allow them in this folder/);
   assert.match(said, /Free offers ready to use: OpenCode Zen DeepSeek\./);
 });
@@ -192,7 +200,7 @@ test('a free offer whose registration fails is not reported as ready', () => {
     stored: ['1 credentials'],
     runError: args => args[0] === 'add-api' && args[1] === 'zen-deepseek' ? new Error('Provider config is busy; retry.') : null,
   });
-  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
+  assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek'], ['add-api', 'zai'], ['remove-api', 'zai']]);
   assert.match(said, /Could not apply add-api zen-deepseek: Provider config is busy; retry\./);
   assert.doesNotMatch(said, /Free offers ready to use:/);
 });

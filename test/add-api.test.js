@@ -188,13 +188,23 @@ test('a retired Zen GLM registration can be removed without its preset', () => {
   assert.equal(saved(dir, 'models').models['zen-glm-api'], undefined);
 });
 
-test('Z.ai asks for its key on its own page and stays behind the training gate', () => {
+test('Z.ai asks for its key on its own page and does not train without agreement', () => {
   const result = cli(home(), 'add-api', 'zai');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /opencode auth login -p zai/);
   assert.match(result.stdout, /https:\/\/z\.ai\/manage-apikey\/apikey-list/);
-  assert.match(result.stdout, /set training on/);
-  assert.match(result.stdout, /Warning:.*treats it as if it does/);
+  assert.doesNotMatch(result.stdout, /set training on/);
+  assert.match(result.stdout, /Warning: Z\.ai terms IV\.7 say developer API content is not used for training without agreement/);
+  assert.equal(PRESETS.zai.trains, false);
+});
+
+test('Cohere and NVIDIA preset warnings state their trial restrictions', () => {
+  const cohere = cli(home(), 'add-api', 'cohere').stdout;
+  assert.match(cohere, /Warning: Trial key, not for production or commercial use\./);
+  const nvidia = cli(home(), 'add-api', 'nvidia').stdout;
+  assert.match(nvidia, /Warning: Trial terms: evaluation only, no production, no confidential code\./);
+  assert.equal(PRESETS.nvidia.trains, true);
+  assert.equal(PRESETS['gemini-api'].trains, true);
 });
 
 test('a rate-limited offer is paused, found by provider id and not counted as a failure', () => {

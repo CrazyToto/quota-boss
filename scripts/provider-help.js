@@ -63,7 +63,7 @@ const PROVIDER_HELP = Object.freeze({
     on: '1,000 free calls a month for small tasks.', off: 'Small tasks use your paid limits instead.',
     catch: 'A small allowance, and a trial key is meant for trying things out.',
     needs: 'A free Cohere account and the OpenCode program, which setup installs.',
-    warning: 'Check Cohere\'s trial terms before relying on it. ' + UNCONFIRMED_TRAINING },
+    warning: 'Trial key, not for production or commercial use. ' + UNCONFIRMED_TRAINING },
   'gemini-api': { group: free, preset: true, name: 'Gemini API',
     what: 'Google\'s unpaid Gemini API by API key, added through the OpenCode program. This is separate from Antigravity.',
     on: 'Free calls for small tasks.', off: 'Small tasks use your paid limits instead.',
@@ -75,7 +75,7 @@ const PROVIDER_HELP = Object.freeze({
     on: 'Free calls for small tasks, about 40 requests a minute as reported by OmniRoute.', off: 'Small tasks use your paid limits instead.',
     catch: 'Weak on hard tasks, and the limit is not confirmed by NVIDIA.',
     needs: 'A free NVIDIA developer account and the OpenCode program, which setup installs.',
-    warning: 'Reported as meant for prototyping and evaluation only, so do not use it for production work. ' + UNCONFIRMED_TRAINING },
+    warning: 'Trial terms: evaluation only, no production, no confidential code. ' + UNCONFIRMED_TRAINING },
   'zen-deepseek': { group: free, preset: true, name: 'OpenCode Zen DeepSeek',
     what: 'The free DeepSeek V4.1 Flash model on OpenCode Zen, through the OpenCode program. OpenCode says its provider keeps no data and does not train on it.',
     on: 'Free calls for small tasks, with no key to create.', off: 'Small tasks use your paid limits instead.',
@@ -86,7 +86,7 @@ const PROVIDER_HELP = Object.freeze({
     on: 'Free calls for small tasks.', off: 'Small tasks use your paid limits instead.',
     catch: 'Z.ai publishes no limit for its free models, and your data is generally processed in Singapore. Weak on hard tasks.',
     needs: 'A free Z.ai account, an API key, and the OpenCode program, which setup installs.',
-    warning: UNCONFIRMED_TRAINING },
+    warning: 'Z.ai terms IV.7 say developer API content is not used for training without agreement.' },
 });
 
 // A question in the setup, not a provider, so it stays out of the provider guide.

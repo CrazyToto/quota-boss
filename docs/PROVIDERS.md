@@ -195,7 +195,7 @@ OpenCode free is a disabled example marked trainsOnData: true; enabling it also 
 `quota-boss set training on` for each project. Ollama is an advanced option marked trainsOnData: false, separate from `/boss-setup`.
 Kilo Free is also off by default. Setup can install its CLI; no account or key was needed in testing. Kilo allows 200 anonymous free requests per hour per IP address. Free models may change. See [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication). Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
 All three have zero-cost, conservatively scored models; routing uses max(cost, 0.2) to avoid division by zero.
-Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: the setup asks once for all of them, only those that do not train on your data, or one by one. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
+Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: setup can add all offers except NVIDIA at once, add only those that do not train on your data, or let you choose one by one. NVIDIA's trial terms allow evaluation only, with no production use or confidential code. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
 Example scores and training flags are conservative configuration declarations; check the selected service/model terms before changing them.
 
 ## Untested providers
@@ -232,9 +232,13 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
 - **OpenCode Zen** needs no key. Quota Boss offers only the two free models whose providers, [according to OpenCode](https://opencode.ai/docs/zen/),
   keep no data and do not train on it. Only DeepSeek V4.1 Flash is left, because OpenCode retired the free GLM model. It is free for a limited time.
+- **OpenRouter Free** models have a 50-call daily cap, with a higher daily cap after $10 of credits.
 - **Other free API offers** are off until you add them. Each shows its limit and warning first. Gemini's unpaid tier
-  lets Google use your content and lets humans read it, NVIDIA NIM is reported as for prototyping and evaluation only,
-  and where we could not confirm a service's training policy Quota Boss treats it as if it trains on your data.
+  is not used to train for users in the EEA, UK or Switzerland. Elsewhere Google may use content to improve products
+  and humans may read it. NVIDIA NIM trial terms allow evaluation only, with no production use or confidential code.
+  Cohere trial keys are not for production or commercial use. Z.ai's terms say developer API content is not used for
+  training without agreement. Where we could not confirm a service's training policy Quota Boss treats it as if it
+  trains on your data.
   The one exception is Junie Lite and JetBrains AI, by the user's decision, so the free tier works out of the box:
   they are marked trainsOnData: false, although JetBrains' docs do not say whether Junie CLI data is used for training.
   JetBrains' [product data collection FAQ](https://www.jetbrains.com/legal/docs/terms/product_data_collection_faq/)

@@ -34,6 +34,13 @@ test('the guide shows the current state and keeps local models out', () => {
   assert.doesNotMatch(text, /ollama/i);
 });
 
+test('free API warnings match their trial and training terms', () => {
+  assert.equal(PRESETS.zai.trains, false);
+  assert.match(help.PROVIDER_HELP.zai.warning, /IV\.7.*not used for training without agreement/);
+  assert.match(help.PROVIDER_HELP.nvidia.warning, /^Trial terms: evaluation only, no production, no confidential code. /);
+  assert.match(help.PROVIDER_HELP.cohere.warning, /^Trial key, not for production or commercial use. /);
+});
+
 test('added APIs show up, presets as themselves and others with general help', () => {
   const custom = { custom: true, enabled: true };
   const text = help.guide(config({ ...defaults.providers, cohere: custom, acme: custom }));

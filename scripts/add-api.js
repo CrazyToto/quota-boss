@@ -33,7 +33,7 @@ const PRESETS = Object.freeze({
   'zen-deepseek': { label: 'OpenCode Zen DeepSeek', model: 'opencode/deepseek-v4.1-flash-free', keyless: true, free: true, trains: false,
     gets: 'no key, no published limit, free for now',
     limit: 'no key needed, no published limit, free for a limited time' },
-  zai: { label: 'Z.ai GLM Flash', model: 'zai/glm-4.7-flash', keyPage: 'https://z.ai/manage-apikey/apikey-list', free: true, trains: true,
+  zai: { label: 'Z.ai GLM Flash', model: 'zai/glm-4.7-flash', keyPage: 'https://z.ai/manage-apikey/apikey-list', free: true, trains: false,
     gets: 'no published limit',
     limit: 'free, no published limit' },
 });
