@@ -259,6 +259,46 @@ function tail(text, count, env) {
   return clean(text, env).trimEnd().split('\n').slice(-count).map(line => line.length > 4096 ? '[...cut] ' + line.slice(-4096) : line);
 }
 
+async function takeSlot(id, provider, deps) {
+  const cap = Number.isSafeInteger(provider.maxParallel) && provider.maxParallel > 0 ? provider.maxParallel : id === 'copilot' ? 2 : 0;
+  if (!cap) return { release() {} };
+  const now = deps.now || Date.now;
+  const sleep = deps.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const pidAlive = deps.pidAlive || (pid => {
+    try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; }
+  });
+  const folder = path.join((deps.getPaths || lib.getPaths)().quotaBossHome, 'slots', id);
+  const guard = path.join(folder, 'guard');
+  const deadline = now() + TIMEOUT_MS;
+  while (true) {
+    const slot = lib.withLock(guard, () => {
+      for (let i = 0; i < cap; i++) {
+        const file = path.join(folder, i + '.json');
+        const old = lib.readJson(file);
+        const stat = lib.regularStat(file, true);
+        if (stat) {
+          const started = Number.isFinite(old?.started) ? old.started : stat.mtimeMs;
+          const dead = Number.isInteger(old?.pid) && old.pid > 0 && !pidAlive(old.pid);
+          if (!dead && now() - started <= TIMEOUT_MS + 60000) continue;
+          fs.unlinkSync(file);
+        }
+        const encoded = JSON.stringify({ pid: process.pid, started: now(), nonce: crypto.randomBytes(16).toString('hex') });
+        const fd = lib.openRegular(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, true);
+        try { fs.writeFileSync(fd, encoded); } finally { fs.closeSync(fd); }
+        return { release() {
+          lib.withLock(guard, () => {
+            if (JSON.stringify(lib.readJson(file)) === encoded) fs.unlinkSync(file);
+          });
+        } };
+      }
+      return null;
+    });
+    if (slot) return slot;
+    if (now() >= deadline) return { timeout: 'All ' + cap + ' ' + id + ' slots busy', release() {} };
+    await sleep(Math.min(2000, deadline - now()));
+  }
+}
+
 async function run(argv, deps = {}) {
   const options = parseArgs(argv);
   const project = (deps.findProjectConfig || lib.findProjectConfig)();
@@ -285,9 +325,14 @@ async function run(argv, deps = {}) {
   if (junieReport) args.push('--json-output-file=' + junieReport);
   const status = deps.gitStatus || (() => gitStatus(cwd, env, platform, deps.spawnSync));
   const before = options['expect-changes'] ? status() : null;
+  const slot = await takeSlot(options.provider, selected.provider, deps);
   const now = deps.now || Date.now;
   const started = now();
-  const result = await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
+  let result;
+  try {
+    result = slot.timeout ? { timedOut: true, status: null, stdout: '', stderr: '' }
+      : await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
+  } finally { slot.release(); }
   const seconds = Math.max(0, Math.round((now() - started) / 1000));
   const after = options['expect-changes'] ? status() : null;
   if (junieReport) {
@@ -313,7 +358,8 @@ async function run(argv, deps = {}) {
       .map(([key, field]) => [key, junieUsage.reduce((sum, item) => sum + (validNumber(item[field]) ? item[field] : 0), 0)])) : null;
   // The model the vendor really ran (Junie Lite does not pin one).
   const ran = [...new Set(junieUsage.map(item => item.model).filter(name => typeof name === 'string' && /^[\w./:@-]{1,100}$/.test(name)))].slice(0, 3);
-  const outcome = classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
+  const outcome = slot.timeout ? { kind: 'timeout', reason: slot.timeout }
+    : classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
   const ok = outcome.kind === 'ok';
   const recording = [], errors = [];
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };

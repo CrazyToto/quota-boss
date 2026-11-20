@@ -66,6 +66,7 @@
     },
     "copilot": {
       "label": "GitHub Copilot",
+      "maxParallel": 2,
       "kind": "subscription",
       "enabled": false,
       "quota": {

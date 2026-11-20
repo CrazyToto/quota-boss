@@ -128,6 +128,8 @@ every provider it showed as answered.
 | antigravity | by hand from Google's guide | no | none |
 | junie (junie-lite, jetbrains) | JetBrains' install script | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
 
+Copilot defaults to 2 parallel CLI runs; set `maxParallel` to 4 on Pro/Pro+ or 8 on Max.
+
 Commands live in `scripts/tools.js`, not in `providers.json`, so a config file can never supply one. npm and uv are
 pinned to the public registries, and environment overrides for them are removed before they start.
 
