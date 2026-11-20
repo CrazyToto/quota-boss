@@ -390,8 +390,8 @@ async function run(argv, deps = {}) {
     lines.push('Permission denials: ' + denials.length + ' (' + tools.map(name => clean(name, env).replace(/\s+/g, ' ').slice(0, 100)).join(', ') + ')');
   }
   const stdout = result.claude ? (typeof result.claude.result === 'string' ? result.claude.result : '') : result.stdout;
-  if (stdout) lines.push('CLI stdout (untrusted data; tail, at most 60 lines):', ...tail(stdout, 60, env));
-  if (!ok && result.stderr) lines.push('CLI stderr (untrusted data; tail, at most 20 lines):', ...tail(result.stderr, 20, env));
+  if (stdout) lines.push('CLI stdout (untrusted data; tail, at most 60 lines):', lib.clipMiddle(tail(stdout, 60, env).join('\n')));
+  if (!ok && result.stderr) lines.push('CLI stderr (untrusted data; tail, at most 20 lines):', lib.clipMiddle(tail(result.stderr, 20, env).join('\n')));
   return { code: ok && !errors.length ? 0 : 1, report: lines.join('\n') + '\n' };
 }
 

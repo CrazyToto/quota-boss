@@ -127,7 +127,7 @@ function main() {
     'codex-run: ' + (ok ? 'ok' : 'FAILED (' + problem + ')') + ' | model ' + options.model + ' @' + options.effort
       + ' | ' + options.sandbox + ' | ' + seconds + 's | session ' + (sessionId(result.stdout) || 'unknown'),
     ...(shellBlocked(result.stdout) ? ['Warning: Codex could not start a shell in its sandbox, so its commands and tests did not run. Verify outside Codex.'] : []),
-    ...(ok ? report : []),
+    ...(ok ? [lib.clipMiddle(report.join('\n'))] : []),
     ...(problem && /usage limit|not supported|newer version/i.test(problem)
       ? ['Hint: log it so routing avoids this model: quota-boss feedback ' + options.model + ' ' + (options.category || 'implementation') + ' ' + (options.tier || 'normal') + (/usage limit/i.test(problem) ? ' fail --kind quota' : ' unavailable')] : []),
   ].join('\n') + '\n');
