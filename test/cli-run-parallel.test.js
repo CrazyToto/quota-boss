@@ -71,13 +71,13 @@ test('releases the slot when execution throws', async t => {
   assert.deepEqual(fs.readdirSync(h.folder), []);
 });
 
-test('busy slots time out with timeout feedback and an English message', async t => {
+test('busy slots time out with an English message and no feedback, since the model never ran', async t => {
   const h = harness(t, 'copilot', 1);
   fs.mkdirSync(h.folder, { recursive: true });
   fs.writeFileSync(path.join(h.folder, '0.json'), JSON.stringify({ pid: process.pid, started: 100000 }));
   const result = await h.run();
   assert.equal(result.code, 1); assert.match(result.report, /timeout: All 1 copilot slots busy/);
-  assert.equal(h.feedback[0].kind, 'timeout'); assert.equal(h.children.length, 0);
+  assert.equal(h.feedback.length, 0); assert.equal(h.children.length, 0);
 });
 
 for (const cap of [undefined, 0, -1, 1.5, '2', null]) test('uncapped trial takes no slot for maxParallel ' + cap, async t => {

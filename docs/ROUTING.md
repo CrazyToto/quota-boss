@@ -158,9 +158,20 @@ Each route row returns a **ladder** of up to 3 steps:
 2. same model @ next effort level (cheaper than a switch: same context and cache)
 3. After the effort step, the ladder takes the cheapest model about as likely to succeed (within `0.05` of the winner's `P`, or better), preferably from another pool. Only when no such model exists does it fall back to the most capable alternative.
 The boss escalates one step on a verified failure and logs the outcome:
-`node <QUOTA_BOSS_HOME>/scripts/quota-boss.js feedback <model> <category> <tier> pass|fail|unavailable|limited [--kind <kind>] [--effort <level>]`. For fail outcomes, kind is quota, outage, structural, timeout, context, or check-fail (the default). Only check-fail lowers quality; structural and context still end a failed trial, while quota, outage, and timeout pause the model briefly. Flags can appear in either order. Pass the level the worker ran at when known. The model can be an id or a label from the table, such as `Opus 5.5`.
+`node <QUOTA_BOSS_HOME>/scripts/quota-boss.js feedback <model> <category> <tier> pass|fail|unavailable|limited [--kind <kind>] [--effort <level>] [--until <ISO time>]`. For fail outcomes, kind is quota, outage, structural, timeout, context, or check-fail (the default). Only check-fail lowers quality; structural and context still end a failed trial, while quota, outage, and timeout pause the model briefly. Flags can appear in either order. Pass the level the worker ran at when known. The model can be an id or a label from the table, such as `Opus 5.5`.
 When a test run decides the result, `verify --log <model> <category> <tier> [--effort <level>] -- <command>` logs pass or fail in the same call.
-`unavailable` (missing key or model) skips the model for 24 hours. `limited` (rate limit) pauses it for 15 minutes. Neither counts as a failure.
+`unavailable` (missing key or model) skips the model for 24 hours. Neither it nor a pause counts as a failure.
+
+**Cooldowns.** A quota, outage or timeout failure (or `limited`) pauses the model. The pause starts at 15 minutes for quota
+and timeouts and 5 minutes for outages, doubles with each new quota or outage failure after a pause ends (timeouts do not double) and stops growing at 6 hours
+(`thresholds.cooldownMinutes.<kind>`, `thresholds.cooldownMaxMinutes`). When the provider names its reset time, the pause
+lasts until then instead: OpenRouter's free daily limit (`free-models-per-day`) resets at 00:00 UTC, and `X-RateLimit-Reset`,
+`Retry-After`, "try again in 2h 5m" and "resets at <ISO time>" are read too. `cli-run` records them itself; for Codex, pass
+the time with `--until`. A quota failure whose reset is at least an hour away is an account limit, so it pauses every model of that
+pool except the boss's own work, until the reset or until another model of the pool passes. A run that never got a
+slot records nothing. After a pause the model is half-open: one run probes it while other routes wait, a pass ends the pause
+and another failure starts a longer one. On a near tie (within 2% utility) the model that last passed the same job keeps it,
+so routing does not flap between equal routes and a half-open model does not take work from a healthy one.
 
 ## 6. Output
 

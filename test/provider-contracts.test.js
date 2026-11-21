@@ -12,7 +12,7 @@ const shipped = require('../config/providers.json').providers;
 const registry = require('../config/models.json').models;
 const root = path.join(__dirname, 'fixtures', 'fake-cli');
 const cases = { success: ['ok', null], 'bad-output': ['ok', null], 'partial-write': ['failed', null],
-  timeout: ['timeout', 'fail'], 'auth-error': ['unavailable', 'unavailable'], 'rate-limit': ['limited', 'limited'], cancel: ['failed', null], 'no-change': ['no-work', 'fail'] };
+  timeout: ['timeout', 'fail'], 'auth-error': ['unavailable', 'unavailable'], 'rate-limit': ['limited', 'fail'], cancel: ['failed', null], 'no-change': ['no-work', 'fail'] };
 
 // Keep the actual shipped template intact. Only the process-launch dependency redirects to Node.
 test('every shipped CLI template against local executables', { concurrency: true }, async t => {

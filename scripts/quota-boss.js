@@ -38,7 +38,7 @@ const USAGES = {
   'remove-api': 'remove-api <id>',
   'local': 'local [on <model>|off]',
   'savings': 'savings [--days N] [--all] [--details]',
-  'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--kind <kind>] [--effort <level>]',
+  'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--kind <kind>] [--effort <level>] [--until <ISO time>]',
   'set': 'set <name> <value> (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
   'help': 'help',
 };
@@ -437,14 +437,15 @@ function run(args = process.argv.slice(2), options) {
     const flags = {};
     for (let i = 4; i < rest.length; i += 2) {
       const flag = rest[i], value = rest[i + 1];
-      if (!['--kind', '--effort'].includes(flag) || flags[flag] !== undefined || !value || value.startsWith('--')) throw new Error(usage(command));
+      if (!['--kind', '--effort', '--until'].includes(flag) || flags[flag] !== undefined || !value || value.startsWith('--')) throw new Error(usage(command));
       flags[flag] = value;
     }
-    const effort = flags['--effort'], kind = flags['--kind'];
+    const effort = flags['--effort'], kind = flags['--kind'], until = flags['--until'];
     const config = lib.loadConfig();
     const model = resolveModel(config.models.models, name) ?? name;
-    lib.appendOutcome({ model, category, tier, result, effort, kind }, config.models, lib.readCodexModels(true));
-    return 'Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + category + ' ' + tier + ' ' + result + (effort ? ' at ' + effort : '');
+    const entry = lib.appendOutcome({ model, category, tier, result, effort, kind, until }, config.models, lib.readCodexModels(true));
+    return 'Feedback recorded: ' + lib.sanitizeLabel(model) + ' ' + category + ' ' + tier + ' ' + result + (effort ? ' at ' + effort : '')
+      + (entry.until ? ', paused until ' + new Date(entry.until).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : '');
   } else if (['status', 'route'].includes(command)) {
     if (command !== 'route' && rest.length) throw new Error(usage(command));
     let explain = false, size, needs, contextTokens;
@@ -475,7 +476,7 @@ function run(args = process.argv.slice(2), options) {
     if (command === 'route') {
       const bossModel = lib.currentBossModel(active, state);
       const routing = size === undefined && !explain && active.host !== 'codex' ? routeTable : route;
-      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', needs, context: contextTokens, limits, history: state.history, selfTests: state.selfTests, trials: state.trials, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
+      const result = routing({ ...config, ...active, bossModel, bossEffort: lib.currentBossEffort(active, state, bossModel), size: size ?? config.thresholds.gate?.defaultSize ?? 'medium', needs, context: contextTokens, limits, history: state.history, selfTests: state.selfTests, trials: state.trials, probes: state.probes, outcomes: lib.readOutcomes(now, config.thresholds), runs: latency.readRuns(now), now });
       const match = row => (!filters[0] || row.category === filters[0]) && (!filters[1] || row.tier === filters[1]);
       for (const key of ['rows', 'options', 'candidates']) result[key] = result[key].filter(match);
       return (config.warning ? config.warning + '\n' : '') + (explain ? formatExplain(result) : formatTable(result));

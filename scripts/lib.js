@@ -13,6 +13,13 @@ const qualityFailure = value => value.result === 'fail' && (value.kind === undef
 const failedHere = value => qualityFailure(value) || value.result === 'fail' && ['structural', 'context'].includes(value.kind);
 const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 const RATE_LIMIT_MINUTES = 15;
+// Cooldowns grow with each transient failure in a row: base, 2x, 4x ... up to this cap. A reset hint replaces the guess.
+const COOLDOWN_BASE_MINUTES = { quota: 15, limited: 15, timeout: 15, outage: 5 };
+const COOLDOWN_MAX_MINUTES = 6 * 60;
+const MAX_RESET_HINT_MS = 8 * 86400000;
+const PROBE_LEASE_MS = 10 * 60000;
+// A quota reset at least this far away is an account window (daily, 5-hour, weekly), so it pauses the whole pool.
+const POOL_PAUSE_MIN_MS = 60 * 60000;
 const PROFILES = ['quality', 'balanced', 'frugal'];
 const HOSTS = ['claude-code', 'codex', 'generic'];
 const DEFAULT_RULES = 'tiny';
@@ -804,7 +811,49 @@ function validOutcome(value) {
   return value && Number.isFinite(value.t) && typeof value.model === 'string' && value.model.length > 0
     && value.model.length <= 256 && CATEGORIES.includes(value.category) && TIERS.includes(value.tier)
     && RESULTS.includes(value.result)
-    && (value.kind === undefined || value.result === 'fail' && FAILURE_KINDS.includes(value.kind));
+    && (value.kind === undefined || value.result === 'fail' && FAILURE_KINDS.includes(value.kind))
+    && (value.until === undefined || transientOutcome(value) && Number.isFinite(value.until) && value.until > value.t && value.until <= value.t + MAX_RESET_HINT_MS);
+}
+
+/** Quota, outage and timeout failures pass by themselves; they pause a route instead of lowering its quality. */
+function transientOutcome(value) {
+  return value?.result === 'limited' || value?.result === 'fail' && ['quota', 'outage', 'timeout'].includes(value.kind);
+}
+
+/**
+ * Reads a reset time from provider error text: OpenRouter's free daily counter (resets 00:00 UTC), rate-limit
+ * reset headers, Retry-After, "try again in 2h 5m" and ISO reset times. Returns epoch ms or null.
+ */
+function resetHint(text, now = Date.now()) {
+  const value = String(text || '').slice(-256 * 1024);
+  const valid = t => Number.isFinite(t) && t > now && t <= now + MAX_RESET_HINT_MS ? Math.round(t) : null;
+  let match = value.match(/x-ratelimit-reset["']?\s*[:=]\s*["']?(\d{10,13})\b/i);
+  if (match) {
+    const n = Number(match[1]);
+    const hint = valid(match[1].length >= 13 ? n : n * 1000);
+    if (hint) return hint;
+  }
+  if (/free-models-per-day/i.test(value)) {
+    const day = new Date(now);
+    return valid(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + 1));
+  }
+  match = value.match(/retry[- ]after["']?\s*[:=]?\s*["']?(\d{1,7})(?:\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b)?/i);
+  if (match) {
+    const unit = { h: 3600, m: 60 }[String(match[2] || 's')[0].toLowerCase()] || 1;
+    const hint = valid(now + Number(match[1]) * unit * 1000);
+    if (hint) return hint;
+  }
+  match = value.match(/(?:try again|retry|resets?|available again)\s+in\s+((?:\d+(?:\.\d+)?\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])(?:\s*,?\s*(?:and\s+)?)?)+)/i);
+  if (match) {
+    const units = { d: 86400, h: 3600, m: 60, s: 1 };
+    let seconds = 0;
+    for (const [, n, unit] of match[1].matchAll(/(\d+(?:\.\d+)?)\s*([dhms])/gi)) seconds += Number(n) * units[unit.toLowerCase()];
+    const hint = seconds > 0 ? valid(now + seconds * 1000) : null;
+    if (hint) return hint;
+  }
+  match = value.match(/resets?\s+(?:at|on)\s+["']?(\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d))/i);
+  if (match) { const hint = valid(Date.parse(match[1])); if (hint) return hint; }
+  return null;
 }
 
 /** Pure retention filter; count physical records before discarding invalid/old entries. */
@@ -848,6 +897,12 @@ function appendOutcome(value, models, cache = [], now = Date.now()) {
     if (!EFFORT_ORDER.includes(value.effort)) throw new Error('Feedback effort is invalid.');
     entry.effort = value.effort;
   }
+  if (value.until !== undefined && value.until !== null) {
+    const until = typeof value.until === 'string' ? Date.parse(value.until) : value.until;
+    if (!transientOutcome(entry)) throw new Error('Feedback --until needs a limited result or a quota, outage or timeout fail.');
+    if (!Number.isFinite(until) || until <= now || until > now + MAX_RESET_HINT_MS) throw new Error('Feedback --until must be a time within the next 8 days.');
+    entry.until = Math.round(until);
+  }
   // A benchmark run tags its feedback, so other sessions writing at the same time keep theirs.
   const bench = String(process.env.QUOTA_BOSS_BENCH || '');
   if (/^[A-Za-z0-9._-]{1,120}$/.test(bench)) entry.bench = bench;
@@ -874,10 +929,74 @@ function unavailableModels(outcomes = [], now = 0, thresholds = {}) {
     .filter(o => o.result === 'unavailable' && now - o.t < 24 * 3600000).map(o => o.model));
 }
 
-/** A rate limit passes quickly, so the model only sits out a short while instead of a whole day. */
-function rateLimitedModels(outcomes = [], now = 0, thresholds = {}) {
-  return new Set(recentOutcomes(outcomes, now, thresholds)
-    .filter(o => (o.result === 'limited' || o.result === 'fail' && ['quota', 'outage', 'timeout'].includes(o.kind)) && now - o.t < RATE_LIMIT_MINUTES * 60000).map(o => o.model));
+/**
+ * Circuit breaker per model and pool. Each transient failure since the model's last pass extends its pause
+ * (base x 2^(n-1), capped), or pauses it until the reset time the provider named. A quota failure with a reset
+ * time is an account limit, so it pauses every model of that pool. After a pause the model is half-open: one run
+ * may probe it; a pass closes the breaker, another failure pauses it longer. Outages and quota stay apart: an
+ * outage pauses only the model, for a shorter base time.
+ * Returns { models: Map<id, state>, pools: Map<pool, state> } with state { until, kind, streak, halfOpen, since }.
+ */
+function cooldowns(outcomes = [], now = 0, thresholds = {}, registry = {}) {
+  const models = new Map(), pools = new Map();
+  const minutes = (value, fallback) => Number.isFinite(value) && value > 0 ? value : fallback;
+  const base = kind => minutes(thresholds?.cooldownMinutes?.[kind], COOLDOWN_BASE_MINUTES[kind] ?? RATE_LIMIT_MINUTES) * 60000;
+  const cap = minutes(thresholds?.cooldownMaxMinutes, COOLDOWN_MAX_MINUTES) * 60000;
+  const poolOf = id => { const m = registry && Object.hasOwn(registry, id) ? registry[id] : null; return typeof m?.pool === 'string' ? m.pool : null; };
+  const sorted = recentOutcomes(outcomes, now, thresholds).slice().sort((a, b) => a.t - b.t);
+  for (const o of sorted) {
+    if (o.result === 'pass') {
+      // A pass of any model in a pool after its quota pause proves the account works again.
+      models.delete(o.model);
+      const pool = poolOf(o.model);
+      if (pool && pools.get(pool)?.since < o.t) pools.delete(pool);
+      continue;
+    }
+    if (!transientOutcome(o)) continue;
+    const kind = o.result === 'limited' ? 'limited' : o.kind;
+    const current = models.get(o.model);
+    const streak = (current?.streak ?? 0) + (current && o.t < current.until ? 0 : 1);
+    const growth = kind === 'timeout' ? 1 : 2 ** Math.min(streak - 1, 20);
+    const guess = o.t + Math.min(cap, base(kind) * growth);
+    const until = Number.isFinite(o.until) ? o.until : current && o.t < current.until ? Math.max(current.until, guess) : guess;
+    models.set(o.model, { until, kind, streak, since: o.t });
+    const pool = poolOf(o.model);
+    if (kind === 'quota' && Number.isFinite(o.until) && o.until - o.t >= POOL_PAUSE_MIN_MS && pool) {
+      const current = pools.get(pool);
+      if (!current || current.until < o.until) pools.set(pool, { until: o.until, kind, since: o.t, model: o.model });
+    }
+  }
+  for (const [pool, state] of pools) if (state.until <= now) pools.delete(pool);
+  for (const state of models.values()) state.halfOpen = state.until <= now;
+  return { models, pools };
+}
+
+/** Models whose breaker is open right now (paused, not yet half-open). */
+function rateLimitedModels(outcomes = [], now = 0, thresholds = {}, registry = {}) {
+  const { models } = cooldowns(outcomes, now, thresholds, registry);
+  return new Set([...models].filter(([, state]) => !state.halfOpen).map(([id]) => id));
+}
+
+/** A half-open model gets one probe at a time: the run claims a short lease that other routes respect. */
+function activeProbe(probes, model, state, now) {
+  const t = probes && typeof probes === 'object' && Object.hasOwn(probes, model) ? probes[model] : null;
+  return Number.isFinite(t) && t <= now && now - t < PROBE_LEASE_MS && (!state || t >= state.since);
+}
+function claimProbe(model, now = Date.now()) {
+  let claimed = null;
+  updateState(current => {
+    const probes = Object.fromEntries(Object.entries(object(current.probes)).filter(([, t]) => Number.isFinite(t) && t <= now && now - t < PROBE_LEASE_MS));
+    if (!Object.hasOwn(probes, model)) { probes[model] = now; claimed = now; }
+    return { probes };
+  });
+  return claimed;
+}
+function releaseProbe(model, claimed) {
+  updateState(current => {
+    const probes = { ...object(current.probes) };
+    if (probes[model] === claimed) delete probes[model];
+    return { probes };
+  });
 }
 
 
@@ -1413,7 +1532,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

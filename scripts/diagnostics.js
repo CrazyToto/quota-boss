@@ -292,7 +292,7 @@ function report(options = {}) {
     if (entry.t < now - 7 * 86400000 || entry.t > now || !['fail', 'limited', 'unavailable'].includes(entry.result)) continue;
     if (!Object.hasOwn(models, entry.model) && !customModels.has(entry.model)) customModels.set(entry.model, 'custom-model-' + (customModels.size + 1));
     const model = Object.hasOwn(models, entry.model) ? entry.model : customModels.get(entry.model);
-    const key = model + ' ' + entry.result;
+    const key = model + ' ' + entry.result + (entry.result === 'fail' && entry.kind ? ' ' + entry.kind : '');
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   lines.push('Feedback failure classes (last 7 days):');

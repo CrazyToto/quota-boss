@@ -205,7 +205,8 @@ test('Claude JSON errors classify API statuses even on exit zero and record the 
       if (kind === 'failed') assert.equal(h.records.feedback.length, 0);
       else {
         assert.deepEqual(h.records.feedback[0][0], { model: CLAUDE_MODEL, category: 'mechanical', tier: 'normal',
-          result: kind === 'structural' ? 'fail' : kind, ...(kind === 'structural' ? { kind } : {}), effort: 'high' });
+          result: ['structural', 'limited'].includes(kind) ? 'fail' : kind, ...(kind === 'structural' ? { kind }
+            : kind === 'limited' ? { kind: api_error_status === 429 ? 'quota' : 'outage' } : {}), effort: 'high' });
         assert.match(result.report.split('\n')[0], /feedback recorded$/);
       }
       assert.equal(h.records.timing[0].ok, false); assert.equal(h.records.usage.length, 0);
@@ -560,7 +561,9 @@ test('each failure pattern produces the expected feedback, timing and counter us
     if (kind === 'failed') { assert.equal(h.records.feedback.length, 0); return; }
     const entry = h.records.feedback[0][0];
     if (['structural', 'context'].includes(kind)) assert.equal(entry.kind, kind);
-    assert.equal(entry.result, ['structural', 'context', 'no-work'].includes(kind) ? 'fail' : kind);
+    // Overload and 5xx are outages; counters, rate limits and too-large requests are quota.
+    if (kind === 'limited') assert.equal(entry.kind, ['overloaded', 'high demand', 'status: 503'].includes(output) ? 'outage' : 'quota');
+    assert.equal(entry.result, ['structural', 'context', 'no-work', 'limited'].includes(kind) ? 'fail' : kind);
     assert.equal(entry.model, 'tiny'); assert.equal(entry.category, 'mechanical'); assert.equal(entry.tier, 'trivial');
     assert.match(result.report.split('\n')[0], /feedback recorded$/);
   });
@@ -582,7 +585,7 @@ test('nonzero failures scan stderr before stdout, with structural errors ahead o
     const h = harness({ status: 1, stdout, stderr });
     const result = await runner.run(['--provider', 'trial'], h.deps);
     assert.match(result.report, new RegExp('^cli-run: FAILED \\(' + kind + ':'));
-    assert.equal(h.records.feedback[0][0].result, kind === 'structural' ? 'fail' : kind);
+    assert.equal(h.records.feedback[0][0].result, ['structural', 'limited'].includes(kind) ? 'fail' : kind);
   }
   for (const code of ['429', '401', '400', '422', '503']) {
     for (const stream of ['stdout', 'stderr']) {
@@ -933,7 +936,7 @@ test('real config, project training consent and journal functions work with an i
     assert.equal(text.trimEnd().split('\n').length, 1); assert.doesNotMatch(text, /build it|high demand/);
     journals[name] = JSON.parse(text);
   }
-  assert.deepEqual({ ...journals.outcomes, t: 0 }, { t: 0, model: 'tiny', category: 'mechanical', tier: 'trivial', result: 'limited', effort: 'high' });
+  assert.deepEqual({ ...journals.outcomes, t: 0 }, { t: 0, model: 'tiny', category: 'mechanical', tier: 'trivial', result: 'fail', kind: 'outage', effort: 'high' });
   assert.equal(journals.usage.provider, 'trial'); assert.equal(journals.usage.amount, 1); assert.equal(journals.usage.unit, 'calls');
   assert.equal(journals.runs.model, 'tiny'); assert.equal(journals.runs.ok, false);
   assert.equal(journals.runs.category, null); assert.equal(journals.runs.tier, null);

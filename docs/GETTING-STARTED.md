@@ -61,7 +61,7 @@ allow suspending your account. Whether starting Google's own program from Quota 
 
 The setup asks about them together: all of them, only those that do not train on your data, none, or one by one under
 Advanced. If you pick a group and skip a key, that offer is left out. `quota-boss doctor` shows any offer with a
-missing key or a model that is gone. A rate-limited offer is paused for 15 minutes and the next one takes over.
+missing key or a model that is gone. A rate-limited offer is paused (15 minutes at first, longer if it keeps failing, or until the reset time the provider names) and the next one takes over.
 
 Limits change often, so check the provider's page. Offers that may train on your data stay blocked per project
 until you run `quota-boss set training on`.

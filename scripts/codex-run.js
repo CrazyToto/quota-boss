@@ -119,6 +119,7 @@ function main() {
   fs.rmSync(dir, { recursive: true, force: true });
   const ok = result.status === 0 && last.trim() !== '';
   const problem = ok ? null : limitError((result.stderr || '') + (result.stdout || '')) || (result.error ? 'could not start Codex' : 'exit ' + result.status);
+  const until = problem && /usage limit/i.test(problem) ? lib.resetHint((result.stderr || '') + '\n' + (result.stdout || '')) : null;
   latency.recordRun({ t: Date.now(), model: options.model, category: options.category || null, tier: options.tier || null,
     seconds, ok, sandbox: options.sandbox });
   const lines = last.trim().split('\n');
@@ -129,7 +130,7 @@ function main() {
     ...(shellBlocked(result.stdout) ? ['Warning: Codex could not start a shell in its sandbox, so its commands and tests did not run. Verify outside Codex.'] : []),
     ...(ok ? [lib.clipMiddle(report.join('\n'))] : []),
     ...(problem && /usage limit|not supported|newer version/i.test(problem)
-      ? ['Hint: log it so routing avoids this model: quota-boss feedback ' + options.model + ' ' + (options.category || 'implementation') + ' ' + (options.tier || 'normal') + (/usage limit/i.test(problem) ? ' fail --kind quota' : ' unavailable')] : []),
+      ? ['Hint: log it so routing avoids this model: quota-boss feedback ' + options.model + ' ' + (options.category || 'implementation') + ' ' + (options.tier || 'normal') + (/usage limit/i.test(problem) ? ' fail --kind quota' + (until ? ' --until ' + new Date(until).toISOString() : '') : ' unavailable')] : []),
   ].join('\n') + '\n');
   process.exitCode = ok ? 0 : 1;
 }

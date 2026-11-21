@@ -21,10 +21,16 @@ const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
 const CONTEXT_ERROR = /context length|maximum context|too many tokens/i;
+// A provider limit is a quota (an account or rate counter that resets) or an outage (the service is overloaded or down).
+const QUOTA_ERROR = /\b429\b|rate limit|too many requests|quota|per-day|per day|usage limit|request too large|credits/i;
+const OUTAGE_ERROR = /\b(?:500|502|503|504|529)\b|overloaded|high demand|service unavailable|bad gateway|temporarily unavailable/i;
+function limitCause(text) {
+  return OUTAGE_ERROR.test(text) && !QUOTA_ERROR.test(text) ? 'outage' : 'quota';
+}
 const FAILURES = [
   ['context', CONTEXT_ERROR, 'context length exceeded'],
   ['structural', /\b(?:HTTP|status|error)[^\n]{0,20}\b(?:400|422)\b|invalid request|unsupported parameter|message format/i, 'invalid request'],
-  ['limited', /rate limit|\b(?:HTTP|status|error)[^\n]{0,20}\b(?:429|503)\b|too many requests|quota exceeded|request too large|overloaded|high demand/i, 'provider limit'],
+  ['limited', /rate limit|usage limit|\b(?:HTTP|status|error)[^\n]{0,20}\b(?:429|500|502|503|504|529)\b|too many requests|quota exceeded|request too large|overloaded|high demand/i, 'provider limit'],
   ['unavailable', /\b(?:HTTP|status|error)[^\n]{0,20}\b401\b|unauthorized|api key|model not found|provider not found/i, 'provider unavailable'],
 ];
 
@@ -231,7 +237,8 @@ function classify(result, expectChanges, before, after, env, claude = false, jun
       : [401, 403].includes(status) ? 'unavailable' : null;
     const reason = clean(Number.isFinite(status) ? 'api_error_status ' + status
       : typeof subtype === 'string' && subtype !== 'success' ? subtype : 'error', env).replace(/\s+/g, ' ').trim().slice(0, 160);
-    envelopeError = { kind: kind || 'failed', reason: reason && reason !== 'success' ? reason : 'error' };
+    envelopeError = { kind: kind || 'failed', reason: reason && reason !== 'success' ? reason : 'error',
+      ...(kind === 'limited' && Number.isFinite(status) ? { cause: status === 429 ? 'quota' : 'outage' } : {}) };
     if (kind) return envelopeError;
   }
   if (result.status !== 0) {
@@ -328,10 +335,27 @@ async function run(argv, deps = {}) {
   const slot = await takeSlot(options.provider, selected.provider, deps);
   const now = deps.now || Date.now;
   const started = now();
+  // A model whose pause just ended is half-open: this run is its one probe, so other routes wait for the result.
+  let probe = null;
+  const releaseProbe = () => {
+    if (probe !== null) { try { (deps.releaseProbe || lib.releaseProbe)(selected.model, probe); } catch { /* lease expires by itself */ } }
+    probe = null;
+  };
+  if (!slot.timeout) {
+    try {
+      // An injected outcome journal (tests, embedders) means the real journal is not read either.
+      const readOutcomes = deps.readOutcomes || (deps.appendOutcome ? () => [] : lib.readOutcomes);
+      const breaker = lib.cooldowns(readOutcomes(started, config.thresholds), started, config.thresholds, config.models?.models || {}).models.get(selected.model);
+      if (breaker?.halfOpen) probe = (deps.claimProbe || lib.claimProbe)(selected.model, started);
+    } catch { /* the probe lease is best effort */ }
+  }
   let result;
   try {
     result = slot.timeout ? { timedOut: true, status: null, stdout: '', stderr: '' }
       : await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
+  } catch (error) {
+    releaseProbe();
+    throw error;
   } finally { slot.release(); }
   const seconds = Math.max(0, Math.round((now() - started) / 1000));
   const after = options['expect-changes'] ? status() : null;
@@ -361,15 +385,27 @@ async function run(argv, deps = {}) {
   const outcome = slot.timeout ? { kind: 'timeout', reason: slot.timeout }
     : classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
   const ok = outcome.kind === 'ok';
+  // Quota and outage pauses are told apart, and a reset time the provider names (OpenRouter's daily free counter,
+  // Retry-After, "try again in ...") sets how long the route sits out.
+  if (outcome.kind === 'limited') {
+    const text = [result.stderr, result.stdout, typeof result.claude?.result === 'string' ? result.claude.result : '',
+      ...(Array.isArray(result.junie?.errors) ? result.junie.errors.filter(item => typeof item === 'string') : [])]
+      .map(part => String(part || '').slice(-TAIL_CHARS)).join('\n');
+    outcome.cause = outcome.cause || limitCause(text);
+    const until = lib.resetHint(text, now());
+    if (until) outcome.until = until;
+  }
   const recording = [], errors = [];
   const record = (label, action) => { try { action(); recording.push(label); } catch { errors.push(label); } };
   record('timing', () => (deps.recordRun || latency.recordRun)({ t: now(), model: selected.model,
     category: options.category || null, tier: options.tier || null, seconds, ok, ...(tokens ? { tokens } : {}), ...(ran.length ? { ran } : {}) }));
-  const feedback = { limited: 'limited', unavailable: 'unavailable', structural: 'fail', context: 'fail', timeout: 'fail', 'no-work': 'fail' }[outcome.kind];
+  const feedback = slot.timeout ? null : { limited: 'fail', unavailable: 'unavailable', structural: 'fail', context: 'fail', timeout: 'fail', 'no-work': 'fail' }[outcome.kind];
   if (feedback) record('feedback', () => (deps.appendOutcome || lib.appendOutcome)({ model: selected.model,
     category: options.category || 'mechanical', tier: options.tier || 'trivial', result: feedback,
-    ...(['structural', 'context', 'timeout'].includes(outcome.kind) ? { kind: outcome.kind } : {}),
+    ...(['structural', 'context', 'timeout'].includes(outcome.kind) ? { kind: outcome.kind } : outcome.kind === 'limited' ? { kind: outcome.cause } : {}),
+    ...(outcome.until ? { until: outcome.until } : {}),
     ...(selected.effort !== '-' ? { effort: selected.effort } : {}) }, config.models, [], now()));
+  releaseProbe();
   if (selected.provider.quota?.source === 'counter' && (result.pid > 0 || result.status !== null)) {
     const units = Object.values(selected.provider.quota.windows).map(window => window.unit);
     record('usage', () => (deps.appendUsage || lib.appendUsage)(options.provider, 1, units.includes('calls') ? 'calls' : units[0], config.providers, now()));
@@ -377,6 +413,7 @@ async function run(argv, deps = {}) {
   const problem = ok ? 'failed: recording ' + errors.join(', ') : outcome.kind + ': ' + outcome.reason;
   const first = 'cli-run: ' + (ok && !errors.length ? 'ok' : 'FAILED (' + problem + ')')
     + ' | provider ' + options.provider + ' | model ' + selected.model + ' @' + selected.effort + ' | ' + seconds + 's'
+    + (outcome.cause ? ' | ' + outcome.cause + (outcome.until ? ' until ' + new Date(outcome.until).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : '') : '')
     + (options['expect-changes'] && (before === null || after === null) ? ' | expect-changes skipped: Git fingerprint unavailable' : '')
     + (tokens ? ' | tokens in ' + tokens.input + ' cached ' + tokens.cached + ' out ' + tokens.output : '')
     + (ran.length ? ' | ran ' + ran.join(', ') : '')

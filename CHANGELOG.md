@@ -4,6 +4,14 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Routing pauses a model after quota, outage or timeout failures for longer each time in a row (15 minutes for quota, 5 for
+  outages, up to 6 hours), or until the reset time the provider names, such as OpenRouter's free daily limit at 00:00 UTC.
+  A quota limit with a reset time pauses the whole pool. After a pause one run probes the model before others use it again.
+- On a near tie the model that last passed the same job keeps it.
+- `cli-run` records provider limits as `fail` with kind `quota` or `outage`, and `feedback` takes `--until <ISO time>`.
+
 ## [0.4.4] - 2026-11-20
 
 ### Added

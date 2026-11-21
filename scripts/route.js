@@ -1,7 +1,7 @@
 'use strict';
 
 const { CATEGORIES, TIERS, EFFORT_ORDER, sanitizeLabel, normalizeProject, computeModes, historySettings,
-  recentOutcomes, unavailableModels, rateLimitedModels, providerContext, QUOTA_WINDOWS, validProviderId, validCliModel, cliArgsForModel, BUILTIN_PROVIDERS, tightenCaps, bossScore, pickBoss, newerFirst, familyKey } = require('./lib');
+  recentOutcomes, unavailableModels, cooldowns, activeProbe, providerContext, QUOTA_WINDOWS, validProviderId, validCliModel, cliArgsForModel, BUILTIN_PROVIDERS, tightenCaps, bossScore, pickBoss, newerFirst, familyKey } = require('./lib');
 const { medianSeconds, speedFactor } = require('./latency');
 const lib = require('./lib');
 const { validSelfTest } = require('./self-test');
@@ -219,7 +219,7 @@ function inheritScores(id, model, all = {}) {
 
 /** Pure, deterministic v2 routing. Callers supply the observation clock and session's previous pool. */
 function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {},
-  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, trials = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
+  host = 'claude-code', allowTrainingProviders = false, history = {}, selfTests = {}, trials = {}, probes = {}, outcomes = [], runs = [], now = 0, previousPool = null, providers = BUILTIN_PROVIDERS, caps, bossModel = null, size = null, bossEffort = null, needs = [], context: contextTokens = null, findExecutable = lib.findExecutable, codexModels = null } = {}) {
   if (!['small', 'medium', 'large'].includes(size)) size = null;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(bossEffort)) bossEffort = null;
   if (caps) providers = { ...providers, caps: tightenCaps(providers.caps ?? {}, caps) };
@@ -238,7 +238,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
     return fingerprints.get(pool);
   };
   const unavailable = unavailableModels(learned, now, thresholds);
-  const rateLimited = rateLimitedModels(learned, now, thresholds);
+  const breakers = cooldowns(learned, now, thresholds, models.models || {});
+  const pausedUntil = until => new Date(until).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
   const categories = CATEGORIES.filter(c => !Array.isArray(models.categories) || models.categories.includes(c));
   const codexKnown = new Set(Array.isArray(codexModels) ? codexModels : lib.readCodexModels(true).map(item => item.slug));
   const codexFamilies = new Set([...codexKnown].map(familyKey)), codexMissing = slug => !codexKnown.has(slug) && codexFamilies.has(familyKey(slug));
@@ -291,7 +292,12 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           reason = 'self-test needed (CLI changed): quota-boss providers test ' + model.pool;
         else if (provider.trainsOnData === true && !settings.allowTrainingProviders) reason = 'training provider blocked (allowTrainingProviders is off)';
         else if (unavailable.has(model.id)) reason = 'unavailable (24h exclusion)';
-        else if (rateLimited.has(model.id)) reason = 'rate limited (paused for 15 minutes)';
+        else if (breakers.pools.has(model.pool) && !self)
+          reason = 'cooling down: ' + model.pool + ' quota until ' + pausedUntil(breakers.pools.get(model.pool).until);
+        else if (breakers.models.has(model.id) && !breakers.models.get(model.id).halfOpen)
+          reason = 'cooling down: ' + breakers.models.get(model.id).kind + ' until ' + pausedUntil(breakers.models.get(model.id).until);
+        else if (breakers.models.has(model.id) && activeProbe(probes, model.id, breakers.models.get(model.id), now))
+          reason = 'cooling down: probe running';
         else if (model.pool === 'perplexity' && category !== 'research') reason = 'manual worker disabled for category';
         else if (capped && !self) reason = 'provider capped:' + model.pool;
         else if (!method) reason = 'worker unavailable';
@@ -324,7 +330,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           free: model.cost === 0 && ['free', 'local'].includes(provider.kind) && !manual && model.pool !== bossPool,
           utility: Number.isFinite(price) ? P ** alpha / (jobCost * price + (usesRelay(method, settings.host) ? relayCost : 0))
             * speedFactor(seconds, tier, thresholds) * (thinEvidence ? clamp(finite(thresholds.thinEvidenceFactor, 0.75), 0.1, 1) : 1) : 0,
-          seconds,
+          seconds, ...(breakers.models.get(model.id)?.halfOpen ? { probe: true } : {}),
           belowThreshold: P < minimum, ladder: [], reason, won: false };
       });
       for (const option of evaluated.filter(c => c.reason === 'manual option only')) options.push({ ...option });
@@ -408,7 +414,11 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       if (belowThreshold) winner = [...eligible].sort((a, b) => b.P - a.P || b.utility - a.utility || probabilityOrder(a, b, previousPool))[0];
       else if (eligible.length) {
         const bestUtility = Math.max(...eligible.map(c => c.utility));
-        winner = eligible.filter(c => c.utility >= bestUtility * 0.98).sort((a, b) => probabilityOrder(a, b, previousPool))[0];
+        // Sticky last-good route: on a near tie the model that last passed this job keeps it, so routing does not flap
+        // between equals and a half-open model only probes when it is clearly better.
+        const lastGood = learned.filter(e => e.result === 'pass' && e.category === category && e.tier === tier).sort((a, b) => b.t - a.t)[0]?.model;
+        const sticky = c => Number(c.model === lastGood && !c.probe);
+        winner = eligible.filter(c => c.utility >= bestUtility * 0.98).sort((a, b) => sticky(b) - sticky(a) || Number(!!a.probe) - Number(!!b.probe) || probabilityOrder(a, b, previousPool))[0];
       }
       // Free first: outside critical work a free route about as likely to succeed as a paid worker takes the job, so paid
       // limits last longer. The margin grows while that worker's pool is tight (raw scarcity, without the boss surcharge).
@@ -491,7 +501,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           ? evaluated.filter(c => c.pool === 'codex'
             && !c.capabilityReason
             && !context.usage.codex?.capped && modes.codexMode !== 'exhausted'
-            && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !rateLimited.has(c.model)
+            && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !String(c.reason).startsWith('cooling down')
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)
             && settings.host !== 'generic') : [];
         const outdated = replacements(advisors, 0);
