@@ -75,7 +75,7 @@ test('copies runtime sources, uses all path overrides, and writes settings and m
   for (const [event, script] of [['SessionStart', 'hook-session.js'], ['UserPromptSubmit', 'hook-prompt.js']]) {
     assert.deepEqual(settings.hooks[event], [{ hooks: [{ type: 'command', command: `"${process.execPath.replace(/\\/g, '/')}" "${normalizedHome}/scripts/${script}"`, timeout: 10 }] }]);
   }
-  assert.deepEqual(settings.hooks.PreToolUse, [{ matcher: 'Agent|Task|Read', hooks: [{ type: 'command', command: `"${process.execPath.replace(/\\/g, '/')}" "${normalizedHome}/scripts/hook-agent.js"`, timeout: 5 }] }]);
+  assert.deepEqual(settings.hooks.PreToolUse, [{ matcher: 'Agent|Task|Read|Bash', hooks: [{ type: 'command', command: `"${process.execPath.replace(/\\/g, '/')}" "${normalizedHome}/scripts/hook-agent.js"`, timeout: 5 }] }]);
   assert.ok(f.manifest().hooks.some(hook => hook.event === 'PreToolUse'));
   assert.equal(f.manifest().mcpAdded, false);
   assert.ok(f.manifest().files.some(file => file.path === path.join(f.home, 'config/models.json')));
@@ -89,7 +89,7 @@ test('PreToolUse hook is added to older installs, stays unique and uninstall pre
   f.run();
   const entries = readJSON(f.settings).hooks.PreToolUse;
   assert.equal(entries.length, 2);
-  assert.equal(entries[1].matcher, 'Agent|Task|Read');
+  assert.equal(entries[1].matcher, 'Agent|Task|Read|Bash');
   assert.match(entries[1].hooks[0].command, /hook-agent\.js/);
   assert.ok(fs.existsSync(path.join(f.home, 'scripts/hook-agent.js')));
   f.run(['--uninstall']);
@@ -106,7 +106,7 @@ test('an older install with the Agent|Task matcher is upgraded to also guard rea
   f.run();
   const entries = readJSON(f.settings).hooks.PreToolUse;
   assert.equal(entries.length, 1);
-  assert.equal(entries[0].matcher, 'Agent|Task|Read');
+  assert.equal(entries[0].matcher, 'Agent|Task|Read|Bash');
   f.run(['--uninstall']);
   assert.equal(readJSON(f.settings).hooks?.PreToolUse, undefined);
 });

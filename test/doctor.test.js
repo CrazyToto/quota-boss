@@ -104,7 +104,7 @@ test('complete Claude installation has no problems and doctor leaves it untouche
   assert.match(output, /Info: Quota Boss PreToolUse hook is missing/);
   assert.deepEqual(snapshot(f.root), before);
   const file = path.join(paths.claudeDir, 'settings.json'), settings = lib.readJson(file);
-  settings.hooks.PreToolUse = [{ matcher: 'Agent|Task|Read', hooks: [{ command: command('hook-agent.js') }] }];
+  settings.hooks.PreToolUse = [{ matcher: 'Agent|Task|Read|Bash', hooks: [{ command: command('hook-agent.js') }] }];
   lib.writeJson(file, settings);
   assert.doesNotMatch(f.run(), /PreToolUse hook is missing/);
 });

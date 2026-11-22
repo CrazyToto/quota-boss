@@ -766,6 +766,33 @@ function readStdin(maxBytes = 1024 * 1024) {
   throw new Error('Input too large');
 }
 
+// A runner prompt the PreToolUse hook moved out of a heredoc: only a file name of this form, only in this folder, read once.
+const PROMPT_FILE = /^qb-[0-9a-f]{32}\.txt$/, PROMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+function promptsDir() { return path.join(getPaths().quotaBossHome, 'prompts'); }
+/** Save a runner prompt and return its file name; prompts left over from denied calls go after a day. */
+function savePrompt(text) {
+  const dir = promptsDir();
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // A linked folder could send prompts elsewhere; refuse it, and the call stays as it was.
+  const stat = fs.lstatSync(dir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Prompt folder is not a plain folder.');
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const file = path.join(dir, name);
+      if (PROMPT_FILE.test(name) && Date.now() - fs.lstatSync(file).mtimeMs > PROMPT_MAX_AGE_MS) fs.unlinkSync(file);
+    }
+  } catch { /* Cleanup is best effort. */ }
+  const name = 'qb-' + crypto.randomBytes(16).toString('hex') + '.txt';
+  fs.writeFileSync(path.join(dir, name), text, { flag: 'wx', mode: 0o600 });
+  return name;
+}
+/** Read a saved runner prompt once and delete it. */
+function takePrompt(name, maxBytes) {
+  if (typeof name !== 'string' || !PROMPT_FILE.test(name)) throw new Error('Invalid --prompt-file.');
+  const file = path.join(promptsDir(), name);
+  try { return readBounded(file, maxBytes); } finally { try { fs.unlinkSync(file); } catch { /* Already gone. */ } }
+}
+
 /** Read bounded stdin JSON; invalid input throws for the hook boundary to suppress. */
 function readInput() { return JSON.parse(readStdin() || '{}'); }
 
@@ -1533,7 +1560,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

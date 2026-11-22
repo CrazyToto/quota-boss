@@ -19,7 +19,7 @@ const AUTH_MISSING = /^Cannot find authorization\. Please authenticate before ru
 const JUNIE_LICENSE = /\b492\b|untrusted license|no (?:valid |active )?licen[cs]e/i;
 const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
-const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] < prompt';
+const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] [--prompt-file <name>] < prompt';
 const CONTEXT_ERROR = /context length|maximum context|too many tokens/i;
 // A provider limit is a quota (an account or rate counter that resets) or an outage (the service is overloaded or down).
 const QUOTA_ERROR = /\b429\b|rate limit|too many requests|quota|per-day|per day|usage limit|request too large|credits/i;
@@ -40,7 +40,7 @@ function parseArgs(argv) {
     const key = argv[i].replace(/^--/, '');
     if (!argv[i].startsWith('--') || Object.hasOwn(options, key)) throw new Error(USAGE);
     if (key === 'expect-changes') { options[key] = true; continue; }
-    if (!['provider', 'model', 'effort', 'category', 'tier', 'cwd'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
+    if (!['provider', 'model', 'effort', 'category', 'tier', 'cwd', 'prompt-file'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
     options[key] = argv[++i];
   }
   if (!lib.validProviderId(options.provider)) throw new Error('Invalid --provider.');
@@ -308,12 +308,13 @@ async function takeSlot(id, provider, deps) {
 
 async function run(argv, deps = {}) {
   const options = parseArgs(argv);
+  // Read first, so a prompt file never outlives a run that fails on its settings.
+  const prompt = deps.prompt ?? (options['prompt-file'] ? lib.takePrompt(options['prompt-file'], MAX_PROMPT) : lib.readStdin(MAX_PROMPT));
   const project = (deps.findProjectConfig || lib.findProjectConfig)();
   const config = (deps.loadConfig || lib.loadConfig)(project);
   const selected = selection(options, config, project);
   const env = deps.env || process.env, platform = deps.platform || process.platform;
   const cwd = options.cwd === undefined ? path.resolve(project.directory) : resolveWorkdir(options.cwd, process.cwd(), deps);
-  const prompt = deps.prompt ?? lib.readStdin(MAX_PROMPT);
   if (Buffer.byteLength(prompt) < 1 || Buffer.byteLength(prompt) > MAX_PROMPT || prompt.includes('\0')) throw new Error('Prompt on stdin must be 1 byte to 200 KiB, without NUL.');
   const fullPrompt = 'Your working directory is ' + cwd + ' and every file is inside it. Use relative file paths.\n\n' + prompt;
   const promptKiB = platform === 'win32' ? 24 : 100;

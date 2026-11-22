@@ -713,4 +713,59 @@ test('a deferred routing table belongs to the session that deferred it', () => {
   assert.deepEqual(lib.readState().pendingTables, {});
 });
 
+
+test('PreToolUse moves a runner heredoc into a prompt file and changes nothing else', () => {
+  const slash = value => value.split(path.sep).join('/');
+  const home = slash(path.join(__dirname, '..'));
+  const body = 'GOAL: chores\nCONSTRAINTS: add "bin": {"tasks": "src/cli.js"}\nCHECK: node -e "x" && node --test';
+  const cli = (flags, text = body, delimiter = 'QUOTA_BOSS_PROMPT', script = 'cli-run') => `node "${home}/scripts/${script}.js"${flags} <<'${delimiter}'\n${text}\n${delimiter}`;
+  const hook = (command, tool = 'Bash') => invoke(agent.main, JSON.stringify({ cwd: project, tool_name: tool, tool_input: { command, description: 'd' } })).stdout;
+  const rewritten = command => {
+    const out = hook(command);
+    if (!out) return null;
+    const result = JSON.parse(out).hookSpecificOutput;
+    assert.equal(result.permissionDecision, undefined, 'the normal permission check must still decide');
+    assert.equal(result.updatedInput.description, 'd');
+    return result.updatedInput.command;
+  };
+  const plain = rewritten(cli(' --provider junie-lite --category mechanical --tier trivial --expect-changes'));
+  const name = /^node "[^"]+\/scripts\/cli-run\.js" --provider junie-lite --category mechanical --tier trivial --expect-changes --prompt-file (qb-[0-9a-f]{32}\.txt)$/.exec(plain)?.[1];
+  assert.ok(name, plain);
+  assert.equal(lib.takePrompt(name, 1024), body + '\n');
+  assert.throws(() => lib.takePrompt(name, 1024), 'a prompt file is read once');
+  assert.match(rewritten(cli(' --model gpt-6.2-sol --effort medium --sandbox workspace-write --cwd "sub dir"', body, 'QB_SPEC_EOF', 'codex-run') + '\n'), /codex-run\.js" --model gpt-6\.2-sol --effort medium --sandbox workspace-write --cwd "sub dir" --prompt-file qb-/);
+  const before = fs.readdirSync(lib.promptsDir()).length;
+  // Anything else stays as it is for the normal permission check, and no file is written.
+  for (const command of [
+    cli(' --provider x') + '\nrm -rf x',
+    cli(' --provider x', 'a\nQUOTA_BOSS_PROMPT\nrm -rf x'),
+    cli(' --provider x', 'a\r\nb'),
+    cli(' --provider $(whoami)'),
+    cli(' --provider "$(whoami)"'),
+    cli(' --provider x; rm -rf y'),
+    cli(' --expect-changes --cwd /etc --cwd /'),
+    cli(' --provider x --prompt-file qb-0.txt'),
+    cli(' --sandbox x'),
+    cli(' --provider --cwd'),
+    cli(' --provider ""'),
+    cli(' --provider x', body, 'OTHER'),
+    cli(' --provider x', body, 'QUOTA_BOSS_PROMPT', 'quota-boss'),
+    cli(' --provider x').replace(home, home + '/$(touch pwn)/..'),
+    cli(' --provider x').replace(home, '/other/home'),
+    'cd x && ' + cli(' --provider x'),
+    cli(' --provider x').replace("<<'QUOTA_BOSS_PROMPT'", '<<QUOTA_BOSS_PROMPT'),
+  ]) assert.equal(hook(command), '', command);
+  assert.equal(hook(cli(' --provider x'), 'PowerShell'), '');
+  // A malformed command fails in linear time (overlapping token rules once backtracked for minutes).
+  const started = Date.now();
+  assert.equal(agent.runnerRewrite({ tool_name: 'Bash', tool_input: { command: cli(' "x"'.repeat(60), body, 'QUOTA_BOSS_PROMPT') + 'NOPE' } }, () => 'n'), null);
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(fs.readdirSync(lib.promptsDir()).length, before);
+  assert.throws(() => lib.takePrompt('../projects.json', 1024), /Invalid --prompt-file/);
+  // Leftovers from denied calls go after a day.
+  const old = lib.savePrompt('old'), file = path.join(lib.promptsDir(), old);
+  fs.utimesSync(file, new Date(Date.now() - 2 * 86400000), new Date(Date.now() - 2 * 86400000));
+  lib.takePrompt(lib.savePrompt('new'), 64);
+  assert.equal(fs.existsSync(file), false);
+});
 });

@@ -26,8 +26,8 @@ function parseArgs(argv) {
   const options = { effort: 'medium', sandbox: 'read-only' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i], value = argv[i + 1];
-    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier', '--cwd', '--search'].includes(key) || value === undefined || key === '--cwd' && (!value || value.startsWith('--'))) {
-      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] [--cwd <dir>] [--search cached|live|disabled] < prompt');
+    if (!['--model', '--effort', '--sandbox', '--resume', '--category', '--tier', '--cwd', '--search', '--prompt-file'].includes(key) || value === undefined || key === '--cwd' && (!value || value.startsWith('--'))) {
+      throw new Error('Usage: codex-run.js --model <id> [--effort low|medium|high|xhigh] [--sandbox read-only|workspace-write] [--resume <id>] [--category <c> --tier <t>] [--cwd <dir>] [--search cached|live|disabled] [--prompt-file <name>] < prompt');
     }
     options[key.slice(2)] = value;
   }
@@ -100,8 +100,8 @@ function shellBlocked(stdout) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  const prompt = options['prompt-file'] ? lib.takePrompt(options['prompt-file'], MAX_PROMPT) : fs.readFileSync(0, 'utf8');
   const cwd = options.cwd === undefined ? process.cwd() : resolveWorkdir(options.cwd);
-  const prompt = fs.readFileSync(0, 'utf8');
   if (!prompt.trim() || Buffer.byteLength(prompt) > MAX_PROMPT) throw new Error('Prompt on stdin must be 1 byte to 200 KiB.');
   const invocation = codexInvocation();
   if (!invocation) throw new Error('Codex CLI not found on the trusted PATH. Install: npm i -g @openai/codex');

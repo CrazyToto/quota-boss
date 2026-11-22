@@ -6,8 +6,8 @@ const START = '<!-- quota-boss:start -->';
 const END = '<!-- quota-boss:end -->';
 const RULES_LOADED = '[quota-boss] Boss rules loaded.';
 // PreToolUse: worker handover gate (Agent, Task) and the saved-output read guard (Read).
-const PRE_TOOL_MATCHER = 'Agent|Task|Read';
-const LEGACY_PRE_TOOL_MATCHERS = ['Agent|Task'];
+const PRE_TOOL_MATCHER = 'Agent|Task|Read|Bash';
+const LEGACY_PRE_TOOL_MATCHERS = ['Agent|Task', 'Agent|Task|Read'];
 function boot() {
   return lib.substituteHome(lib.readBounded(path.join(__dirname, '..', 'templates', 'BOOT.md'), 65536).trim());
 }

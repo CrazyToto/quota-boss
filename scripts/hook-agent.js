@@ -54,10 +54,56 @@ function savedOutputReason(input) {
   }
   return '[quota-boss] This read covers ' + Math.round(size / 1024) + ' KB of a saved command output and would add all of it to the session. Grep it for what you need, read only the lines you need with offset and limit, or read only the source files the task needs.';
 }
+// Claude Code asks about (and headless runs deny) a heredoc whose body holds JSON such as {"a": 1}, even with
+// Bash(node:*) allowed, so a relay's runner call fails. The hook moves the heredoc body into a prompt file and
+// hands Claude Code the same runner call with --prompt-file instead; the normal permission check then decides.
+const RUNNER = /^node "([^"\n]+)\/scripts\/(cli-run|codex-run)\.js"((?: [^ "\n]+| "[^"\n]*")*) <<'(QUOTA_BOSS_PROMPT|QB_SPEC_EOF)'\n([^\r\0]*)\n\4\n*$/;
+// One token: a flag, a double-quoted value without anything bash expands, or a plain word that cannot start an option.
+const TOKEN = / (--[a-z][a-z-]*|"[^"$`\\\n]*"|[A-Za-z0-9._:/@+=][A-Za-z0-9._:/@+=-]*)/y;
+// The flags each runner takes; true = no value. A command with any other flag stays as it is.
+const RUNNER_FLAGS = {
+  'cli-run': { provider: false, model: false, effort: false, category: false, tier: false, cwd: false, 'expect-changes': true },
+  'codex-run': { model: false, effort: false, sandbox: false, resume: false, category: false, tier: false, cwd: false, search: false },
+};
+/** The same runner call with its heredoc moved to a prompt file, or null when the command is not exactly that form. */
+function runnerRewrite(input, save = lib.savePrompt) {
+  const command = input?.tool_input?.command;
+  if (input?.tool_name !== 'Bash' || typeof command !== 'string') return null;
+  const match = RUNNER.exec(command);
+  if (!match) return null;
+  // Only this install's runners, written the way the agent files write them.
+  const home = path.join(__dirname, '..').split(path.sep).join('/');
+  const same = process.platform === 'win32' ? match[1].toLowerCase() === home.toLowerCase() : match[1] === home;
+  if (!same || /[$`\\"!]/.test(home)) return null;
+  // Bash ends the heredoc at the first line equal to its delimiter; anything after it would be a second command.
+  if (match[5].split('\n').includes(match[4])) return null;
+  const tokens = [];
+  TOKEN.lastIndex = 0;
+  while (TOKEN.lastIndex < match[3].length) {
+    const found = TOKEN.exec(match[3]);
+    if (!found) return null;
+    tokens.push(found[1]);
+  }
+  const flags = RUNNER_FLAGS[match[2]], seen = new Set();
+  for (let i = 0; i < tokens.length; i++) {
+    const name = tokens[i].startsWith('--') ? tokens[i].slice(2) : null;
+    if (!name || !Object.hasOwn(flags, name) || seen.has(name)) return null;
+    seen.add(name);
+    if (flags[name]) continue;
+    const value = tokens[++i];
+    if (value === undefined || value.startsWith('-') || value === '""') return null;
+  }
+  return 'node "' + match[1] + '/scripts/' + match[2] + '.js"' + match[3] + ' --prompt-file ' + save(match[5] + '\n');
+}
 function main() {
   try {
     const deadline = Date.now() + 3000;
     const input = lib.readInput();
+    if (input?.tool_name === 'Bash') {
+      const command = runnerRewrite(input);
+      if (command) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input.tool_input, command } } }));
+      return;
+    }
     if (input?.tool_name === 'Read') {
       const reason = savedOutputReason(input);
       const project = reason && lib.findProjectConfig(input.cwd);
@@ -81,4 +127,4 @@ if (require.main === module) {
   process.stdout.on('error', () => {});
   main();
 }
-module.exports = { main, loaded, savedOutputReason, TAIL_BYTES, SAVED_OUTPUT_BYTES, DENY_LIMIT };
+module.exports = { main, loaded, savedOutputReason, runnerRewrite, TAIL_BYTES, SAVED_OUTPUT_BYTES, DENY_LIMIT };

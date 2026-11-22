@@ -59,7 +59,10 @@ and every provider can be **capped** by the user (e.g. "Grok may use at most 20 
 From the project root, pipe the spec to `node <QUOTA_BOSS_HOME>/scripts/cli-run.js --provider <id> --model <registry-id>
 --effort <level> --category <category> --tier <tier> --expect-changes`. Optional flags can be omitted; without
 `--model` the provider must have a single registry model. PowerShell can pipe a single-quoted here-string;
-Bash can use a quoted heredoc. The runner adds the absolute project-root prefix to the prompt. Its first line
+Bash can use a quoted heredoc. Claude Code asks about (and headless runs deny) a heredoc whose body holds JSON,
+so on Claude Code the Quota Boss PreToolUse hook moves the body of exactly this runner form into
+`<QUOTA_BOSS_HOME>/prompts/` and runs the same command with `--prompt-file <name>` instead; the normal permission
+check still decides, and the runner reads the file once and deletes it. The runner adds the absolute project-root prefix to the prompt. Its first line
 reports the outcome and whether feedback was recorded. Never retry a failed run or duplicate its journals.
 `--expect-changes` compares Git status and content fingerprints, including tracked diffs and up to 2000 untracked
 files of at most 5 MiB each. An unchanged fingerprint is `no-work`; if Git or a fingerprint is unavailable, the
