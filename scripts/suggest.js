@@ -53,7 +53,7 @@ function suggestions(snap, now = Date.now()) {
       if (typeof pool !== 'string') continue;
       const s = stats[pool] ??= { fail: 0, pass: 0 };
       if (o.result === 'pass') s.pass++;
-      else if (o.result === 'fail' && !lib.transientOutcome(o) || o.result === 'unavailable') s.fail++;
+      else if (o.result === 'fail' && !lib.transientOutcome(o) && o.kind !== 'not-run' || o.result === 'unavailable') s.fail++;
     }
     for (const [id, s] of Object.entries(stats).sort(([a], [b]) => a.localeCompare(b))) {
       if (s.fail >= 3 && s.pass === 0) off(id, id + ' failed ' + s.fail + ' recent jobs and passed none in 7 days');

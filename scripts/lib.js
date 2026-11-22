@@ -8,7 +8,8 @@ const MAX_LOG_BYTES = 512 * 1024;
 const CATEGORIES = ['architecture', 'debugging', 'implementation', 'review', 'research', 'mechanical'];
 const TIERS = ['critical', 'normal', 'trivial'];
 const RESULTS = ['pass', 'fail', 'unavailable', 'limited'];
-const FAILURE_KINDS = ['quota', 'outage', 'structural', 'timeout', 'context', 'check-fail'];
+// not-run: the runner never started the job, so the fail says nothing about the model and only stays in the log.
+const FAILURE_KINDS = ['quota', 'outage', 'structural', 'timeout', 'context', 'check-fail', 'not-run'];
 const qualityFailure = value => value.result === 'fail' && (value.kind === undefined || value.kind === 'check-fail');
 const failedHere = value => qualityFailure(value) || value.result === 'fail' && ['structural', 'context'].includes(value.kind);
 const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];

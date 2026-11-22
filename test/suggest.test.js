@@ -77,6 +77,8 @@ test('rule 3: three recent failures and no pass suggests turning the provider of
   assert.deepEqual(suggestions(snap({ outcomes: [...fails('grok-4', 2), ...fails('grok-4', 1, 'unavailable')] }), NOW).map(s => s.command), ['use grok off']);
   assert.deepEqual(suggestions(snap({ outcomes: fails('grok-4', 2) }), NOW), []);
   assert.deepEqual(suggestions(snap({ outcomes: fails('grok-4', 3, 'limited') }), NOW), []);
+  assert.deepEqual(suggestions(snap({ outcomes: [...fails('grok-4', 2), ...fails('grok-4', 3).map(o => ({ ...o, kind: 'not-run' }))] }), NOW), [],
+    'jobs that never reached the model do not count');
 });
 
 test('rule 3: a pass in the last 7 days resets, older outcomes do not count', () => {

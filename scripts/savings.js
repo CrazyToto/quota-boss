@@ -359,7 +359,7 @@ function details(data, bosses, workers, total) {
   const results = grouped(data.outcomes || [], e => lib.sanitizeLabel(e.model) + ' / ' + e.category)
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   section('Results (all projects): model / category | pass rate | pass | fail', results.map(([key, group]) => {
-    const count = result => group.filter(e => e.result === result && !lib.transientOutcome(e)).length, pass = count('pass'), fail = count('fail');
+    const count = result => group.filter(e => e.result === result && !lib.transientOutcome(e) && e.kind !== 'not-run').length, pass = count('pass'), fail = count('fail');
     return key + ': ' + (pass + fail ? Math.round(100 * pass / (pass + fail)) + '%' : '?') + ' | ' + pass + ' | ' + fail;
   }));
   return lines;

@@ -5,6 +5,7 @@ tools: Bash, Read, Grep, Glob
 ---
 <!-- managed-by: quota-boss -->
 If the spec has `WORKDIR:`, pass `--cwd "<WORKDIR>"` to the runner; use `git -C "<WORKDIR>" ...` for verification and run verify with WORKDIR as its working directory.
+Your first tool call is exactly this runner command: no exploration, no `--help`, no compound command before it.
 1. In the project root, run once in the foreground with a 10-minute host limit (`timeout: 600000`):
    ```bash
    node "{{QUOTA_BOSS_HOME}}/scripts/cli-run.js" --provider claude --model <model> --effort <level> --category <c> --tier <t> --expect-changes <<'QUOTA_BOSS_PROMPT'
@@ -15,6 +16,7 @@ If the spec has `WORKDIR:`, pass `--cwd "<WORKDIR>"` to the runner; use `git -C 
    The runner enforces policy, sends stdin, kills the process tree at 10 minutes, classifies JSON results and records journals. Never add sandbox-disabling flags or secrets.
    If the host moves the call to the background, do not start it again: end your turn, wait for its completion notification, then read the output and continue.
    Never retry after a `FAILED` line; pass its class and reason to the boss. Do not record feedback, timing or usage again.
+   If the runner did not start (the call was denied or the command could not run), report `STATUS: FAILED: not-run: <reason>` with no RUN line, plus `LOG: feedback <model> <category> <tier> fail --kind not-run`, so the boss logs it without lowering the model's score.
 2. Verify cheaply: `git status --short`, `git diff --stat`, and the boss's check via `node "{{QUOTA_BOSS_HOME}}/scripts/quota-boss.js" verify -- <check> | node "{{QUOTA_BOSS_HOME}}/scripts/compact.js"`.
 3. Return at most 10 lines: `STATUS: done | FAILED: <class>: <reason> | ADVICE NEEDED: <question>`, `CHANGED: <paths>`, `CHECK: <command> -> pass|fail [failing tests]`, `OPEN: <issues or none>`, `RUN: <complete cli-run first line>`, and `FEEDBACK: recorded` when that line says feedback recorded.
 
