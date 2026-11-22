@@ -656,3 +656,20 @@ test('a stdin prompt template must not carry {prompt}, and an argv template must
   for (const cli of [{ promptVia: 'stdin', args: ['-p', '{prompt}'] }, { args: ['-p'] }, { promptVia: 'argv', args: ['-p', '{prompt}'] }, { promptVia: 'file', args: [] }])
     assert.throws(check(cli), /Invalid CLI argument template/, JSON.stringify(cli));
 });
+
+test('a child process gets PWD equal to its working directory, so a CLI that reads PWD edits the right folder', () => {
+  const dir = path.join(os.tmpdir(), 'qb-pwd');
+  const seen = [];
+  const spawnSync = (file, args, options) => { seen.push(options); return { status: 0 }; };
+  lib.runExecutable(process.execPath, [], { env: { PWD: '/caller', Pwd: 'x', KEEP: '1' }, platform: 'win32', spawnSync, workingDirectory: dir });
+  assert.equal(seen[0].cwd, dir);
+  assert.equal(seen[0].env.PWD, dir);
+  assert.equal(Object.keys(seen[0].env).filter(k => k.toUpperCase() === 'PWD').length, 1, 'one PWD on Windows');
+  assert.equal(seen[0].env.KEEP, '1');
+  const plain = lib.childProcessOptions({ PWD: '/caller' }, 'linux');
+  assert.equal(plain.env.PWD, plain.cwd, 'without a working directory PWD follows the default cwd');
+  const runner = require('../scripts/cli-run');
+  const plan = runner.spawnPlan({ file: process.execPath, prefix: [] }, [], { PWD: '/caller' }, 'linux', dir);
+  assert.equal(plan.options.cwd, dir);
+  assert.equal(plan.options.env.PWD, dir);
+});

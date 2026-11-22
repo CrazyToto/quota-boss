@@ -1499,12 +1499,15 @@ function executableInvocation(executable, args, platform = process.platform, env
   return { file: executable, args, windowsVerbatimArguments: false };
 }
 /** Default child working directory excludes the checkout; self-tests supply a fresh workspace. */
-function childProcessOptions(env = process.env, platform = process.platform) {
+function childProcessOptions(env = process.env, platform = process.platform, workingDirectory) {
   const home = path.resolve(env.QUOTA_BOSS_HOME || env.HARNESS_HOME || os.homedir());
   // Home can be absent during doctor before installation; use the trusted user home.
   let cwd = os.homedir();
-  try { checkParents(path.join(home, '.child')); if (fs.lstatSync(home).isDirectory()) cwd = home; } catch {}
-  const childEnv = { ...env };
+  if (workingDirectory) cwd = workingDirectory;
+  else try { checkParents(path.join(home, '.child')); if (fs.lstatSync(home).isDirectory()) cwd = home; } catch {}
+  // Some CLIs (OpenCode) take their folder from PWD, not the real working directory, so an inherited PWD would send
+  // their edits to the caller's folder.
+  const childEnv = mergeEnv(env, { PWD: cwd }, platform);
   // A shim that looks up node on PATH must not find one in the checkout the lookup already rejected.
   const trusted = trustedPathEntries(env, platform, process.cwd());
   if (trusted.key) childEnv[trusted.key] = trusted.entries.join(platform === 'win32' ? ';' : ':');
@@ -1519,7 +1522,7 @@ function runExecutable(executable, args, options = {}) {
   const { platform = process.platform, env = process.env, spawnSync = require('node:child_process').spawnSync, workingDirectory, ...spawnOptions } = options;
   try {
     const invocation = executableInvocation(executable, args, platform, env);
-    return spawnSync(invocation.file, invocation.args, { ...spawnOptions, ...childProcessOptions(env, platform), ...(workingDirectory ? { cwd: workingDirectory } : {}), shell: false, windowsHide: true, windowsVerbatimArguments: invocation.windowsVerbatimArguments });
+    return spawnSync(invocation.file, invocation.args, { ...spawnOptions, ...childProcessOptions(env, platform, workingDirectory), shell: false, windowsHide: true, windowsVerbatimArguments: invocation.windowsVerbatimArguments });
   } catch (error) { return { status: null, error }; }
 }
 function trustedHomeText(home = getPaths().quotaBossHome) {

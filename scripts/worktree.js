@@ -18,10 +18,10 @@ function gitClient(cwd, deps) {
   const git = (deps.findExecutable || lib.findExecutable)('git', env, platform, cwd);
   if (!git) throw fail('Git not found on the trusted PATH.');
   return (args, directory = cwd, allowed = [], input) => {
-    const options = lib.childProcessOptions(env, platform);
+    const options = lib.childProcessOptions(env, platform, directory);
     for (const key of Object.keys(options.env)) if (GIT_ENV.test(key)) delete options.env[key];
     const result = (deps.spawnSync || childProcess.spawnSync)(git, args, {
-      ...options, cwd: directory, shell: false, windowsHide: true,
+      ...options, shell: false, windowsHide: true,
       encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, input,
     });
     if (result.error || result.status !== 0 && !allowed.includes(result.status)) {

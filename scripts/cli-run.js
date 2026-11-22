@@ -106,7 +106,7 @@ function invocation(executable, platform = process.platform) {
 
 function spawnPlan(target, args, env, platform, cwd, input) {
   return { file: target.file, args: [...target.prefix, ...args], ...(input !== undefined ? { input } : {}), options: {
-    ...lib.childProcessOptions(env, platform), cwd, shell: false, windowsHide: true,
+    ...lib.childProcessOptions(env, platform, cwd), shell: false, windowsHide: true,
     windowsVerbatimArguments: false, detached: platform !== 'win32', stdio: [input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   } };
 }

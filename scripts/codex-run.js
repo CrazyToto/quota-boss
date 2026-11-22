@@ -68,7 +68,7 @@ function spawnPlan(invocation, args, env = process.env, platform = process.platf
     ? lib.executableInvocation(invocation.executable, args, platform, env)
     : { file: invocation.file, args: [...invocation.prefix, ...args], windowsVerbatimArguments: false };
   return { file: target.file, args: target.args,
-    options: { ...lib.childProcessOptions(withoutStoreAliases(env, platform), platform), cwd, shell: false, windowsHide: true,
+    options: { ...lib.childProcessOptions(withoutStoreAliases(env, platform), platform, cwd), shell: false, windowsHide: true,
       windowsVerbatimArguments: target.windowsVerbatimArguments } };
 }
 
