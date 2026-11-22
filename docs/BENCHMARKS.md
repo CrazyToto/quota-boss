@@ -358,3 +358,22 @@ In run 1 the boss did the whole task itself and paid for the longer rules. In ru
 used 25% less Claude than the mean of boss off. With two runs per arm this is within noise: the earlier saving of about
 a third (Claude limit 75% used) is not confirmed at 60%. Boss mode pays off when it delegates, so the next work is on
 making delegation of large jobs reliable, not on new free offers.
+
+### Claude Code: large jobs, the short start and chores (2026-11-21 and 22)
+
+Three runs per arm, mean Claude USD from the session logs, every hidden test passed in all runs.
+
+| Task | Boss off | Boss on | Change | Codex per on run | Time on/off |
+|---|---|---|---|---|---|
+| Large (2026-11-21) | 0.773 | 0.496 | -36% | 0.147 | 1.65x |
+| Small (2026-11-21) | 0.182 | 0.204 | +12% | 0 | 1.0x |
+| Docs (2026-11-21) | 0.214 | 0.274 | +28% | 0 | 1.3x |
+| Mixed (2026-11-21) | 0.459 | 0.334 | -27% | 0.059 | 1.45x |
+| Small (2026-11-22, short start) | 0.185 | 0.195 | +5% | 0 | 0.9x |
+| Docs (2026-11-22, short start) | 0.229 | 0.228 | 0% | 0 | 0.9x |
+| Mixed (2026-11-22, short start) | 0.417 | 0.462 | +11% | 0 | 1.0x |
+
+On large jobs every boss-on run handed the code to Codex and used about a third less Claude. The short start cut the
+overhead on small and docs jobs to within noise. On the mixed task of 2026-11-22 no boss-on run delegated, and the
+three runs spread from 0.370 to 0.547, so that result is not settled. A rule that told the boss to hand all chores of a
+task to one free worker cost more Claude than leaving it out (0.439 against 0.397) and was dropped.
