@@ -7,7 +7,7 @@ const lib = require('./lib');
 const { PROVIDER_HELP } = require('./provider-help');
 
 const PRESETS = Object.freeze({
-  'openrouter-free': { label: 'OpenRouter free', model: 'openrouter/cohere/north-mini-code:free', keyPage: 'https://openrouter.ai/settings/keys', free: true, trains: true,
+  'openrouter-free': { label: 'OpenRouter free', model: 'openrouter/recursive/flint-v1.0:free', keyPage: 'https://openrouter.ai/settings/keys', free: true, trains: true,
     keyHint: 'A balance of 0 is normal: this offer only uses a free model, so it costs nothing.',
     gets: '50 calls a day',
     limit: '50 calls a day',
