@@ -53,8 +53,13 @@ For each window `w` of a pool with usage `u` clamped to 0..100, time left `L` an
 - slack discount: if `proj < 50` and `L/W < 0.25`, multiply pressure by `0.5`
 - without a reset time, projection and rate are unknown, pressure is `u/100`, with no discount
 
-Pool price `price = 1 + 3 * (max_w p_w)^2`; unknown data => `1.3`; mode `emergency`/`exhausted` => `+inf`
+Pool price `price = (1 + 3 * (max_w p_w)^2) * (1 - idle)`; unknown data => `1.3`; mode `emergency`/`exhausted` => `+inf`
 (excluded) except for the boss's own CRITICAL work when nothing else qualifies.
+Use it or lose it: subscription quota left unused at a reset is gone, so `idle` makes it nearly free. For the longest
+window with a reset time, `waste = clamp((100 - proj) / 100, 0, 1) * clamp(1 - L/W, 0, 1)^2`, and
+`idle = idleDiscount * waste * clamp(1 - max p_w of the shorter windows, 0, 1)^2` with `thresholds.idleDiscount`
+(default `0.8`, clamped to 0..0.95, `0` turns it off). Example: Codex at 10% of its week with one day to the reset
+costs about `0.55`; six days before the reset the discount is almost zero; a 5h window under pressure takes it back. A longest window without a reset time, or with a reset already past, gives no discount. Relay costs, the free-first `tightPrice` check and the `cap` text use the price without it.
 On a Claude Code host, Claude gets an extra configurable `bossFactor` (currently `1.5`) for delegated (non-self) work
 because the boss context is the scarcest resource. Caps never exclude the boss's own self work.
 
@@ -89,6 +94,11 @@ Handover `(fixed, perSize)` in medium boss jobs is Claude Code `(0.2, 0.35)`, Co
 Time must also pass: `extraSeconds = handoverSeconds + s * workerSeconds - s * ownSeconds`.
 Missing worker latency uses `workSeconds` (default: the boss speed, so an unmeasured worker is assumed as fast as the boss); the boss's own time per medium job is `bossSeconds` (Claude Code `50`, measured with an Opus boss on the large bench task; Codex and generic `150`); handover seconds are Claude Code `50`, Codex `90`, generic `60`.
 The maximum extra seconds are small `60`, medium `180`, large `600`. Cost failures take precedence over time failures.
+Idle quota of another pool relaxes the gate: with `relief = clamp((idle_worker - idle_boss) / idleDiscount, 0, 1)`,
+the margin moves from `margin` toward `gate.idleMargin` (default `0.95`) by `relief`, and the time limit moves toward the
+saving-mode limit by `min(1, 2 * relief)`. Relief is `0` when the worker's `P` is more than `gate.idleMaxPGap`
+(default `0.02`) below the boss's, so idle quota never buys a weaker result. A boss pool just as idle gives no relief, since then both pools are free.
+`route --explain` shows `idle=<relief>`.
 All defaults are overridable in `thresholds.gate` (`size` holds the size units). `route --explain` prints the costs and extra time.
 The handover estimates come from one benchmark sample per host (see [BENCHMARKS.md](BENCHMARKS.md)); logged runs will later teach them.
 

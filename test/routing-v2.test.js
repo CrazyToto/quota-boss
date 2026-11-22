@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { route, formatTable, successProbability, projectWindow, poolPrice } = require('../scripts/route');
+const { route, formatTable, successProbability, projectWindow, poolPrice, poolIdle } = require('../scripts/route');
 const thresholds = require('../config/thresholds.json');
 const now = Date.UTC(2026, 10, 8, 12);
 const model = (pool, cost, score, extra = {}) => ({ pool, cost, label: pool + score, scores: { implementation: score }, ...extra });
@@ -32,7 +32,7 @@ test('pace projects usage to reset and prices an impending quota shortage', () =
   const pressure = Math.min(1.5, (40 + Math.max(0, projected - 100)) / 100);
   assert.equal(projection.projected, projected);
   assert.equal(projection.pressure, pressure);
-  assert.ok(Math.abs(poolPrice('codex', { codex: { primary: window } }, { codex: history }, thresholds, now) - (1 + 3 * pressure ** 2)) < 1e-12);
+  assert.ok(Math.abs(poolPrice('codex', { codex: { primary: window } }, { codex: history }, { ...thresholds, idleDiscount: 0 }, now) - (1 + 3 * pressure ** 2)) < 1e-12);
   // A full observation interval can project overshoot; pressure stays bounded.
   const sustained = [{ t: now - 120 * 60000, u5: 0 }, { t: now, u5: 90 }];
   const shortage = projectWindow({ ...window, used_percent: 90 }, 'used_percent', sustained, 'u5', now);
@@ -48,7 +48,38 @@ test('idle quota near reset receives the use-it-or-lose-it pressure discount', (
   assert.equal(discounted.discounted, true);
   assert.equal(discounted.pressure, 0.1);
   assert.equal(projectWindow(later, 'used_percent', history, 'u5', now).pressure, 0.2);
-  assert.ok(Math.abs(poolPrice('codex', { codex: { primary: soon } }, { codex: history }, thresholds, now) - 1.03) < 1e-12);
+  assert.ok(Math.abs(poolPrice('codex', { codex: { primary: soon } }, { codex: history }, { ...thresholds, idleDiscount: 0 }, now) - 1.03) < 1e-12);
+});
+
+test('quota the longest window leaves unused by a near reset is nearly free, unless a shorter window is under pressure', () => {
+  const free = { idleDiscount: 0.8 };
+  const fiveHour = used => ({ used_percent: used, window_minutes: 300, resets_at: now / 1000 + 3600 });
+  const week = (used, days) => ({ used_percent: used, window_minutes: 10080, resets_at: now / 1000 + days * 86400 });
+  const price = (used5, usedWeek, days, t = free) => poolPrice('codex', { codex: { primary: fiveHour(used5), secondary: week(usedWeek, days) } }, {}, t, now);
+  // 10% used, one day to the reset: most of the week would go unused, so the price drops well below 1.
+  assert.ok(price(5, 10, 1) < 0.6);
+  // Six days to the reset: the quota can still be used later, so almost no discount.
+  assert.ok(price(5, 10, 6) > 0.97 * price(5, 10, 6, { idleDiscount: 0 }));
+  // The closer the reset and the more is left, the cheaper.
+  assert.ok(price(5, 10, 1) < price(5, 10, 3));
+  assert.ok(price(5, 10, 1) < price(5, 60, 1));
+  // A nearly full 5h window takes the discount back.
+  assert.ok(price(90, 10, 1) > 0.9 * price(90, 10, 1, { idleDiscount: 0 }));
+  // The discount never exceeds 0.95.
+  assert.ok(price(0, 0, 0.001, { idleDiscount: 5 }) >= 0.05 - 1e-9);
+  assert.equal(poolIdle('codex', {}, {}, free, now), 0);
+  const idle = poolIdle('codex', { codex: { primary: fiveHour(5), secondary: week(10, 1) } }, {}, free, now);
+  assert.ok(idle > 0.35 && idle <= 0.8);
+  // A stale reset already past means the window just restarted: no discount.
+  assert.equal(poolIdle('codex', { codex: { primary: fiveHour(5), secondary: { ...week(10, 1), resets_at: now / 1000 - 60 } } }, {}, free, now), 0);
+  // A weekly window without a reset time decides alone, so a soon 5h reset gives no discount.
+  const noWeekReset = { primary: { used_percent: 10, window_minutes: 300, resets_at: now / 1000 + 600 }, secondary: { used_percent: 60, window_minutes: 10080 } };
+  assert.equal(poolIdle('codex', { codex: noWeekReset }, {}, free, now), 0);
+  // A half-full 5h window keeps a quarter of the discount (idle above has 5h pressure 0.025).
+  const half = poolIdle('codex', { codex: { primary: fiveHour(50), secondary: week(10, 1) } }, {}, free, now);
+  assert.ok(Math.abs(half - idle * 0.25 / 0.975 ** 2) < 1e-9);
+  // An exhausted pool stays excluded and has no idle share.
+  assert.equal(poolIdle('codex', { codex: { primary: fiveHour(100), secondary: week(100, 1) } }, {}, free, now), 0);
 });
 
 test('reset counters discard the previous burn segment and unknown quota has a neutral price', () => {

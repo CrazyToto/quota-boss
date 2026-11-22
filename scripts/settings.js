@@ -74,7 +74,7 @@ function effect(command, args, before, after) {
     const source = after.config.providers.providers[id];
     const used = lib.providerWindows(id, after.limits)[window]?.used_percent;
     const context = lib.providerContext(after.config.providers, after.limits, after.history);
-    const price = poolPrice(id, context.limits, context.history, after.config.thresholds, after.now, lib.computeModes(after.limits, after.config.thresholds, after.now, after.config.providers));
+    const price = poolPrice(id, context.limits, context.history, { ...after.config.thresholds, idleDiscount: 0 }, after.now, lib.computeModes(after.limits, after.config.thresholds, after.now, after.config.providers));
     text = lib.sanitizeLabel(source.label) + ' may now use at most ' + cap + '% of its ' + window + ' window for delegation. ';
     text += typeof used === 'number' && Number.isFinite(used)
       ? 'At ' + Number(used.toFixed(2)) + '% used, ' + (used >= cap ? 'delegation is blocked by this cap.' : 'the quota price is ' + (Number.isFinite(price) ? price.toFixed(2) + '×' : 'unavailable') + ' and rises with quota pressure.')

@@ -43,11 +43,11 @@ function limits(c5h = 4, cWeek = 49, x5h = 0, xWeek = 2) {
     codex: { primary: { used_percent: x5h }, secondary: { used_percent: xWeek } } };
 }
 
-function codexLog(used = 0, weekly = 2) {
+function codexLog(used = 0, weekly = 2, weeklyReset = 86400) {
   const file = path.join(process.env.CODEX_HOME, 'sessions', 'nested', 'log.jsonl');
   lib.atomicWrite(file, JSON.stringify({ timestamp: new Date().toISOString(), payload: { type: 'token_count', rate_limits: {
     primary: { used_percent: used, window_minutes: 300, resets_at: Date.now() / 1000 + 3600 },
-    secondary: { used_percent: weekly, window_minutes: 10080, resets_at: Date.now() / 1000 + 86400 } } } }) + '\n');
+    secondary: { used_percent: weekly, window_minutes: 10080, resets_at: Date.now() / 1000 + weeklyReset } } } }) + '\n');
   return file;
 }
 
@@ -451,7 +451,8 @@ test('saving session and changed-mode prompt show large hints and retain the pre
   t.mock.method(lib, 'currentBossModel', () => 'claude-opus-5-5');
   t.mock.method(lib, 'currentBossEffort', () => null);
   enable();
-  codexLog();
+  // A week from its reset, idle Codex quota gets no use-it-or-lose-it discount, so the row stays self.
+  codexLog(0, 2, 7 * 86400);
   lib.writeState({ claude: limits(75).claude, sessions: { 'session-1': { mode: 'normal', pool: 'codex', updated_at: now - 1000 } } });
   const p = lib.findProjectConfig(), config = lib.loadConfig(p, { tolerant: true });
   const { state, limits: quota } = require('../scripts/session-routing').readLimits(config, now);

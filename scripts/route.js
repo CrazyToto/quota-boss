@@ -117,7 +117,7 @@ function projectWindow(window, key, history = [], sampleKey, now = 0, minutes = 
   const reset = finite(window.resets_at, null);
   const used = reset !== null && reset * 1000 <= now ? 0 : clamp(window[key], 0, 100);
   const W = positive(window.window_minutes, minutes);
-  if (reset === null) return { used, rate: null, projected: null, pressure: used / 100, discounted: false };
+  if (reset === null) return { used, rate: null, projected: null, pressure: used / 100, discounted: false, minutes: positive(window.window_minutes, minutes) };
   const L = clamp((reset * 1000 - now) / 60000, 0, W);
   const elapsed = clamp(1 - L / W, 0.02, 1);
   const samples = (Array.isArray(history) ? history : []).filter(s => s && Number.isFinite(s.t)
@@ -149,7 +149,7 @@ function projectWindow(window, key, history = [], sampleKey, now = 0, minutes = 
   let pressure = clamp((used + Math.max(0, projected - 100)) / 100, 0, 1.5);
   const discounted = projected < 50 && L / W < 0.25;
   if (discounted) pressure *= 0.5;
-  return { used, rate, projected, pressure, discounted };
+  return { used, rate, projected, pressure, discounted, left: L / W, minutes: W, ...(reset * 1000 <= now ? { expired: true } : {}) };
 }
 
 /** Scarcity price is independent of model cost and quality. */
@@ -162,7 +162,28 @@ function poolPrice(pool, limits = {}, history = {}, thresholds = {}, now = 0, mo
       : Object.entries(QUOTA_WINDOWS).map(([name, minutes]) => [name, 'used_percent', name, minutes]);
   const projections = windows.map(([name, key, sampleKey, minutes]) =>
     projectWindow((pool === 'claude' || pool === 'codex' ? source : source?.windows)?.[name], key, history?.[pool], sampleKey, now, minutes, thresholds)).filter(Boolean);
-  return projections.length ? 1 + 3 * Math.max(...projections.map(w => w.pressure)) ** 2 : 1.3;
+  return projections.length ? (1 + 3 * Math.max(...projections.map(w => w.pressure)) ** 2)
+    * (1 - idleShare(projections, thresholds)) : 1.3;
+}
+
+/** Use it or lose it: quota the longest window will leave unused at its reset is nearly free, more so the closer the
+ * reset. Shorter windows under pressure take the discount back, so a full 5h window is never pushed further. */
+function idleShare(projections, thresholds = {}) {
+  if (!projections.length) return 0;
+  // Only the longest window decides; one without a reset time, or a stale reset already past, gives no discount.
+  const longest = projections.reduce((a, b) => b.minutes > a.minutes ? b : a);
+  if (longest.projected === null || longest.expired) return 0;
+  // Squared closeness: six days before a weekly reset the quota can still be used later, one day before most cannot.
+  const waste = clamp((100 - longest.projected) / 100, 0, 1) * clamp(1 - longest.left, 0, 1) ** 2;
+  const shortPressure = Math.max(0, ...projections.filter(w => w !== longest).map(w => w.pressure));
+  return clamp(finite(thresholds.idleDiscount, 0.8), 0, 0.95) * waste * clamp(1 - shortPressure, 0, 1) ** 2;
+}
+
+/** The idle discount of one pool, 0 when its quota is unknown or the pool is excluded. */
+function poolIdle(pool, limits = {}, history = {}, thresholds = {}, now = 0, modes = computeModes(limits, thresholds, now)) {
+  const price = poolPrice(pool, limits, history, { ...thresholds, idleDiscount: 0 }, now, modes);
+  const discounted = poolPrice(pool, limits, history, thresholds, now, modes);
+  return Number.isFinite(price) && Number.isFinite(discounted) && price > 0 ? 1 - discounted / price : 0;
 }
 
 function effortLevels(model) {
@@ -255,7 +276,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
   const options = [];
   const candidates = [];
   const samePoolRatio = clamp(finite(thresholds.samePoolRatio, 0.5), 0, 1);
-  const relayPrice = poolPrice('claude', limits, history, thresholds, now, modes) * positive(thresholds.bossFactor, 1.2);
+  // Relays use the boss's context, which idle weekly quota does not make cheaper.
+  const relayPrice = poolPrice('claude', limits, history, { ...thresholds, idleDiscount: 0 }, now, modes) * positive(thresholds.bossFactor, 1.2);
   for (const tier of TIERS) {
     const relayCost = Number.isFinite(relayPrice) ? positive(thresholds.relayCost?.[tier], RELAY_COST[tier]) * relayPrice : 0;
     const freshCli = 1 + positive(thresholds.freshCliCost?.[tier], FRESH_CLI_COST[tier]);
@@ -363,6 +385,20 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const maxExtraSeconds = Math.max(0, finite((hostSaving ? gate.maxExtraSecondsSaving : gate.maxExtraSeconds)?.[size],
           (hostSaving ? { small: 60, medium: 180, large: 600 } : { small: 30, medium: 90, large: 300 })[size]));
         const B = own.jobCost * own.price;
+        // Quota another pool would leave unused by its reset makes a handover worth less saving and more waiting,
+        // as far as that pool is idler than the boss's own.
+        const maxIdle = clamp(finite(thresholds.idleDiscount, 0.8), 0, 0.95);
+        const idleMargin = clamp(finite(gate.idleMargin, 0.95), margin, 1);
+        const ownIdle = poolIdle(bossPool, limits, history, thresholds, now, modes);
+        const idleCache = new Map();
+        // Relief never trades quality: the worker must be about as likely to pass as the boss doing it.
+        const idleGap = clamp(finite(gate.idleMaxPGap, 0.02), 0, 1);
+        const relief = c => {
+          if (c.pool === bossPool || !maxIdle || c.P < own.P - idleGap) return 0;
+          if (!idleCache.has(c.pool)) idleCache.set(c.pool, poolIdle(c.pool, limits, history, thresholds, now, modes));
+          return clamp((idleCache.get(c.pool) - ownIdle) / maxIdle, 0, 1);
+        };
+        const savingSeconds = Math.max(maxExtraSeconds, finite(gate.maxExtraSecondsSaving?.[size], { small: 60, medium: 180, large: 600 }[size]));
         const selfCost = s * B * (1 + (1 - own.P));
         own.gate = { size, selfCost };
         for (const c of evaluated) {
@@ -373,10 +409,13 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
             + (usesRelay(c.via, settings.host) ? relayCost : 0) + (c.pool === bossPool ? worker : 0);
           const total = bossSide + (c.pool === bossPool ? 0 : worker);
           const extraSeconds = handoverSeconds + s * (c.seconds ?? workSeconds) - s * (own.seconds ?? bossSeconds);
-          c.gate = { size, bossSide, total, selfCost, extraSeconds };
-          if (bossSide > margin * selfCost || total > (c.pool === bossPool ? margin : maxTotalRatio) * selfCost)
+          const r = relief(c);
+          const cMargin = margin + (idleMargin - margin) * r;
+          const cSeconds = maxExtraSeconds + (savingSeconds - maxExtraSeconds) * Math.min(1, 2 * r);
+          c.gate = { size, bossSide, total, selfCost, extraSeconds, ...(r ? { idle: r } : {}) };
+          if (bossSide > cMargin * selfCost || total > (c.pool === bossPool ? cMargin : maxTotalRatio) * selfCost)
             c.reason = 'lost: handover costs more than it saves (' + size + ')';
-          else if (extraSeconds > maxExtraSeconds)
+          else if (extraSeconds > cSeconds)
             c.reason = 'lost: handover too slow (' + size + ')';
         }
       }
@@ -429,7 +468,7 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       const rule = thresholds.freeFirst ?? {};
       const original = winner;
       if (winner && !belowThreshold && tier !== 'critical' && !winner.free && winner.via !== 'self') {
-        const scarcity = poolPrice(winner.pool, limits, history, thresholds, now, modes);
+        const scarcity = poolPrice(winner.pool, limits, history, { ...thresholds, idleDiscount: 0 }, now, modes);
         const tight = Number.isFinite(scarcity) && scarcity > positive(rule.tightPrice, 2);
         const margin = clamp(finite(tight ? rule.tightMargin : rule.margin, tight ? 0.05 : 0.02), 0, 0.2);
         // A free route that failed in this category without a pass here never wins by free first, even when it has
@@ -569,7 +608,7 @@ function formatExplain(result) {
     + ' | inputs=' + c.inputs.join(',')
     + (c.chargedEffort ? ' | boss effort ' + c.chargedEffort : '')
     + (c.gate ? ' | gate ' + c.gate.size + ': ' + (c.via === 'self' ? 'self=' + c.gate.selfCost.toFixed(3)
-      : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's') : '')).join('\n');
+      : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's' + (c.gate.idle ? ' idle=' + c.gate.idle.toFixed(2) : '')) : '')).join('\n');
 }
 
-module.exports = { bossModelId, bossModelNote, newerFirst, familyKey, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice };
+module.exports = { bossModelId, bossModelNote, newerFirst, familyKey, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice, poolIdle };

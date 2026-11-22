@@ -47,6 +47,34 @@ test('calibrated Claude boss keeps small and medium normal implementation and de
   }
 });
 
+test('idle Codex quota near its weekly reset wins medium normal implementation, a week out it does not', () => {
+  const claude = { five_hour: { used_percentage: 37, resets_at: now / 1000 + 3600 },
+    seven_day: { used_percentage: 4, resets_at: now / 1000 + 6.8 * 86400 } };
+  const codex = days => ({ primary: { used_percent: 5, window_minutes: 300, resets_at: now / 1000 + 3600 },
+    secondary: { used_percent: 10, window_minutes: 10080, resets_at: now / 1000 + days * 86400 } });
+  const pick = (days, extra = {}) => {
+    const result = route({ ...savingParams, limits: { claude, codex: codex(days) }, ...extra });
+    return { winner: result.rows.find(c => c.tier === 'normal' && c.category === 'implementation'),
+      sol: normal(result).find(c => c.model === 'gpt-6.2-sol') };
+  };
+  const soon = pick(1);
+  assert.equal(soon.winner.model, 'gpt-6.2-sol');
+  assert.ok(soon.sol.gate.idle > 0.5);
+  const late = pick(6.9);
+  assert.equal(late.winner.via, 'self');
+  // A worker clearly less likely to pass gets no relief.
+  const fail = { t: now - 1000, model: 'gpt-6.2-sol', category: 'implementation', tier: 'normal', result: 'fail', kind: 'check-fail' };
+  const weaker = pick(1, { outcomes: [fail, fail, fail] });
+  assert.ok(weaker.sol.P < 0.9);
+  assert.equal(weaker.sol.gate.idle, undefined);
+  assert.notEqual(weaker.winner.model, 'gpt-6.2-sol');
+  // Turned off, the old gate holds even right before the reset.
+  assert.equal(pick(1, { thresholds: { ...thresholds, idleDiscount: 0 } }).winner.via, 'self');
+  // A Claude week just as idle and as close to its reset removes the relief: both pools are free.
+  const bothIdle = route({ ...savingParams, limits: { claude: { ...claude, seven_day: { used_percentage: 4, resets_at: now / 1000 + 86400 } }, codex: codex(1) } });
+  assert.equal(bothIdle.rows.find(c => c.tier === 'normal' && c.category === 'implementation').via, 'self');
+});
+
 test('built-in handover defaults match the shipped calibration', () => {
   const { handover, ...gate } = thresholds.gate;
   assert.deepEqual(handover, { 'claude-code': { fixed: 0.2, perSize: 0.35, jobs: { 'normal.implementation': { fixed: 0.5 } } },
