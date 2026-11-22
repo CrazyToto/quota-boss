@@ -160,8 +160,8 @@ five minutes on Windows for its saved login. The CLI's "Cannot find authorizatio
   account and no published request limit. Its [docs](https://junie.jetbrains.com/docs/junie-lite.html) say it does
   not expire; the announcement says the offer is valid until 31 Dec 2026, inference stays on JetBrains' servers and
   is not used to train the model. When the model is busy Junie retries for about 5 minutes and then exits with code 1, with no fallback. The
-  model behind it changes without notice: the docs name OpenAI GPT-6 Luna, the announcement Qwen 3.6 27B, and a test
-  run on 2026-11-19 used Qwen 3.6 27B. Every call passes `--model=junie-lite`, because the
+  model behind it changes without notice: the docs name OpenAI GPT-6 Luna, the announcement Qwen 3.6 27B, and test
+  runs on 2026-11-19 and 2026-11-22 used Qwen 3.6 27B. Every call passes `--model=junie-lite`, because the
   account default model uses paid credits.
   Setup turns it on by default unless you turned it off before (`quota-boss use junie-lite off`).
 - **jetbrains** uses a JetBrains AI Pro or Ultimate plan, which is included for verified GitHub Education students.
