@@ -500,6 +500,23 @@ test('feedback append preserves prior records and does not touch the journal on 
   assert.equal(lib.validOutcome({ ...value, t: now, effort: 'unknown' }), true);
 });
 
+test('feedback keeps a lasting trial ledger per model and category; benchmark and limit rows do not count', () => {
+  const now = 1000000000, models = { models: { ledgered: {} } };
+  const value = { model: 'ledgered', category: 'review', tier: 'trivial' };
+  lib.updateState(() => ({ trials: {} }));
+  lib.appendOutcome({ ...value, result: 'pass' }, models, [], now);
+  lib.appendOutcome({ ...value, result: 'limited' }, models, [], now + 1);
+  assert.deepEqual(lib.readState().trials['ledgered|review'], { n: 1 });
+  lib.appendOutcome({ ...value, result: 'fail' }, models, [], now + 2);
+  lib.appendOutcome({ ...value, result: 'pass' }, models, [], now + 3);
+  assert.deepEqual(lib.readState().trials['ledgered|review'], { n: 3, failed: now + 2 }, 'a fail is kept after a later pass');
+  const saved = process.env.QUOTA_BOSS_BENCH;
+  process.env.QUOTA_BOSS_BENCH = 'f8';
+  try { lib.appendOutcome({ ...value, result: 'fail', category: 'research' }, models, [], now + 4); }
+  finally { if (saved === undefined) delete process.env.QUOTA_BOSS_BENCH; else process.env.QUOTA_BOSS_BENCH = saved; }
+  assert.equal(Object.hasOwn(lib.readState().trials ?? {}, 'ledgered|research'), false);
+});
+
 });
 
 test('codex limits skip non-codex buckets such as an empty trailing "premium" entry', () => {
@@ -638,21 +655,4 @@ test('a stdin prompt template must not carry {prompt}, and an argv template must
   assert.doesNotThrow(check({ args: ['-p', '{prompt}'] }));
   for (const cli of [{ promptVia: 'stdin', args: ['-p', '{prompt}'] }, { args: ['-p'] }, { promptVia: 'argv', args: ['-p', '{prompt}'] }, { promptVia: 'file', args: [] }])
     assert.throws(check(cli), /Invalid CLI argument template/, JSON.stringify(cli));
-});
-
-test('feedback keeps a lasting trial ledger per model and category; benchmark and limit rows do not count', () => {
-  const now = 1000000000, models = { models: { ledgered: {} } };
-  const value = { model: 'ledgered', category: 'review', tier: 'trivial' };
-  lib.updateState(() => ({ trials: {} }));
-  lib.appendOutcome({ ...value, result: 'pass' }, models, [], now);
-  lib.appendOutcome({ ...value, result: 'limited' }, models, [], now + 1);
-  assert.deepEqual(lib.readState().trials['ledgered|review'], { n: 1 });
-  lib.appendOutcome({ ...value, result: 'fail' }, models, [], now + 2);
-  lib.appendOutcome({ ...value, result: 'pass' }, models, [], now + 3);
-  assert.deepEqual(lib.readState().trials['ledgered|review'], { n: 3, failed: now + 2 }, 'a fail is kept after a later pass');
-  const saved = process.env.QUOTA_BOSS_BENCH;
-  process.env.QUOTA_BOSS_BENCH = 'f8';
-  try { lib.appendOutcome({ ...value, result: 'fail', category: 'research' }, models, [], now + 4); }
-  finally { if (saved === undefined) delete process.env.QUOTA_BOSS_BENCH; else process.env.QUOTA_BOSS_BENCH = saved; }
-  assert.equal(Object.hasOwn(lib.readState().trials ?? {}, 'ledgered|research'), false);
 });
