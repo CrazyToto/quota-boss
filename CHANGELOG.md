@@ -11,6 +11,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
   A quota limit with a reset time pauses the whole pool. After a pause one run probes the model before others use it again.
 - On a near tie the model that last passed the same job keeps it.
 - `cli-run` records provider limits as `fail` with kind `quota` or `outage`, and `feedback` takes `--until <ISO time>`.
+- The boss sizes a task with all its parts, chores included: about 5 new or rewritten files or 200 changed lines makes
+  it large and sends it to its `[large:...]` route. In saving mode this cut Claude use on mixed and medium tasks by 11%.
 
 ## [0.4.4] - 2026-11-20
 

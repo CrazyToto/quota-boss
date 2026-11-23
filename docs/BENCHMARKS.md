@@ -377,3 +377,18 @@ On large jobs every boss-on run handed the code to Codex and used about a third 
 overhead on small and docs jobs to within noise. On the mixed task of 2026-11-22 no boss-on run delegated, and the
 three runs spread from 0.370 to 0.547, so that result is not settled. A rule that told the boss to hand all chores of a
 task to one free worker cost more Claude than leaving it out (0.439 against 0.397) and was dropped.
+
+### Claude Code: sizing the whole job (2026-11-23)
+
+The rules now tell the boss to size a task with all its parts, chores included: about 5 new or rewritten files or
+200 changed lines makes it large. Saving mode (Claude 5h at 75%), mean Claude USD from the session logs, every hidden
+test passed in all runs.
+
+| Task | Runs per arm | Boss off | Boss on | Change | Codex per on run | Time on/off |
+|---|---|---|---|---|---|---|
+| Mixed | 3 | 0.403 | 0.359 | -11% | 0.100 | 2.2x |
+| Medium | 2 | 0.292 | 0.259 | -11% | 0.109 | 2.7x |
+
+Every boss-on run handed the code to Codex, which the saving-mode table routes normal implementation to. Before the
+change no boss-on run delegated on the mixed task in saving mode (+11% on 2026-11-22). The boss-on runs took two to
+three times as long.
