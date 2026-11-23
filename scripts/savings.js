@@ -126,11 +126,13 @@ function claudeJob(entries, role, options) {
     messages.set(typeof message.id === 'string' && message.id ? message.id : Symbol(), entry);
   }
   const models = new Map();
-  let start = Infinity;
+  let start = Infinity, first = 0;
   for (const entry of messages.values()) {
     if (!inWindow(timestamp(entry), options.now, options.days)) continue;
-    start = Math.min(start, timestamp(entry));
     const { model, usage } = entry.message;
+    // First request = the worker's startup cost (system prompt, tools, spec).
+    if (timestamp(entry) < start) first = number(usage.input_tokens) + number(usage.cache_creation_input_tokens) + number(usage.cache_read_input_tokens);
+    start = Math.min(start, timestamp(entry));
     const tokens = models.get(model) || { input: 0, cache_creation: 0, cache_read: 0, output: 0 };
     tokens.input += number(usage.input_tokens);
     tokens.cache_creation += number(usage.cache_creation_input_tokens);
@@ -140,7 +142,7 @@ function claudeJob(entries, role, options) {
   }
   const work = role === 'boss' && models.size ? bossWork(entries, options) : undefined;
   return [...models].map(([model, tokens], i) => ({ pool: 'claude', role, model, tokens,
-    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries), start, ...(work && !i ? { work } : {}) }));
+    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries), start, ...(!i ? { first } : {}), ...(work && !i ? { work } : {}) }));
 }
 function windowDelta(first, last) {
   if (!first || !last || first.resets_at === undefined || last.resets_at === undefined
@@ -176,10 +178,11 @@ function codexJob(entries, role, options) {
   const usage = last.payload.info.total_token_usage;
   const cached = Math.min(number(usage.input_tokens), number(usage.cached_input_tokens));
   const tokens = { input: Math.max(0, number(usage.input_tokens) - cached), cached, output: number(usage.output_tokens) };
+  const opening = counts[0].payload.info?.last_token_usage || counts[0].payload.info?.total_token_usage;
   const windows = {};
   for (const key of ['primary', 'secondary']) windows[key] = windowDelta(counts[0].payload.rate_limits?.[key], last.payload.rate_limits?.[key]);
   return [{ pool: 'codex', role, model, tokens, input: tokens.input + cached, output: tokens.output, seconds: duration(entries), windows,
-    start: timestamp(counts[0]), end: timestamp(last) }];
+    first: number(opening?.input_tokens), reasoning: Math.min(tokens.output, number(usage.reasoning_output_tokens)), start: timestamp(counts[0]), end: timestamp(last) }];
 }
 
 function collect(options) {
@@ -367,10 +370,15 @@ function details(data, bosses, workers, total) {
     if (rows.length > limit) lines.push('... ' + (rows.length - limit) + ' more');
     if (!rows.length) lines.push('(none)');
   }
-  section('Per pool: units | share | tokens in/out | sessions and jobs', grouped(jobs, j => j.pool).map(([key, group]) =>
-    key + ': ' + units(sum(group, 'units')) + ' | ' + percent(sum(group, 'units'), total) + ' | ' + compact(sum(group, 'input')) + '/' + compact(sum(group, 'output')) + ' | ' + new Set(group.map(j => j.jobId)).size));
-  section('Per worker agent: agent / model | jobs | units | median time', byUnits(grouped(workers, j => j.role + ' / ' + j.model)).map(([, group]) =>
-    lib.sanitizeLabel(group[0].role.replace('worker:', '')) + ' / ' + lib.sanitizeLabel(group[0].model) + ': ' + group.length + ' | ' + units(sum(group, 'units')) + ' | ' + time(median(group.map(j => j.seconds)))));
+  // Cache hit = input read from cache; output share = output of all tokens (reasoning is part of output, Codex only).
+  const cacheHit = group => percent(group.reduce((n, j) => n + number(j.tokens?.cache_read ?? j.tokens?.cached), 0), sum(group, 'input'));
+  section('Per pool: units | share | tokens in/out | cache hit | output share (reasoning) | sessions and jobs', grouped(jobs, j => j.pool).map(([key, group]) =>
+    key + ': ' + units(sum(group, 'units')) + ' | ' + percent(sum(group, 'units'), total) + ' | ' + compact(sum(group, 'input')) + '/' + compact(sum(group, 'output'))
+      + ' | ' + cacheHit(group) + ' | ' + percent(sum(group, 'output'), sum(group, 'input') + sum(group, 'output'))
+      + (group.some(j => j.reasoning) ? ' (' + percent(sum(group, 'reasoning'), sum(group, 'output')) + ')' : '') + ' | ' + new Set(group.map(j => j.jobId)).size));
+  section('Per worker agent: agent / model | jobs | units | median time | median first call in | cache hit', byUnits(grouped(workers, j => j.role + ' / ' + j.model)).map(([, group]) =>
+    lib.sanitizeLabel(group[0].role.replace('worker:', '')) + ' / ' + lib.sanitizeLabel(group[0].model) + ': ' + group.length + ' | ' + units(sum(group, 'units')) + ' | ' + time(median(group.map(j => j.seconds)))
+      + ' | ' + (group.some(j => j.first) ? compact(median(group.filter(j => j.first).map(j => j.first))) : '-') + ' | ' + cacheHit(group)));
   lines.push('Codex quota: 5h / week percentage points added up over the period (a 5h sum above 100% means several full windows; parallel runs count once; other Codex use at the same time is included)');
   for (const [label, group] of [['boss', bosses], ['workers', workers]]) {
     const codex = group.filter(j => j.windows);

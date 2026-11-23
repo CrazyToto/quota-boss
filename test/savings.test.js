@@ -390,3 +390,20 @@ test('details list large work the boss kept without a worker, so a delegation re
   assert.equal(section.split('\nResults')[0].split('\n').length, 3);
   assert.doesNotMatch(savings.formatReport(savings.collect(f.options), f.options), /Large work/);
 });
+
+test('details show cache hit, output and reasoning share and the first-call size per worker', t => {
+  const f = fixture(t);
+  f.codex(rollout(f.root, 'exec'));
+  const report = savings.savings({ ...f.options, details: true });
+  // Codex: 1000 input of which 800 cached, 100 output of which 60 reasoning; first call 1000 in.
+  assert.match(report, /codex: .* \| 1\.0k\/100 \| 80\.0% \| 9\.1% \(60\.0%\) \| 1\n/);
+  assert.match(report, /: 1 \| .* \| 1\.0k \| 80\.0%\n/);
+  const job = savings.collect(f.options).jobs[0];
+  assert.equal(job.first, 1000);
+  assert.equal(job.reasoning, 60);
+  // Claude: the earliest message in the window sets the first call; a missing usage field counts as 0.
+  const early = assistant('a', 'opus', 100, -50), late = assistant('b', 'opus', 900, -40);
+  delete early.message.usage.cache_creation_input_tokens;
+  assert.equal(savings.claudeJob([late, early], 'boss', f.options)[0].first, 130);
+  assert.equal(savings.claudeJob([], 'boss', f.options).length, 0);
+});
