@@ -87,6 +87,7 @@
           "-s",
           "--no-ask-user",
           "--allow-tool=write",
+          "--disable-builtin-mcps",
           "--model",
           "{model}",
           "--reasoning-effort",

@@ -13,6 +13,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 - `cli-run` records provider limits as `fail` with kind `quota` or `outage`, and `feedback` takes `--until <ISO time>`.
 - The boss sizes a task with all its parts, chores included: about 5 new or rewritten files or 200 changed lines makes
   it large and sends it to its `[large:...]` route. In saving mode this cut Claude use on mixed and medium tasks by 11%.
+- Copilot workers run without the built-in GitHub MCP server, which saves about 1.1k input tokens (7%) per call.
 
 ### Fixed
 

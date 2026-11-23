@@ -231,6 +231,8 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **GitHub Copilot** documents scripted use of its CLI. Keep it moderate, because GitHub restricts excessive automated
   activity. Since 2026-06-01 every Copilot request is billed in AI Credits from your plan; Copilot Free and Student
   offer only `auto`. Quota Boss counts launches locally, so its Copilot number is an estimate, not GitHub's meter.
+  Workers run with `--disable-builtin-mcps`: the built-in GitHub MCP server adds about 1.1k input tokens to every call
+  (14.9k vs 13.8k on GPT-5.6 Luna, 2026-11-23), and a worker edits local files only.
 - **ChatGPT through Codex** documents `codex exec` for scripts, and it reuses your saved login. OpenAI recommends an API
   key for automation and [says not to use a ChatGPT login in CI for public or open-source repositories](https://learn.chatgpt.com/docs/non-interactive-mode).
   Use that login on your own machine only, never on a CI runner.
