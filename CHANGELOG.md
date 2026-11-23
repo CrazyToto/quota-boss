@@ -4,6 +4,12 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-23
+
+### Fixed
+
+- 0.4.5 was not published to npm: one test failed outside Windows. 0.4.6 ships the same changes, and the test now runs on every platform.
+
 ## [0.4.5] - 2026-11-23
 
 ### Added

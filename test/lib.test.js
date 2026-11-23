@@ -661,11 +661,14 @@ test('a child process gets PWD equal to its working directory, so a CLI that rea
   const dir = path.join(os.tmpdir(), 'qb-pwd');
   const seen = [];
   const spawnSync = (file, args, options) => { seen.push(options); return { status: 0 }; };
-  lib.runExecutable(process.execPath, [], { env: { PWD: '/caller', Pwd: 'x', KEEP: '1' }, platform: 'win32', spawnSync, workingDirectory: dir });
+  lib.runExecutable(process.execPath, [], { env: { PWD: '/caller', KEEP: '1' }, spawnSync, workingDirectory: dir });
   assert.equal(seen[0].cwd, dir);
   assert.equal(seen[0].env.PWD, dir);
-  assert.equal(Object.keys(seen[0].env).filter(k => k.toUpperCase() === 'PWD').length, 1, 'one PWD on Windows');
   assert.equal(seen[0].env.KEEP, '1');
+  // Windows env keys ignore case, so a second spelling must not survive next to the new PWD.
+  const windows = lib.childProcessOptions({ PWD: '/caller', Pwd: 'x', KEEP: '1' }, 'win32', dir);
+  assert.equal(windows.env.PWD, dir);
+  assert.equal(Object.keys(windows.env).filter(k => k.toUpperCase() === 'PWD').length, 1, 'one PWD on Windows');
   const plain = lib.childProcessOptions({ PWD: '/caller' }, 'linux');
   assert.equal(plain.env.PWD, plain.cwd, 'without a working directory PWD follows the default cwd');
   const runner = require('../scripts/cli-run');
