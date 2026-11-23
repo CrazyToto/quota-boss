@@ -18,6 +18,9 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Added
 
+- `savings --details` lists Claude boss sessions that kept large work (5+ files written whole or 200+ changed lines)
+  without starting a worker, and whether the boss checked `route` first, so a delegation regression shows up.
+
 - `quota-boss --help` and `-h` print the command list and exit with code 0.
 - Routing rows for a free trial end in `[trial: run route first]`, so the boss refreshes the table before the next job.
 

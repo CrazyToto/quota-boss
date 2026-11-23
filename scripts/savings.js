@@ -91,6 +91,33 @@ function price(model, config) {
   return Number.isFinite(cost) && cost >= 0 ? cost : 1;
 }
 
+// The rules call a job large from about 5 new or rewritten files or 200 changed lines (templates/RULES.md).
+const LARGE_FILES = 5, LARGE_LINES = 200;
+const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+const lineCount = text => typeof text === 'string' && text ? text.split('\n').length : 0;
+/** Files the boss wrote whole (new or rewritten), lines it changed, whether it handed any work out, and whether it asked the route gate. */
+function bossWork(entries, options) {
+  const seen = new Set(), files = new Set();
+  let lines = 0, delegated = false, routed = false;
+  for (const entry of entries) {
+    if (entry.type !== 'assistant' || !Array.isArray(entry.message?.content) || !inWindow(timestamp(entry), options.now, options.days)) continue;
+    for (const block of entry.message.content) {
+      if (block?.type !== 'tool_use' || seen.has(block.id)) continue;
+      if (typeof block.id === 'string') seen.add(block.id);
+      const input = block.input || {};
+      if (EDIT_TOOLS.has(block.name) && typeof (input.file_path ?? input.notebook_path) === 'string') {
+        if (block.name === 'Write') files.add(input.file_path);
+        lines += block.name === 'MultiEdit' && Array.isArray(input.edits) ? input.edits.reduce((n, e) => n + lineCount(e?.new_string), 0)
+          : lineCount(input.content ?? input.new_string ?? input.new_source);
+      } else if (block.name === 'Agent' || block.name === 'Task') delegated = true;
+      else if (typeof input.command === 'string') {
+        if (/(codex-run|cli-run|run-cli)\.js/.test(input.command)) delegated = true;
+        if (/quota-boss\.js"?\s+route\b/.test(input.command)) routed = true;
+      }
+    }
+  }
+  return { files: files.size, lines, delegated, routed };
+}
 function claudeJob(entries, role, options) {
   const messages = new Map();
   for (const entry of entries) {
@@ -111,8 +138,9 @@ function claudeJob(entries, role, options) {
     tokens.output += number(usage.output_tokens);
     models.set(model, tokens);
   }
-  return [...models].map(([model, tokens]) => ({ pool: 'claude', role, model, tokens,
-    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries), start }));
+  const work = role === 'boss' && models.size ? bossWork(entries, options) : undefined;
+  return [...models].map(([model, tokens], i) => ({ pool: 'claude', role, model, tokens,
+    input: tokens.input + tokens.cache_creation + tokens.cache_read, output: tokens.output, seconds: duration(entries), start, ...(work && !i ? { work } : {}) }));
 }
 function windowDelta(first, last) {
   if (!first || !last || first.resets_at === undefined || last.resets_at === undefined
@@ -356,6 +384,11 @@ function details(data, bosses, workers, total) {
     lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd'].map(unit => group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0) || '-').join(' | ')));
   section('Time per job (all projects): model / tier | count | median time', grouped(runs, e => e.model + ' / ' + e.tier).map(([, group]) =>
     lib.sanitizeLabel(group[0].model) + ' / ' + group[0].tier + ': ' + group.length + ' | ' + time(median(group.map(e => e.seconds)))));
+  const kept = bosses.filter(j => j.work && !j.work.delegated && (j.work.files >= LARGE_FILES || j.work.lines >= LARGE_LINES))
+    .sort((a, b) => b.start - a.start);
+  // Shown only when it happened, so a healthy report stays short.
+  if (kept.length) section('Large work the boss kept (' + LARGE_FILES + '+ files or ' + LARGE_LINES + '+ lines, no worker): start | files | lines | why', kept.map(j =>
+    new Date(j.start).toISOString().slice(0, 16).replace('T', ' ') + ' | ' + j.work.files + ' | ' + j.work.lines + ' | ' + (j.work.routed ? 'route checked, kept' : 'no route call')));
   const results = grouped(data.outcomes || [], e => lib.sanitizeLabel(e.model) + ' / ' + e.category)
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   section('Results (all projects): model / category | pass rate | pass | fail', results.map(([key, group]) => {

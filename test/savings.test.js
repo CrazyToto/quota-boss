@@ -368,3 +368,25 @@ test('the header keeps "last N days" when data covers the whole window', t => {
   // With a 7-day window the old entry falls out, so the real start shows again.
   assert.match(savings.savings({ ...f.options, days: 7 }), /^Quota Boss savings - since 2026-11-10 \(1 day\)/);
 });
+
+test('details list large work the boss kept without a worker, so a delegation regression shows up', t => {
+  const f = fixture(t);
+  const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
+  const writes = [1, 2, 3, 4, 5].map(n => use('w' + n, 'Write', { file_path: '/p/f' + n + '.js', content: 'a\nb' }));
+  // Claude Code writes one line per content block with the same message id; a repeated tool_use id counts once.
+  f.claude([assistant('m1', 'opus', 100, -300, { content: writes.slice(0, 3) }), assistant('m1', 'opus', 100, -300, { content: writes }),
+    assistant('m2', 'opus', 100, -200, { content: [use('b1', 'Bash', { command: 'node "C:/q/scripts/quota-boss.js" route --size large' })] })], 'kept.jsonl');
+  f.claude([assistant('m3', 'opus', 100, -300, { content: [use('e1', 'Edit', { file_path: '/p/a.js', old_string: 'x', new_string: 'y\n'.repeat(250) })] })], 'big-edit.jsonl');
+  f.claude([assistant('m4', 'opus', 100, -300, { content: [...writes, use('a1', 'Agent', { subagent_type: 'codex-worker', prompt: 'p' })] })], 'handed.jsonl');
+  f.claude([assistant('m5', 'opus', 100, -300, { content: writes.slice(0, 4) })], 'small.jsonl');
+  // Small edits across many files are not new or rewritten files.
+  const edits = [1, 2, 3, 4, 5].map(n => use('s' + n, 'Edit', { file_path: '/p/f' + n + '.js', old_string: 'a', new_string: 'b' }));
+  f.claude([assistant('m6', 'opus', 100, -300, { content: edits })], 'small-edits.jsonl');
+  const report = savings.formatReport(savings.collect(f.options), { ...f.options, details: true });
+  const section = report.slice(report.indexOf('Large work the boss kept'));
+  assert.match(section, /^Large work the boss kept \(5\+ files or 200\+ lines, no worker\): start \| files \| lines \| why/);
+  assert.match(section, /\| 5 \| 10 \| route checked, kept/);
+  assert.match(section, /\| 0 \| 251 \| no route call/);
+  assert.equal(section.split('\nResults')[0].split('\n').length, 3);
+  assert.doesNotMatch(savings.formatReport(savings.collect(f.options), f.options), /Large work/);
+});
