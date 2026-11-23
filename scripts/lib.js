@@ -1609,10 +1609,11 @@ function verificationEntries(file, now = Date.now()) {
     && now - Date.parse(e.passedAt) >= 0 && now - Date.parse(e.passedAt) < 6 * 60 * 60 * 1000)
     .sort((a, b) => Date.parse(b.passedAt) - Date.parse(a.passedAt)).slice(0, 50);
 }
-function saveVerification(file, key, passed) {
+/** logged marks a pass whose outcome is already in the feedback log; passedAt keeps the time of a reused pass. */
+function saveVerification(file, key, passed, logged = false, passedAt = new Date().toISOString()) {
   const saved = withLock(file, verify => {
     const entries = verificationEntries(file).filter(e => e.key !== key);
-    if (passed) entries.unshift({ key, passedAt: new Date().toISOString() });
+    if (passed) entries.unshift({ key, passedAt, ...(logged ? { logged: true } : {}) });
     atomicWrite(file, JSON.stringify(entries.slice(0, 50)) + '\n', verify);
     return true;
   });
@@ -1625,7 +1626,8 @@ function shellCommand(args, platform = process.platform) {
   const quote = platform === 'win32' ? a => '"' + a.replace(/"/g, '\\"') + '"' : a => "'" + a.replace(/'/g, "'\\''") + "'";
   return args.map(a => a !== '' && plain.test(a) ? a : quote(a)).join(' ');
 }
-/** onRun(code) runs only when the command really ran, so a reused pass is never logged twice. */
+/** onRun(code) runs for a real run, and once for a reused pass no run logged yet (a worker's check without --log),
+ *  so the boss needs no second run just to log, and a pass is never logged twice. */
 async function verifyCommand(args, onRun) {
   const fresh = args[0] === '--fresh';
   const rest = fresh ? args.slice(1) : args;
@@ -1640,6 +1642,10 @@ async function verifyCommand(args, onRun) {
     const entry = verificationEntries(file).find(e => e.key === key);
     if (!fresh && entry) {
       process.stdout.write('[quota-boss] Reused: "' + command + '" passed at ' + entry.passedAt + ' on this revision; not run again.\n');
+      if (onRun && !entry.logged) {
+        try { saveVerification(file, key, true, true, entry.passedAt); onRun(0); }
+        catch { notice('Could not save verification evidence; feedback not recorded.'); }
+      }
       return 0;
     }
   } catch { notice('Revision fingerprint unavailable; running without evidence.'); }
@@ -1659,7 +1665,7 @@ async function verifyCommand(args, onRun) {
       try { const after = revisionFingerprint(); passed = before.top === after.top && before.fingerprint === after.fingerprint; }
       catch { notice('Revision fingerprint unavailable; running without evidence.'); }
     }
-    try { saveVerification(file, key, passed); }
+    try { saveVerification(file, key, passed, Boolean(onRun)); }
     catch { notice('Could not save verification evidence.'); }
   }
   // A pipe through compact.js hides the exit code, so the result is also a line it keeps.

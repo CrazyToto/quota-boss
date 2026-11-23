@@ -14,6 +14,11 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 - The boss sizes a task with all its parts, chores included: about 5 new or rewritten files or 200 changed lines makes
   it large and sends it to its `[large:...]` route. In saving mode this cut Claude use on mixed and medium tasks by 11%.
 
+### Fixed
+
+- `verify --log` now records a pass it reuses when no earlier run logged it, such as a worker's check. Before, the boss
+  lost that feedback or ran the tests again with `--fresh` only to log it, which cost an extra turn.
+
 ## [0.4.4] - 2026-11-20
 
 ### Added

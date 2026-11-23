@@ -126,7 +126,7 @@ test('split node -e arguments execute and print a stdout verdict for success and
   }
 });
 
-test('--log records pass and fail once per real run, resolves table labels and never logs a reuse', t => {
+test('--log records pass and fail once per real run, resolves table labels and never logs a pass twice', t => {
   const f=fixture(t);
   const outcomes=path.join(f.env.QUOTA_BOSS_HOME,'outcomes.jsonl');
   const run=(extra,cmd=f.command,env={})=>child.spawnSync(process.execPath,[cli,'verify',...extra,'--',cmd],{cwd:f.repo,env:{...f.env,...env},encoding:'utf8'});
@@ -141,6 +141,19 @@ test('--log records pass and fail once per real run, resolves table labels and n
   r=run(['--fresh','--log','gpt-6.1-sol','implementation','normal','--effort','high'],f.command,{FAIL_VERIFY:'1'});
   assert.equal(r.status,7); assert.match(r.stdout,/Feedback recorded: gpt-6\.1-sol fail\./);
   assert.deepEqual(lines().at(-1).effort,'high'); assert.equal(lines().at(-1).result,'fail');
+});
+
+test('--log records a reused pass once when the first run had no --log (a worker check)', t => {
+  const f=fixture(t);
+  const outcomes=path.join(f.env.QUOTA_BOSS_HOME,'outcomes.jsonl');
+  const run=extra=>child.spawnSync(process.execPath,[cli,'verify',...extra,'--',f.command],{cwd:f.repo,env:f.env,encoding:'utf8'});
+  const lines=()=>fs.existsSync(outcomes)?fs.readFileSync(outcomes,'utf8').trim().split('\n').filter(Boolean):[];
+  assert.equal(run([]).status,0); assert.equal(lines().length,0);
+  let r=run(['--log','opus','implementation','normal']);
+  assert.equal(r.status,0,r.stderr); assert.match(r.stdout,/Reused:[^\n]*\n\[quota-boss\] Feedback recorded: claude-opus-5-5 pass\./);
+  assert.equal(lines().length,1); assert.equal(f.count(),1);
+  r=run(['--log','opus','implementation','normal']);
+  assert.match(r.stdout,/Reused:/); assert.doesNotMatch(r.stdout,/Feedback/); assert.equal(lines().length,1);
 });
 
 test('--log rejects bad arguments before executing anything', t => {
