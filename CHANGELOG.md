@@ -4,6 +4,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-11-23
+
 ### Added
 
 - `savings --details` shows the prompt cache hit rate and output share per pool (reasoning share for Codex), and the
