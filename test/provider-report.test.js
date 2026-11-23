@@ -25,7 +25,7 @@ function fixture(t, scenario, output = 'model: observed-model') {
     fs.rmSync(cwd, { recursive: true, force: true });
   });
   const options = {
-    config, cwd, interactive: false, say: value => printed.push(value),
+    config, cwd, interactive: false, say: value => printed.push(value), history: { runs: [], outcomes: [] },
     ask: () => assert.fail('Non-TTY report prompted'),
     findExecutable: () => process.execPath,
     spawnSync: (_file, args, opts) => {
@@ -107,6 +107,24 @@ test('unknown providers and providers without a CLI fail before running anything
   t.mock.method(lib, 'loadConfig', () => config);
   assert.throws(() => cli.run(['providers', 'report', 'toString'], options), /Unknown provider id/);
   assert.throws(() => cli.run(['providers', 'report', 'manual'], options), /Provider has no CLI/);
+});
+
+test('the report adds p50/p95 seconds and retries per pass from the local logs', t => {
+  const { options, read } = fixture(t, 'pass');
+  const runs = [10, 20, 30, 40, 100].map(seconds => ({ model: 'example', seconds }));
+  runs.push({ model: 'other', seconds: 999 });
+  const outcomes = ['pass', 'pass', 'fail', 'limited', 'unavailable'].map(result => ({ model: 'example', result }));
+  outcomes[2].kind = 'timeout';
+  options.history = { runs, outcomes };
+  providerReport('grok', options);
+  assert.match(read(), /## Local history[\s\S]*\| example \| 5 \| 30 \| 100 \| 2\/1\/1\/1 \| 1\.50 \| timeout \|/);
+  assert.ok(!read().includes('999'));
+});
+
+test('without logged runs the report says so in one line', t => {
+  const { options, read } = fixture(t, 'pass');
+  providerReport('grok', options);
+  assert.match(read(), /Local history: no worker runs logged in the last 30 days\./);
 });
 
 test('a rate-limited self-test skips the coding task and pauses the model', t => {

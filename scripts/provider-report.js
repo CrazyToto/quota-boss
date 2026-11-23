@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const child = require('node:child_process');
 const lib = require('./lib');
+const latency = require('./latency');
 const { selfTest } = require('./self-test');
 const { redactReport, version } = require('./diagnostics');
 
@@ -67,6 +68,33 @@ function codingTask(cli, model, executable, { platform, env, find, spawnSync, ti
   }
 }
 
+/** Nearest-rank percentile of finite values, or '-' without data. */
+function percentile(values, p) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  return sorted.length ? String(Math.round(sorted[Math.ceil(p * sorted.length) - 1])) : '-';
+}
+
+/** Real worker use from the local logs, so the report shows more than one sample and costs no extra call. */
+function historyLines(keys, { runs, outcomes }, clean) {
+  const rows = keys.map(key => {
+    const seconds = runs.filter(run => run.model === key).map(run => run.seconds);
+    const mine = outcomes.filter(outcome => outcome.model === key);
+    const count = result => mine.filter(outcome => outcome.result === result).length;
+    const pass = count('pass'), failed = mine.length - pass;
+    const kinds = [...new Set(mine.map(outcome => outcome.kind).filter(Boolean))].sort().join(', ') || '-';
+    if (!seconds.length && !mine.length) return null;
+    return '| ' + [clean(key), seconds.length, percentile(seconds, 0.5), percentile(seconds, 0.95),
+      pass + '/' + count('fail') + '/' + count('limited') + '/' + count('unavailable'),
+      pass ? (failed / pass).toFixed(2) : failed ? 'no pass' : '-', clean(kinds)].join(' | ') + ' |';
+  }).filter(Boolean);
+  if (!rows.length) return ['', 'Local history: no worker runs logged in the last ' + latency.MAX_DAYS + ' days.'];
+  return ['', '## Local history', '',
+    'Successful runs and their seconds from the last ' + latency.MAX_DAYS + ' days; outcomes from the feedback log.',
+    'Retries per pass = failed, limited and unavailable attempts for each pass.', '',
+    '| Model | Runs | p50 s | p95 s | Pass/fail/limited/unavailable | Retries per pass | Failure kinds |',
+    '| --- | --- | --- | --- | --- | --- | --- |', ...rows];
+}
+
 function providerReport(id, options = {}) {
   const config = options.config || lib.loadConfig();
   const provider = lib.validProviderId(id) && Object.hasOwn(config.providers.providers, id) && config.providers.providers[id];
@@ -118,6 +146,11 @@ function providerReport(id, options = {}) {
     lines.push('| ' + [clean(key), passed ? 'PASS' : 'FAIL', task.passed + '/' + CHECKS.length,
       task.seconds, clean(task.reported), error].join(' | ') + ' |');
   }
+
+  let history;
+  try { history = options.history || { runs: latency.readRuns(), outcomes: lib.readOutcomes(Date.now(), config.thresholds) }; }
+  catch { history = { runs: [], outcomes: [] }; }
+  lines.push(...historyLines(models.map(([key]) => key), history, clean));
 
   const report = lines.join('\n') + '\n';
   const filename = 'quota-boss-report-' + id + '.md';

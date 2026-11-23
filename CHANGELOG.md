@@ -4,6 +4,10 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `providers report` adds a local history table per model: successful runs in the last 30 days with p50 and p95 seconds, pass/fail/limited/unavailable counts, retries per pass and failure kinds. It reads the local logs and makes no extra provider call.
+
 ## [0.4.7] - 2026-11-23
 
 ### Added
