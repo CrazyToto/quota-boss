@@ -29,7 +29,7 @@ const USAGES = {
   'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
   'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]|report <id> [--model <registry-id>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
-  'usage': 'usage <id> <amount> <calls|tokens|usd>',
+  'usage': 'usage <id> <amount> <calls|tokens|usd|credits>',
   'timing': 'timing <model> <category|-> <tier|-> <seconds> ok|fail',
   'rules': 'rules --host <host>',
   'doctor': 'doctor [--probe|--report]',

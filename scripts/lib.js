@@ -1030,7 +1030,7 @@ function releaseProbe(model, claimed) {
 
 const PROVIDER_ID = /^[a-z][a-z0-9-]{1,31}$/;
 const QUOTA_WINDOWS = { fiveHour: 300, daily: 1440, weekly: 10080, monthly: 44640 };
-const USAGE_UNITS = ['calls', 'tokens', 'usd'];
+const USAGE_UNITS = ['calls', 'tokens', 'usd', 'credits'];
 const ZEN_GLM_MODEL = 'opencode/glm-5.3-flash-free';
 const MISTRAL_RETIREMENT = 'Mistral ended free API access';
 const RETIRED = [
@@ -1256,7 +1256,7 @@ function appendUsage(id, amount, unit, config, now = Date.now()) {
   const provider = Object.hasOwn(config.providers, id) ? config.providers[id] : null;
   if (!validUsage(entry) || !provider || provider.enabled === false || !(id === 'claude' && unit === 'calls') && (provider.quota.source !== 'counter'
     || !Object.values(provider.quota.windows).some(w => w.unit === unit))) {
-    throw new Error('Usage requires an enabled counter provider, amount 0 < x <= 1e9 and a configured calls|tokens|usd unit.');
+    throw new Error('Usage requires an enabled counter provider, amount 0 < x <= 1e9 and a configured calls|tokens|usd|credits unit.');
   }
   const file = getPaths().usageFile;
   const saved = withLock(file, verify => {

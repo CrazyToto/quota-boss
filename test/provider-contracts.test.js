@@ -32,19 +32,22 @@ test('every shipped CLI template against local executables', { concurrency: true
       const observed = path.join(dir, 'argv.json'), output = path.join(dir, 'expected.txt');
       fs.rmSync(output, { force: true }); fs.rmSync(observed, { force: true });
       const journals = { timing: [], feedback: [], usage: [] };
-      let spawned, killed = false, clock = 0, input;
+      let spawned, killed = false, clock = 0, input, sessionArgs = [];
       const result = await runner.run(['--provider', id, '--effort', 'high', '--expect-changes'], {
-        prompt, env: {}, findProjectConfig: () => ({ directory: dir, allowTrainingProviders: true }), loadConfig: () => config,
+        prompt, env: {}, findProjectConfig: () => ({ directory: dir, allowTrainingProviders: true }), loadConfig: () => config, homedir: () => dir,
         findExecutable: command => { assert.equal(command, original.cli.command); return process.execPath; },
         gitStatus: () => fs.existsSync(output) ? fs.readFileSync(output, 'utf8') : 'before', now: () => (clock += 1000),
         recordRun: value => journals.timing.push(value), appendOutcome: value => journals.feedback.push(value), appendUsage: (...args) => journals.usage.push(args),
         setTimeout: (fn, ms) => setTimeout(fn, ms === runner.TIMEOUT_MS ? (scenario === 'timeout' ? 500 : 30000) : 300),
         spawn(file, args, options) {
           if (file !== process.execPath) throw new Error('No external executables permitted');
-          // cli-run adds Junie's private JSON report file; everything else is the template.
+          // cli-run adds Junie's private JSON report file and Copilot's session id; everything else is the template.
           const report = args.filter(arg => arg.startsWith('--json-output-file='));
           assert.equal(report.length, original.cli.command === 'junie' ? 1 : 0);
-          assert.deepEqual(args.filter(arg => !report.includes(arg)), expected); assert.equal(options.shell, false); assert.equal(options.cwd, dir);
+          const session = args.indexOf('--session-id');
+          assert.equal(session >= 0, original.cli.command === 'copilot');
+          if (session >= 0) { assert.match(args[session + 1], /^[0-9a-f-]{36}$/); sessionArgs = args.slice(session, session + 2); }
+          assert.deepEqual(args.filter((arg, i) => !report.includes(arg) && (session < 0 || i < session || i > session + 1)), expected); assert.equal(options.shell, false); assert.equal(options.cwd, dir);
           // A stdin template carries the prompt only on stdin, never in argv.
           assert.equal(args.filter(arg => arg.includes(prompt)).length, stdin ? 0 : 1);
           assert.equal(options.stdio[0], stdin ? 'pipe' : 'ignore');
@@ -63,7 +66,7 @@ test('every shipped CLI template against local executables', { concurrency: true
       assert.equal(journals.timing.length, 1); assert.equal(journals.timing[0].ok, kind === 'ok');
       assert.equal(journals.timing[0].seconds, 1); assert.equal(journals.timing[0].model, model);
       assert.equal(journals.usage.length, provider.quota.source === 'counter' ? 1 : 0);
-      assert.deepEqual(JSON.parse(fs.readFileSync(observed)).args.filter(arg => !arg.startsWith('--json-output-file=')), expected);
+      assert.deepEqual(JSON.parse(fs.readFileSync(observed)).args.filter(arg => !arg.startsWith('--json-output-file=') && !sessionArgs.includes(arg)), expected);
       assert.equal(input, stdin ? full : undefined);
       assert.equal(fs.existsSync(output), ['success', 'partial-write', 'bad-output'].includes(scenario));
       if (scenario === 'timeout') {

@@ -73,8 +73,8 @@
         "source": "counter",
         "windows": {
           "monthly": {
-            "budget": 100,
-            "unit": "calls"
+            "budget": 200,
+            "unit": "credits"
           }
         }
       },
@@ -88,6 +88,8 @@
           "--no-ask-user",
           "--allow-tool=write",
           "--disable-builtin-mcps",
+          "--max-ai-credits",
+          "30",
           "--model",
           "{model}",
           "--reasoning-effort",

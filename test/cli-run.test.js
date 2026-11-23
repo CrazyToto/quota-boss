@@ -687,7 +687,7 @@ test('POSIX timeout kills the process group; Windows taskkill failure falls back
 });
 
 test('metadata uses supplied category/tier/effort; counter units and non-counter usage are respected', async () => {
-  for (const unit of ['calls', 'tokens', 'usd', null]) {
+  for (const unit of ['calls', 'tokens', 'usd', 'credits', null]) {
     const h = harness({ status: 1, stderr: 'HTTP 422' });
     h.cfg.providers.providers.trial.quota = unit ? { source: 'counter', windows: { daily: { budget: 10, unit } } } : { source: 'none' };
     await runner.run(['--provider', 'trial', '--category', 'review', '--tier', 'critical', '--effort', 'high'], h.deps);
@@ -1030,5 +1030,52 @@ test('Claude context errors override structural status without scanning successf
     await runner.run(['--provider', 'claude', '--model', CLAUDE_MODEL], h.deps);
     assert.equal(h.records.feedback[0][0].result, 'fail');
     assert.equal(h.records.feedback[0][0].kind, 'context');
+  }
+});
+
+test('Copilot runs book the AI credits from their own session events', async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-copilot-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const copilotRun = async (events, { unit = 'credits', args } = {}) => {
+    const h = harness();
+    const trial = h.cfg.providers.providers.trial;
+    trial.quota = { source: 'counter', windows: { monthly: { budget: 200, unit } } };
+    trial.cli = { ...trial.cli, command: 'copilot', ...(args ? { args } : {}) };
+    h.deps.env = { ...h.deps.env, COPILOT_HOME: home };
+    const spawn = h.deps.spawn;
+    h.deps.spawn = (file, argv, options) => {
+      const at = argv.indexOf('--session-id');
+      if (at >= 0 && events !== null) {
+        const dir = path.join(home, 'session-state', argv[at + 1]);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'events.jsonl'), events.map(e => typeof e === 'string' ? e : JSON.stringify(e)).join('\n') + '\n');
+      }
+      return spawn(file, argv, options);
+    };
+    const result = await runner.run(['--provider', 'trial'], h.deps);
+    return { result, h, argv: h.records.spawns[0].args };
+  };
+  const metered = await copilotRun([{ type: 'session.auto_mode_resolved', data: { chosenModel: 'gpt-5.6-luna' } }, '{"torn',
+    { type: 'session.usage_checkpoint', data: { totalNanoAiu: 1200000000 } }, { type: 'session.usage_checkpoint', data: { totalNanoAiu: 4580000000 } }]);
+  const id = metered.argv[metered.argv.indexOf('--session-id') + 1];
+  assert.match(id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(metered.h.records.usage.map(u => u.slice(0, 3)), [['trial', 4.58, 'credits']]);
+  assert.match(metered.result.report, /ran gpt-5\.6-luna \| AI credits 4\.58/);
+  // No events file: an estimate, so the counter never stays at zero.
+  const missing = await copilotRun(null);
+  assert.deepEqual(missing.h.records.usage.map(u => u.slice(0, 3)), [['trial', 5, 'credits']]);
+  assert.doesNotMatch(missing.result.report, /AI credits/);
+  // A run that spent nothing books nothing; bad values are ignored.
+  const free = await copilotRun([{ type: 'session.usage_checkpoint', data: { totalNanoAiu: 0 } }, { data: { totalNanoAiu: -5, chosenModel: 'bad model!' } }]);
+  assert.equal(free.h.records.usage.length, 0);
+  assert.match(free.result.report, /AI credits 0\.00/); assert.doesNotMatch(free.result.report, /ran /);
+  // An older config that counts calls still books one call per launch.
+  const calls = await copilotRun([{ type: 'session.usage_checkpoint', data: { totalNanoAiu: 4580000000 } }], { unit: 'calls' });
+  assert.deepEqual(calls.h.records.usage.map(u => u.slice(0, 3)), [['trial', 1, 'calls']]);
+  // A user template that resumes a session keeps its own session flags.
+  for (const flag of ['--resume', '--session-id=abc', '-r']) {
+    const resumed = await copilotRun([], { args: ['-p', '{prompt}', flag] });
+    assert.equal(resumed.argv.filter(arg => arg === '--session-id').length, 0);
+    assert.deepEqual(resumed.h.records.usage.map(u => u.slice(0, 3)), [['trial', 5, 'credits']]);
   }
 });

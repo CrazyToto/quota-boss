@@ -28,7 +28,7 @@ Take <args> from $ARGUMENTS; empty means status. Only these forms are allowed:
 - use
 - use <provider-id|model-id> <on|off> [--project]
 - cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]
-- usage <id> <amount> <calls|tokens|usd>
+- usage <id> <amount> <calls|tokens|usd|credits>
 - feedback <registered-model> <category> <tier> <pass|fail|unavailable|limited> [--effort <level>]
 
 Pass the effort level the worker ran at when known.

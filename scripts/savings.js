@@ -388,8 +388,8 @@ function details(data, bosses, workers, total) {
     const resets = codex.filter(j => Object.values(j.windows).some(w => w.reset)).length;
     lines.push(label + ': ' + delta('primary') + ' / ' + delta('secondary') + (omitted ? '; ' + omitted + ' runs not counted (' + resets + ' crossed a window reset)' : ''));
   }
-  section('Other providers: calls | tokens | usd', grouped(usage, e => e.provider).map(([id, group]) =>
-    lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd'].map(unit => group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0) || '-').join(' | ')));
+  section('Other providers: calls | tokens | usd | credits', grouped(usage, e => e.provider).map(([id, group]) =>
+    lib.sanitizeLabel(id) + ': ' + ['calls', 'tokens', 'usd', 'credits'].map(unit => Math.round(group.filter(e => e.unit === unit).reduce((n, e) => n + e.amount, 0) * 100) / 100 || '-').join(' | ')));
   section('Time per job (all projects): model / tier | count | median time', grouped(runs, e => e.model + ' / ' + e.tier).map(([, group]) =>
     lib.sanitizeLabel(group[0].model) + ' / ' + group[0].tier + ': ' + group.length + ' | ' + time(median(group.map(e => e.seconds)))));
   const kept = bosses.filter(j => j.work && !j.work.delegated && (j.work.files >= LARGE_FILES || j.work.lines >= LARGE_LINES))

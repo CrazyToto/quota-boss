@@ -36,8 +36,8 @@ and every provider can be **capped** by the user (e.g. "Grok may use at most 20 
 - Disabled OpenCode free and Ollama examples have matching zero-cost models. Effective model cost is `max(cost, 0.2)`. Local providers are hidden from `settings` and refused by `use <id> on` until `quota-boss local on <model>` turns them on.
 - `quota.source`:
   - `claude-statusline`, `codex-logs` - exact live data (built in).
-  - `counter` - Quota Boss counts usage itself from `quota-boss.js usage <provider> <amount> <calls|tokens|usd>` calls that the worker
-    agent makes after each job (calls, tokens or USD). Windows: `fiveHour`, `daily`, `weekly`, `monthly`, each with
+  - `counter` - Quota Boss counts usage itself from `quota-boss.js usage <provider> <amount> <calls|tokens|usd|credits>` calls that the worker
+    agent makes after each job (calls, tokens, USD or AI credits). Windows: `fiveHour`, `daily`, `weekly`, `monthly`, each with
     a positive `budget` and matching `unit`; used % = `counted / budget * 100`.
     Windows use fixed UTC boundaries: epoch-aligned five-hour blocks, calendar days,
     Monday-start weeks and calendar months. Records at the start belong to the new window.
@@ -89,7 +89,7 @@ CLI commands (run with `node <QUOTA_BOSS_HOME>/scripts/quota-boss.js`):
 - `use <id> on|off`: persist a user override.
 - `cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]`: set a cap globally,
   or in the nearest user-owned project registration (the current real directory if none exists).
-- `usage <id> <amount> <calls|tokens|usd>`: append one usage record. Amount must be finite,
+- `usage <id> <amount> <calls|tokens|usd|credits>`: append one usage record. Amount must be finite,
   greater than zero and at most 1e9; the enabled counter must have a window with that unit.
 
 Global overrides live in `QUOTA_BOSS_HOME/config/providers.json`; project settings and caps live only in
@@ -131,7 +131,8 @@ every provider it showed as answered.
 | antigravity | by hand from Google's guide | no | none |
 | junie (junie-lite, jetbrains) | JetBrains' install script | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
 
-Copilot defaults to 2 parallel CLI runs; set `maxParallel` to 4 on Pro/Pro+ or 8 on Max.
+Copilot defaults to 2 parallel CLI runs; set `maxParallel` to 4 on Pro/Pro+ or 8 on Max. Its monthly budget is 200 AI
+credits (the Student plan); set `quota.windows.monthly.budget` to 1500 on Pro, 7000 on Pro+ or 20000 on Max.
 
 Commands live in `scripts/tools.js`, not in `providers.json`, so a config file can never supply one. npm and uv are
 pinned to the public registries, and environment overrides for them are removed before they start.
@@ -230,7 +231,10 @@ get an account suspended. This is a summary from November 2026, not legal advice
   program, but whether that is allowed is unclear. It is off unless you turn it on.
 - **GitHub Copilot** documents scripted use of its CLI. Keep it moderate, because GitHub restricts excessive automated
   activity. Since 2026-06-01 every Copilot request is billed in AI Credits from your plan; Copilot Free and Student
-  offer only `auto`. Quota Boss counts launches locally, so its Copilot number is an estimate, not GitHub's meter.
+  offer only `auto`. Each worker run gets its own session id, and Quota Boss books the AI credits that session's
+  events file reports (`~/.copilot/session-state/<id>/events.jsonl`; about 5-10 credits per worker job, 0.1-0.4 for a
+  one-line reply). Copilot used outside Quota Boss is not counted, so the number can be lower than GitHub's meter.
+  Every run is capped with `--max-ai-credits 30`, the lowest cap the CLI accepts.
   Workers run with `--disable-builtin-mcps`: the built-in GitHub MCP server adds about 1.1k input tokens to every call
   (14.9k vs 13.8k on GPT-5.6 Luna, 2026-11-23), and a worker edits local files only.
 - **ChatGPT through Codex** documents `codex exec` for scripts, and it reuses your saved login. OpenAI recommends an API

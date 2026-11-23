@@ -9,6 +9,12 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 - `savings --details` shows the prompt cache hit rate and output share per pool (reasoning share for Codex), and the
   median size of a worker's first request, so startup cost and cache misses show up.
 
+### Changed
+
+- Copilot counts AI credits instead of launches. Each worker run reads the credits its session used from Copilot's own
+  session file (5 when the file is missing), against a 200-credit monthly budget (the Student plan; see
+  docs/PROVIDERS.md for Pro, Pro+ and Max). Every run is capped at 30 credits with `--max-ai-credits`.
+
 ### Fixed
 
 - `npm test` runs the same test files as CI and no longer runs test fixtures as tests.

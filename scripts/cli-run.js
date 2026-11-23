@@ -18,6 +18,9 @@ const AUTH_MISSING = /^Cannot find authorization\. Please authenticate before ru
 // Junie reports request errors (a refused license, limits) only in its JSON result, not on stdout or in the exit code.
 const JUNIE_LICENSE = /\b492\b|untrusted license|no (?:valid |active )?licen[cs]e/i;
 const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
+const COPILOT_EVENTS_MAX = 32 * 1024 * 1024;
+// Booked when a credit counter has no meter reading: about a median Copilot worker job (4.6-10 credits seen).
+const CREDIT_ESTIMATE = 5;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
 const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] [--prompt-file <name>] < prompt';
 const CONTEXT_ERROR = /context length|maximum context|too many tokens/i;
@@ -331,6 +334,11 @@ async function run(argv, deps = {}) {
   const junieReport = junie && args.includes('--output-format=json') && !args.some(arg => arg.startsWith('--json-output-file'))
     ? path.join((deps.tmpdir || os.tmpdir)(), 'quota-boss-junie-' + crypto.randomBytes(8).toString('hex') + '.json') : null;
   if (junieReport) args.push('--json-output-file=' + junieReport);
+  // Copilot keeps each session's events, with its AI credit meter, under COPILOT_HOME. A session id of our own finds
+  // them after the run, so the counter books what GitHub bills instead of one call per launch.
+  const copilot = path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'copilot';
+  const copilotSession = copilot && !args.some(arg => /^(?:--session-id|--resume|--continue|-r)(?:=|$)/.test(arg)) ? crypto.randomUUID() : null;
+  if (copilotSession) args.push('--session-id', copilotSession);
   const status = deps.gitStatus || (() => gitStatus(cwd, env, platform, deps.spawnSync));
   const before = options['expect-changes'] ? status() : null;
   const slot = await takeSlot(options.provider, selected.provider, deps);
@@ -367,6 +375,21 @@ async function run(argv, deps = {}) {
     } catch { /* no report: classify from the exit code and streams */ }
     try { fs.rmSync(junieReport, { force: true }); } catch { /* temp file */ }
   }
+  let credits = null, copilotModel = null;
+  if (copilotSession) {
+    try {
+      const home = env.COPILOT_HOME || path.join((deps.homedir || os.homedir)(), '.copilot');
+      const events = lib.readBounded(path.join(home, 'session-state', copilotSession, 'events.jsonl'), COPILOT_EVENTS_MAX);
+      for (const line of events.split('\n')) {
+        if (!line.includes('"totalNanoAiu"') && !line.includes('"chosenModel"')) continue;
+        try {
+          const data = JSON.parse(line)?.data;
+          if (Number.isFinite(data?.totalNanoAiu) && data.totalNanoAiu >= 0) credits = data.totalNanoAiu / 1e9;
+          if (typeof data?.chosenModel === 'string') copilotModel = data.chosenModel;
+        } catch { /* a torn line */ }
+      }
+    } catch { /* no events file: the counter books an estimate */ }
+  }
   if (selected.claude && !result.stdoutTruncated) {
     try {
       const value = JSON.parse(result.stdout);
@@ -382,7 +405,7 @@ async function run(argv, deps = {}) {
     : junieUsage.length ? Object.fromEntries([['input', 'inputTokens'], ['cached', 'cacheInputTokens'], ['output', 'outputTokens']]
       .map(([key, field]) => [key, junieUsage.reduce((sum, item) => sum + (validNumber(item[field]) ? item[field] : 0), 0)])) : null;
   // The model the vendor really ran (Junie Lite does not pin one).
-  const ran = [...new Set(junieUsage.map(item => item.model).filter(name => typeof name === 'string' && /^[\w./:@-]{1,100}$/.test(name)))].slice(0, 3);
+  const ran = [...new Set([...junieUsage.map(item => item.model), copilotModel].filter(name => typeof name === 'string' && /^[\w./:@-]{1,100}$/.test(name)))].slice(0, 3);
   const outcome = slot.timeout ? { kind: 'timeout', reason: slot.timeout }
     : classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
   const ok = outcome.kind === 'ok';
@@ -409,7 +432,10 @@ async function run(argv, deps = {}) {
   releaseProbe();
   if (selected.provider.quota?.source === 'counter' && (result.pid > 0 || result.status !== null)) {
     const units = Object.values(selected.provider.quota.windows).map(window => window.unit);
-    record('usage', () => (deps.appendUsage || lib.appendUsage)(options.provider, 1, units.includes('calls') ? 'calls' : units[0], config.providers, now()));
+    const unit = units.includes('credits') ? 'credits' : units.includes('calls') ? 'calls' : units[0];
+    // A metered run that spent nothing (it stopped before the first model call) books nothing.
+    const amount = unit !== 'credits' ? 1 : credits === null ? CREDIT_ESTIMATE : credits;
+    if (amount > 0) record('usage', () => (deps.appendUsage || lib.appendUsage)(options.provider, amount, unit, config.providers, now()));
   }
   const problem = ok ? 'failed: recording ' + errors.join(', ') : outcome.kind + ': ' + outcome.reason;
   const first = 'cli-run: ' + (ok && !errors.length ? 'ok' : 'FAILED (' + problem + ')')
@@ -418,6 +444,7 @@ async function run(argv, deps = {}) {
     + (options['expect-changes'] && (before === null || after === null) ? ' | expect-changes skipped: Git fingerprint unavailable' : '')
     + (tokens ? ' | tokens in ' + tokens.input + ' cached ' + tokens.cached + ' out ' + tokens.output : '')
     + (ran.length ? ' | ran ' + ran.join(', ') : '')
+    + (credits !== null ? ' | AI credits ' + credits.toFixed(2) : '')
     + (validNumber(result.claude?.total_cost_usd) ? ' | $' + result.claude.total_cost_usd.toFixed(4) : '')
     + ' | feedback ' + (recording.includes('feedback') ? 'recorded' : 'none');
   const lines = [first];
