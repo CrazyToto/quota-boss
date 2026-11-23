@@ -157,7 +157,8 @@ test('session tables leave out the ladder and the rules say where to find it', (
   for (const host of ['claude-code', 'codex', 'generic']) {
     const text = hosts.rules(host).replace(/\s+/g, ' ');
     assert.ok(text.includes("`route` also shows each row's ladder"), host);
-    assert.ok(text.includes('On a failed check, run `route` and escalate one ladder step'), host);
+    assert.ok(text.includes('send only the failing output to the same worker session once, if the host can, unless its report says `RECOVERY: resumed`'), host);
+    assert.ok(text.includes('Otherwise, or if it still fails, run `route` and escalate one ladder step'), host);
   }
 });
 
