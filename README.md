@@ -137,6 +137,8 @@ utility = P(success) ^ alpha(tier, profile)  /  ( cost × quota price )
   model wins. The profile (`quality`, `balanced` or `frugal`) shifts it.
 - **When a result fails its check**, the same model gets more reasoning effort first, then the next better model.
 - **Small jobs stay with the boss**, because handing over a few minutes of work costs more than it saves.
+- **Jobs that need a special skill go to a model that has it**: images, PDFs, video, audio and YouTube links,
+  image generation, web search or a large context. See [Capabilities](docs/PROVIDERS.md#capabilities).
 
 The full algorithm is in [docs/ROUTING.md](docs/ROUTING.md). Model scores, prices and their sources are in
 [docs/MODELS.md](docs/MODELS.md).
@@ -165,7 +167,7 @@ in [bench/](https://github.com/CrazyToto/quota-boss/blob/main/bench/README.md), 
 |---|---|---|
 | Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
-| Free CLI offers | Junie Lite, Kilo | Junie Lite is on by default: one yes installs Junie, opens the login and tests it |
+| Free CLI offers | Junie Lite, Kilo, Gemini media | Junie Lite is on by default: one yes installs Junie, opens the login and tests it. Gemini media (Google's `gemini-api` CLI) is the route for video, audio and YouTube links: `quota-boss use gemini-media on` |
 | Free API offers | OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
 | Local models | Ollama | `/boss-local` |
 | Anything else | Any API with a key | `/boss-add-api` |
