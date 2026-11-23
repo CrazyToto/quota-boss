@@ -13,7 +13,7 @@ If codex-run did not start (the call was denied or the command could not run), r
 1. Run Codex once from the project root, passing the boss's spec verbatim on stdin through a quoted heredoc,
    plus the line "Work only inside the given files/scope. Run the relevant tests. Return at most 10 lines: `STATUS: done | FAILED: <reason> | ADVICE NEEDED: <question>`, `CHANGED: <paths>`, `CHECK: <command> -> pass|fail [failing tests]`, `OPEN: <issues or none>`.":
    ```
-   node "{{QUOTA_BOSS_HOME}}/scripts/codex-run.js" --model <model> --effort <effort> --sandbox workspace-write --category <category> --tier <tier> <<'QB_SPEC_EOF'
+   node "{{QUOTA_BOSS_HOME}}/scripts/codex-run.js" --model <model> --effort <effort> --sandbox workspace-write --category <category> --tier <tier> [--search live] <<'QB_SPEC_EOF'
    <spec>
    QB_SPEC_EOF
    ```

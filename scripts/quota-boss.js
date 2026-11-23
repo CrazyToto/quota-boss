@@ -25,7 +25,7 @@ const USAGES = {
   'off': 'off',
   'status': 'status',
   'settings': 'settings',
-  'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio] [--context <tokens>] [category] [tier]',
+  'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio,image-gen,web-search] [--context <tokens>] [category] [tier]',
   'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
   'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]|report <id> [--model <registry-id>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
@@ -458,7 +458,7 @@ function run(args = process.argv.slice(2), options) {
         if (!['small', 'medium', 'large'].includes(size)) throw new Error(usage(command));
       } else if (flag === '--needs' && needs === undefined) {
         needs = (filters.shift() || '').split(',');
-        if (needs.some(input => !['text', 'image', 'pdf', 'video', 'audio'].includes(input))) throw new Error(usage(command));
+        if (needs.some(input => !require('./route').CAPABILITIES.includes(input))) throw new Error(usage(command));
       } else if (flag === '--context' && contextTokens === undefined) {
         const value = filters.shift();
         contextTokens = Number(value);

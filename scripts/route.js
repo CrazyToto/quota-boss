@@ -6,6 +6,9 @@ const { medianSeconds, speedFactor } = require('./latency');
 const lib = require('./lib');
 const { validSelfTest } = require('./self-test');
 const INPUTS = ['text', 'image', 'pdf', 'video', 'audio'];
+// Abilities beyond reading input: making an image file, and a live web search tool in the worker's session.
+const TOOLS = ['image-gen', 'web-search'];
+const CAPABILITIES = [...INPUTS, ...TOOLS];
 const DIFFICULTY = { critical: 8.5, normal: 6.5, trivial: 4.5 };
 const MIN_P = { critical: 0.75, normal: 0.55, trivial: 0.4 };
 const ALPHA = { critical: { quality: 8, balanced: 6, frugal: 4 },
@@ -79,12 +82,22 @@ function via(model, category, provider, host, boss) {
 const usesRelay = (method, host) => host === 'claude-code'
   && (method === 'codex-worker' || method === 'gpt-advisor' || Boolean(method?.startsWith('cli-worker:')));
 
+/** What a route can take and do: the model must declare it and the worker must pass it on. Claude workers have no
+ *  web tool except the researcher and the boss itself; codex-run passes `--search live`, and only a writing Codex
+ *  session can save a generated image into the project. */
 function supportedInputs(model, method, provider) {
-  const worker = method?.startsWith('cli-worker:') ? provider.cli?.inputs
+  const cli = method?.startsWith('cli-worker:');
+  const worker = cli ? provider.cli?.inputs
     : method === 'self' || model.pool === 'claude' && method ? ['image', 'pdf']
       : ['codex-worker', 'gpt-advisor', 'codex-subagent'].includes(method) ? ['image'] : [];
-  return INPUTS.filter(input => input === 'text' || Array.isArray(model.inputs) && model.inputs.includes(input)
-    && Array.isArray(worker) && worker.includes(input));
+  const tools = cli ? provider.cli?.tools
+    : method === 'self' ? (model.pool === 'codex' ? TOOLS : ['web-search'])
+      : ['researcher', 'gpt-advisor'].includes(method) ? ['web-search']
+        : ['codex-worker', 'codex-subagent'].includes(method) ? TOOLS : [];
+  const declared = name => INPUTS.includes(name) ? model.inputs : model.tools;
+  const passed = name => INPUTS.includes(name) ? worker : tools;
+  return CAPABILITIES.filter(name => name === 'text' || Array.isArray(declared(name)) && declared(name).includes(name)
+    && Array.isArray(passed(name)) && passed(name).includes(name));
 }
 
 /** A failure at a lower level says little about a higher one; a pass at a higher level says little about a lower one. */
@@ -307,6 +320,8 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const rated = CATEGORIES.some(category => Number.isFinite(model.scores?.[category]));
         let reason = '';
         if (capabilityReason) reason = capabilityReason;
+        // A specialist (one-shot media analysis, no file edits) only takes jobs that need what it is there for.
+        else if (model.specialist === true && !needs.some(name => name !== 'text' && inputs.includes(name))) reason = 'specialist: only with route --needs';
         else if (provider.worker === 'cli-worker' && !provider.cli?.command) reason = 'no CLI configured';
         else if ((provider.evidence === 'docs' || provider.worker === 'cli-worker') && !fingerprint(model.pool)) reason = 'CLI not installed';
         else if (provider.evidence === 'docs' && !isFree && selfTests?.[model.id]?.result !== 'pass') reason = 'self-test needed: quota-boss providers test ' + model.pool;
@@ -493,7 +508,9 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
         const failedAt = c => Number.isFinite(c.ledger.failed) ? c.ledger.failed : null;
         // A free route that failed in this category within the hour means a retry may be under way: it goes to the
         // route that would have won, not to the next trial. New trials open again after that.
-        const retry = evaluated.some(c => c.free && failedAt(c) !== null && failedAt(c) > now - 3600000);
+        // A specialist that cannot take this job (no matching --needs) is not the one being retried.
+        const retry = evaluated.some(c => c.free && (models.models[c.model]?.specialist !== true || eligible.includes(c))
+          && failedAt(c) !== null && failedAt(c) > now - 3600000);
         const open = c => c.free && c.P >= minimum && c.P >= original.P - trialMargin
           && count(c) < probation && !c.tried.some(lib.failedHere) && failedAt(c) === null;
         // During that hour an unproven free winner from free first is no fallback either: the retry goes to the original.
@@ -555,7 +572,18 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
       candidates.push(...evaluated);
     }
   }
-  return { mode: modes.mode, rows, options, candidates, note: bossModelNote(bossModel, registry, bossPool) };
+  // Only the Gemini media route takes video and audio, and it is off by default, so an empty row says how to get one.
+  const media = needs.some(name => ['video', 'audio'].includes(name)) && rows.some(row => row.model === null)
+    && providers.providers['gemini-media'] && !providers.providers['gemini-media'].enabled
+    ? 'Note: no route takes video or audio; turn on the free Gemini media route with: quota-boss use gemini-media on' : '';
+  // How to hand a tool or a media file to the worker; shown only when a job needs it.
+  const handover = [
+    needs.includes('web-search') && 'Note: for web search a Codex route (codex-worker, gpt-advisor) needs codex-run --search live.',
+    needs.includes('image-gen') && 'Note: for image generation put $imagegen in the Codex prompt (it counts 3-5 times a normal turn).',
+    needs.some(name => ['video', 'audio'].includes(name)) && rows.some(row => row.pool === 'gemini-media') && 'Note: hand the file or YouTube URL to cli-run with --input.',
+  ];
+  const note = [bossModelNote(bossModel, registry, bossPool), media, ...handover].filter(Boolean).join('\n') || null;
+  return { mode: modes.mode, rows, options, candidates, note };
 }
 
 /** Add large-job alternatives to medium self rows without changing ordinary routing. */
@@ -611,4 +639,4 @@ function formatExplain(result) {
       : 'boss=' + c.gate.bossSide.toFixed(3) + ' total=' + c.gate.total.toFixed(3) + ' self=' + c.gate.selfCost.toFixed(3) + ' extra=' + Math.round(c.gate.extraSeconds) + 's' + (c.gate.idle ? ' idle=' + c.gate.idle.toFixed(2) : '')) : '')).join('\n');
 }
 
-module.exports = { bossModelId, bossModelNote, newerFirst, familyKey, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice, poolIdle };
+module.exports = { CAPABILITIES, bossModelId, bossModelNote, newerFirst, familyKey, route, routeTable, formatTable, formatExplain, successProbability, projectWindow, poolPrice, poolIdle };

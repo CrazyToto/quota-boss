@@ -121,10 +121,44 @@
           "{model}-{effort}"
         ],
         "defaultModel": "gemini-3.8-flash",
-        "defaultEffort": "medium"
+        "defaultEffort": "medium",
+        "tools": [
+          "web-search"
+        ]
       },
       "tos": "official-cli",
       "trainsOnData": false
+    },
+    "gemini-media": {
+      "evidence": "docs",
+      "label": "Gemini media (gemini-api CLI, free)",
+      "kind": "free",
+      "enabled": false,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "$comment": "Google's stateless Gemini API CLI: one call, answer on stdout, reads only the --input file or public YouTube URL. Needs GEMINI_API_KEY. Free tier: Google may use prompts to improve its products outside the EEA, UK and Switzerland.",
+        "command": "gemini-api",
+        "args": [
+          "analyze",
+          "{prompt}",
+          "-m",
+          "{model}",
+          "-i",
+          "{input}"
+        ],
+        "defaultModel": "gemini-3.8-flash",
+        "inputs": [
+          "image",
+          "pdf",
+          "video",
+          "audio"
+        ]
+      },
+      "tos": "official-cli",
+      "trainsOnData": true
     },
     "junie-lite": {
       "evidence": "docs",

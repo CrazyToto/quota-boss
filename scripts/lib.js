@@ -261,6 +261,14 @@ const validCliModel = value => typeof value === 'string' && CLI_MODEL.test(value
 
 const CLI_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
 
+/** Drop an unused {input} placeholder and the flag right before it (`-i {input}`). */
+function dropInput(args) {
+  const at = args.indexOf('{input}');
+  if (at < 0) return args;
+  const flag = at > 0 && args[at - 1].startsWith('-') && !args[at - 1].includes('{') ? at - 1 : at;
+  return args.filter((arg, index) => index < flag || index > at);
+}
+
 function cliArgsForModel(cli, cliModel, effort) {
   if (effort !== undefined && effort !== null && !CLI_EFFORTS.includes(effort)) throw new Error('Invalid effort.');
   const level = effort || cli.defaultEffort;
@@ -1118,6 +1126,10 @@ function validateProviders(config) {
         || !Array.isArray(p.cli.args) || p.cli.args.length > 100
         || p.cli.args.some(a => typeof a !== 'string' || a.length > 4096 || /[\x00-\x1f\x7f]/.test(a))
         || p.cli.promptVia !== undefined && p.cli.promptVia !== 'stdin'
+        || p.cli.inputs !== undefined && (!Array.isArray(p.cli.inputs) || p.cli.inputs.some(a => !['text', 'image', 'pdf', 'video', 'audio'].includes(a)))
+        || p.cli.tools !== undefined && (!Array.isArray(p.cli.tools) || p.cli.tools.some(a => !['image-gen', 'web-search'].includes(a)))
+        // An input file goes in as one whole argument, so the CLI can never read it as a flag or a second value.
+        || p.cli.args.some(a => a.includes('{input}') && a !== '{input}') || p.cli.args.filter(a => a === '{input}').length > 1
         // A stdin prompt must not also land in argv, and an argv prompt needs its placeholder.
         || p.cli.args.some(a => a.includes('{prompt}')) === (p.cli.promptVia === 'stdin')) throw new Error('Invalid CLI argument template.');
     }
@@ -1563,7 +1575,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

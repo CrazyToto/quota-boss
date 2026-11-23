@@ -54,6 +54,8 @@ function selfTest(id, options = {}) {
   const models = Object.entries(config.models.models || {}).filter(([key, m]) => options.model !== undefined
     ? key === options.model && m.pool === id : m.pool === id && m.enabled !== false);
   if (!models.length) throw new Error(options.model !== undefined ? 'Unknown model or model belongs to another provider.' : 'No models to test.');
+  // A media route reads a file and prints an answer; it cannot write the test file, and it is free, so real jobs test it.
+  if (provider.cli.args.includes('{input}')) throw new Error('This route analyses an input file and cannot write one, so it has no self-test; its first real jobs are the test.');
   const platform = options.platform || process.platform, env = options.env || process.env;
   const run = options.spawnSync || require('node:child_process').spawnSync;
   const find = options.findExecutable || (name => lib.findExecutable(name, env, platform));
@@ -69,7 +71,7 @@ function selfTest(id, options = {}) {
     const prompt = 'Create ' + RESULT_FILE + ' in the current directory containing exactly ' + nonce + ' and do nothing else.';
     const effort = options.effort ?? (provider.cli.args.some(a => a.includes('{effort}')) ? EFFORTS.find(e => model.efforts?.includes(e)) : undefined);
     // The CLI's default level stays: without it a slug like {model}-{effort} would lose the model and test the wrong one.
-    const args = lib.cliArgsForModel(provider.cli, model.cliModel, effort).map(a => a.replaceAll('{prompt}', prompt));
+    const args = lib.dropInput(lib.cliArgsForModel(provider.cli, model.cliModel, effort)).map(a => a.replaceAll('{prompt}', prompt));
     const started = now();
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-boss-self-test-'));
     let reason;

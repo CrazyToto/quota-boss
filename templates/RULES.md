@@ -7,6 +7,7 @@
 3. Delegate to the worker the row names. Always pass the effort the table shows (on Claude Code, the Agent tool's `effort` parameter).
    - Codex host: `codex-subagent` -> spawn a Codex subagent and name the exact model and reasoning effort from the table; `claude-worker` -> official Claude CLI. Generic host: `cli-worker` -> configured official CLI.
    - Claude Code host: name the row's model in the `codex-worker` prompt. Leave the Agent tool's `model` unset for `codex-worker`, `cli-worker` and `gpt-advisor`: an outside CLI does the work, so a bigger Claude model there only adds cost.
+   - Video, audio, image-gen, web-search or big context: `route --needs <need> [--context N]` first.
    - `cli-worker:<provider>`: pass the provider id, model, effort, category and tier. `gpt-advisor`: read-only second opinion or research from GPT. `scout`: find code, report locations. `reviewer`: review a diff. `researcher`: web research.
    Two workers on the same files each need a copy: `worktree add <name>` (same script) prints the worktree path on its first line.
    Independent jobs run at the same time: when parts touch separate files against fixed interfaces, start their workers together in the background (at most two) and do your own part or the integration meanwhile. Keep dependent work in order.

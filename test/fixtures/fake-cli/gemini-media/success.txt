@@ -1,0 +1,2 @@
+# aistudio.google.com/docs/cli: gemini-api prints the answer on stdout; exit 0 success, 1 runtime/API error, 2 usage error, 3 auth error; exit 0
+OK

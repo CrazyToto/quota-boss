@@ -7,6 +7,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 ### Added
 
 - `providers report` adds a local history table per model: successful runs in the last 30 days with p50 and p95 seconds, pass/fail/limited/unavailable counts, retries per pass and failure kinds. It reads the local logs and makes no extra provider call.
+- Capability routing: `route --needs` also takes `video`, `audio`, `image-gen` and `web-search`, and the shipped models carry their documented context sizes for `--context`. Codex workers take image generation (`$imagegen`) and live web search (`--search live`). The new free `gemini-media` route (Google's official `gemini-api` CLI, off by default) is the only one for video, audio and YouTube links; `cli-run --input <file|YouTube URL>` hands it the file. Specialist models such as this one only take jobs that need them.
 
 ## [0.4.7] - 2026-11-23
 

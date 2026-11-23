@@ -9,7 +9,7 @@ If the spec has `WORKDIR:`, pass `--cwd "<WORKDIR>"` to the runner; use `git -C 
 Your first tool call is exactly this runner command: no exploration, no `--help`, no compound command before it.
 1. In the project root, run once in the foreground with a 10-minute host limit (`timeout: 600000`):
    ```bash
-   node "{{QUOTA_BOSS_HOME}}/scripts/cli-run.js" --provider <id> --model <registry-model-id> --effort <level> --category <category> --tier <tier> --expect-changes <<'QUOTA_BOSS_PROMPT'
+   node "{{QUOTA_BOSS_HOME}}/scripts/cli-run.js" --provider <id> --model <registry-model-id> --effort <level> --category <category> --tier <tier> --expect-changes [--input <file|YouTube URL>] <<'QUOTA_BOSS_PROMPT'
    <self-contained boss spec, file scope, acceptance criteria>
    QUOTA_BOSS_PROMPT
    ```

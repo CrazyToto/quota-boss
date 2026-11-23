@@ -23,20 +23,24 @@ function fixture(evidence = 'real') {
 const candidate = (input, tier = 'trivial') => route(input).candidates.find(c => c.model === 'tiny' && c.tier === tier);
 const wins = (input, tier) => route(input).rows.some(c => c.model === 'tiny' && c.tier === tier);
 
-test('shipped capabilities only describe documented Claude and Codex worker inputs', () => {
-  for (const model of Object.values(shipped.models)) {
-    if (model.pool === 'claude') {
-      assert.deepEqual(model.inputs, ['text', 'image', 'pdf']);
-      assert.equal(model.capabilitySource, 'Claude Code Read tool: images and PDFs');
-    } else if (model.pool === 'codex') {
-      assert.deepEqual(model.inputs, ['text', 'image']);
-      assert.equal(model.capabilitySource, 'codex exec --image');
-    } else {
-      assert.equal(model.inputs, undefined);
-      assert.equal(model.capabilitySource, undefined);
-    }
-    assert.equal(model.contextTokens, undefined);
+test('shipped capabilities are documented, with a source for every claim', () => {
+  const documented = { 'claude-fable-5-2': 1000000, 'claude-opus-5-5': 1000000, 'claude-sonnet-5-5': 1000000, 'claude-haiku-5-5': 1000000,
+    'gpt-6.2-astra': 272000, 'gpt-6.2-sol': 500000, 'gpt-6.1-sol': 500000, 'grok-4.7': 500000, 'gemini-4-argon': 1000000, 'gemini-media-3.8-flash': 1048576 };
+  for (const [id, model] of Object.entries(shipped.models)) {
+    assert.equal(model.contextTokens, documented[id], id);
     assert.equal(model.webSearch, undefined);
+    if (model.inputs || model.tools || model.contextTokens) assert.match(model.capabilitySource, /\S/, id);
+    if (model.pool === 'claude') {
+      assert.deepEqual([model.inputs, model.tools], [['text', 'image', 'pdf'], ['web-search']]);
+    } else if (model.pool === 'codex') {
+      assert.deepEqual([model.inputs, model.tools], [['text', 'image'], ['image-gen', 'web-search']]);
+    } else if (model.pool === 'antigravity') {
+      assert.deepEqual([model.inputs, model.tools], [undefined, ['web-search']]);
+    } else if (model.pool === 'gemini-media') {
+      assert.deepEqual([model.inputs, model.tools, model.specialist, model.cost], [['text', 'image', 'pdf', 'video', 'audio'], undefined, true, 0]);
+    } else {
+      assert.deepEqual([model.inputs, model.tools], [undefined, undefined], id);
+    }
   }
 });
 
@@ -64,8 +68,12 @@ test('text is always supported; unknown inputs are never supported', () => {
   assert.ok(wins(params, 'trivial'));
   params.needs = ['unknown'];
   params.models.models.tiny.inputs = ['unknown'];
-  params.providers.providers.trial.cli.inputs = ['unknown'];
   assert.equal(candidate(params).reason, 'lacks unknown');
+  // A worker may only declare known abilities.
+  params.providers.providers.trial.cli.inputs = ['unknown'];
+  assert.throws(() => route(params), /Invalid CLI argument template/);
+  params.providers.providers.trial.cli.inputs = []; params.providers.providers.trial.cli.tools = ['teleport'];
+  assert.throws(() => route(params), /Invalid CLI argument template/);
 });
 
 test('self and Claude workers pass images and PDFs, Codex workers pass images', () => {
@@ -130,7 +138,7 @@ test('capabilities filter ladders, manual options, consensus, emergency self and
   assert.ok(result.candidates.filter(c => c.pool === 'codex').every(c => c.reason === 'lacks pdf'));
   const emergency = route({ ...params, needs: ['video'], limits: { claude: { five_hour: { used_percentage: 100 } } } });
   assert.ok(emergency.rows.every(row => row.model === null));
-  const context = route({ ...params, needs: [], context: 1 });
+  const context = route({ ...params, needs: [], context: 2000000 });
   assert.ok(context.rows.every(row => row.model === null));
 });
 
@@ -271,8 +279,8 @@ test.describe('capability CLI and enabling self-tests', () => {
   const activate = (id = 'grok', say = () => {}) => cli.run(['use', id, 'on'], { interactive: true, say });
   test('route parses both capability flags, reports none and rejects malformed requests', () => {
     assert.match(cli.run(['route', '--needs', 'video', 'implementation', 'normal']), /normal: implementation=none \(no enabled route takes video\)/);
-    assert.match(cli.run(['route', '--context', '1000', 'implementation', 'normal']), /none \(no enabled route has context 1000\)/);
-    assert.match(cli.run(['route', '--explain', '--needs', 'image,pdf', '--context', '1000']), /context unknown or too small/);
+    assert.match(cli.run(['route', '--context', '2000000', 'implementation', 'normal']), /none \(no enabled route has context 2000000\)/);
+    assert.match(cli.run(['route', '--explain', '--needs', 'image,pdf', '--context', '2000000']), /context unknown or too small/);
     for (const flags of [['--needs'], ['--needs', 'foo'], ['--needs', 'image,'], ['--needs', 'text', '--needs', 'image'],
       ['--context'], ['--context', '0'], ['--context', '-1'], ['--context', '1.5'], ['--context', '1e4'], ['--context', 'Infinity'],
       ['--context', '9007199254740992'], ['--context', '1', '--context', '2']]) assert.throws(() => cli.run(['route', ...flags]), /Usage/);
@@ -364,4 +372,97 @@ test('an npm update behind an unchanged Windows shim invalidates the self-test',
   assert.equal(validSelfTest({ result: 'pass', cli: before }, lib.cliFingerprint('grok', () => shim)), false);
   fs.rmSync(manifest);
   assert.equal(lib.cliFingerprint('grok', () => shim), null);
+});
+
+test('a specialist only routes when the job needs an input it has, and tools follow model and worker', () => {
+  const params = fixture();
+  params.models.models.tiny.specialist = true;
+  params.models.models.tiny.inputs = ['text', 'video'];
+  params.providers.providers.trial.cli.inputs = ['video'];
+  params.needs = [];
+  assert.equal(candidate(params).reason, 'specialist: only with route --needs');
+  params.needs = ['text'];
+  assert.equal(candidate(params).reason, 'specialist: only with route --needs');
+  params.needs = ['video'];
+  assert.ok(wins(params, 'trivial'));
+  const tools = fixture(); tools.needs = ['web-search'];
+  assert.equal(candidate(tools).reason, 'lacks web-search');
+  tools.models.models.tiny.tools = ['web-search'];
+  assert.equal(candidate(tools).reason, 'lacks web-search');
+  tools.providers.providers.trial.cli.tools = ['web-search'];
+  assert.ok(wins(tools, 'trivial'));
+  tools.needs = ['image-gen'];
+  assert.equal(candidate(tools).reason, 'lacks image-gen');
+});
+
+test('shipped image-gen goes to Codex workers and web search never to plain Claude workers', () => {
+  const image = route({ models: shipped, needs: ['image-gen'], bossModel: 'claude-opus-5-5' });
+  assert.ok(image.rows.every(row => row.model === null || row.pool === 'codex'));
+  const search = route({ models: shipped, needs: ['web-search'], bossModel: 'claude-opus-5-5' });
+  assert.ok(search.rows.some(row => row.model !== null));
+  assert.ok(search.rows.every(row => !['haiku-worker', 'sonnet-worker', 'opus-worker'].includes(row.method)));
+  const video = route({ models: shipped, needs: ['video'], bossModel: 'claude-opus-5-5' });
+  assert.ok(video.rows.every(row => row.model === null));
+  assert.match(video.note, /quota-boss use gemini-media on/);
+});
+
+test('cli-run input accepts YouTube links and regular files inside the working directory up to 14 MiB', () => {
+  const run = require('../scripts/cli-run');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-input-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-outside-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'clip.mp4'), 'x');
+    fs.mkdirSync(path.join(dir, 'sub.mp4')); fs.writeFileSync(path.join(dir, '.env'), 'x'); fs.writeFileSync(path.join(dir, '..notes.png'), 'x'); fs.writeFileSync(path.join(dir, 'notes.txt'), 'x');
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'x');
+    const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+    assert.equal(run.inputArgument(url, dir), url);
+    assert.equal(run.inputArgument('https://youtu.be/dQw4w9WgXcQ?si=abc', dir), url);
+    assert.equal(run.inputArgument('https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=30s', dir), url);
+    assert.throws(() => run.inputArgument(url, dir, {}, ['image']), /no video input/);
+    assert.throws(() => run.inputArgument('http://www.youtube.com/watch?v=dQw4w9WgXcQ', dir), /Only YouTube links/);
+    assert.throws(() => run.inputArgument('https://www.youtube.com/watch?v=short', dir), /Only YouTube links/);
+    assert.throws(() => run.inputArgument('.env', dir), /Hidden files/);
+    assert.throws(() => run.inputArgument('..notes.png', dir), /Hidden files/);
+    assert.throws(() => run.inputArgument('notes.txt', dir), /no .txt input/);
+    assert.throws(() => run.inputArgument('clip.mp4', dir, {}, ['image', 'pdf']), /no .mp4 input/);
+    assert.throws(() => run.inputArgument('https://example.com/watch?v=dQw4w9WgXcQ', dir), /Only YouTube links/);
+    assert.equal(run.inputArgument('clip.mp4', dir), fs.realpathSync(path.join(dir, 'clip.mp4')));
+    assert.throws(() => run.inputArgument('missing.mp4', dir), /not found/);
+    assert.throws(() => run.inputArgument(path.join(outside, 'secret.txt'), dir), /inside the working directory/);
+    assert.throws(() => run.inputArgument('../' + path.basename(outside) + '/secret.txt', dir), /inside the working directory/);
+    assert.throws(() => run.inputArgument('.', dir), /inside the working directory/);
+    assert.throws(() => run.inputArgument('sub.mp4', dir), /regular file/);
+    const big = { stat: () => ({ isFile: () => true, size: run.MAX_INPUT + 1 }) };
+    assert.throws(() => run.inputArgument('clip.mp4', dir, big), /larger than 14 MiB/);
+    let linked = true;
+    try { fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, 'link.txt')); } catch { linked = false; }
+    if (linked) assert.throws(() => run.inputArgument('link.txt', dir), /inside the working directory/);
+    const args = ['analyze', 'p', '-i', '{input}'];
+    assert.deepEqual(run.withInput(args, undefined, dir), ['analyze', 'p']);
+    assert.deepEqual(run.withInput(args, url, dir), ['analyze', 'p', '-i', url]);
+    assert.deepEqual(run.withInput(['{input}', 'p'], undefined, dir), ['p']);
+    assert.throws(() => run.withInput(['p'], url, dir), /takes no --input/);
+    assert.deepEqual(run.withInput(['p'], undefined, dir), ['p']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('an input placeholder must be a whole argument and appear at most once', () => {
+  for (const args of [['{prompt}', '--file={input}'], ['{prompt}', '{input}', '{input}']]) {
+    const params = fixture(); params.providers.providers.trial.cli.args = args;
+    assert.throws(() => route(params), /Invalid CLI argument template/);
+  }
+  const params = fixture(); params.providers.providers.trial.cli.args = ['{prompt}', '-i', '{input}'];
+  assert.doesNotThrow(() => route(params));
+});
+
+test('input paths are checked before they are resolved, and media routes have no self-test', () => {
+  const run = require('../scripts/cli-run');
+  const probe = { realpath: () => { throw new Error('probed'); } };
+  for (const input of ['\\server\share\a.mp4', '//server/share/a.mp4', '../a.mp4']) assert.throws(() => run.inputArgument(input, process.cwd(), probe), /inside the working directory/);
+  for (const input of ['a.mp4 ', ' a.mp4', 'a.mp4:stream']) assert.throws(() => run.inputArgument(input, process.cwd(), probe), /spaces at its ends or a colon/);
+  const { selfTest } = require('../scripts/self-test');
+  const config = { providers: require('../config/providers.json'), models: shipped };
+  assert.throws(() => selfTest('gemini-media', { config, spawnSync: () => { throw new Error('spawned'); } }), /has no self-test/);
 });

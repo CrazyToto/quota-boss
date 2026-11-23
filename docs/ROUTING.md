@@ -20,6 +20,7 @@ and escalate through a ladder instead of always starting with the most expensive
 | profile (quality / balanced / frugal) | user-owned `QUOTA_BOSS_HOME/projects.json` real-path registration |
 | quota per pool and window: `used` (0-100), `resets_at`, `window_minutes` | status line (Claude), Codex logs |
 | usage history samples per pool | state.json `history[pool]` = last 48 samples `{t, u5, uw}` (deduplicated, >= 5 min apart) |
+| job needs (`--needs`, `--context`) | inputs, tools and context size; routes that cannot take them are dropped before scoring, and specialist models only enter when a need asks for them (PROVIDERS.md, Capabilities) |
 | verified outcomes | `QUOTA_BOSS_HOME/outcomes.jsonl` lines `{t, model, category, tier, result: pass|fail|unavailable|limited, kind?, effort?}` |
 
 ## 2. Success probability `P(model, category, tier)`

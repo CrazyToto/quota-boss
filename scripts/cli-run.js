@@ -22,7 +22,23 @@ const COPILOT_EVENTS_MAX = 32 * 1024 * 1024;
 // Booked when a credit counter has no meter reading: about a median Copilot worker job (4.6-10 credits seen).
 const CREDIT_ESTIMATE = 5;
 const CLAUDE_CLI = { command: 'claude', args: ['-p', '--model', '{model}', '--effort', '{effort}', '--output-format', 'json', '--permission-mode', 'acceptEdits'] };
-const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] [--prompt-file <name>] < prompt';
+const USAGE = 'Usage: cli-run.js --provider <id> [--model <registry-id>] [--effort <level>] [--category <c> --tier <t>] [--cwd <dir>] [--expect-changes] [--prompt-file <name>] [--input <file|YouTube URL>] < prompt';
+// The Gemini API CLI sends a file inline only up to 14 MB; bigger files need its upload step.
+const MAX_INPUT = 14 * 1024 * 1024;
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+// File types per declared input; anything else (and hidden files such as .env or .git) never leaves the machine.
+const INPUT_TYPES = { image: ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'], pdf: ['pdf'],
+  video: ['mp4', 'mpeg', 'mpg', 'mov', 'avi', 'flv', 'webm', 'wmv', '3gp'], audio: ['wav', 'mp3', 'aiff', 'aac', 'ogg', 'flac', 'm4a'] };
+
+/** A public YouTube watch or short link, as the plain watch URL; extra parameters such as &t= are dropped. */
+function youtube(input) {
+  let url;
+  try { url = new URL(input); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+  const id = ['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(url.hostname) && url.pathname === '/watch' ? url.searchParams.get('v')
+    : url.hostname === 'youtu.be' ? url.pathname.slice(1) : null;
+  return id && VIDEO_ID.test(id) ? 'https://www.youtube.com/watch?v=' + id : null;
+}
 const CONTEXT_ERROR = /context length|maximum context|too many tokens/i;
 // A provider limit is a quota (an account or rate counter that resets) or an outage (the service is overloaded or down).
 const QUOTA_ERROR = /\b429\b|rate limit|too many requests|quota|per-day|per day|usage limit|request too large|credits/i;
@@ -43,7 +59,7 @@ function parseArgs(argv) {
     const key = argv[i].replace(/^--/, '');
     if (!argv[i].startsWith('--') || Object.hasOwn(options, key)) throw new Error(USAGE);
     if (key === 'expect-changes') { options[key] = true; continue; }
-    if (!['provider', 'model', 'effort', 'category', 'tier', 'cwd', 'prompt-file'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
+    if (!['provider', 'model', 'effort', 'category', 'tier', 'cwd', 'prompt-file', 'input'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
     options[key] = argv[++i];
   }
   if (!lib.validProviderId(options.provider)) throw new Error('Invalid --provider.');
@@ -52,6 +68,43 @@ function parseArgs(argv) {
   if (options.category !== undefined && !lib.CATEGORIES.includes(options.category)) throw new Error('Invalid --category.');
   if (options.tier !== undefined && !lib.TIERS.includes(options.tier)) throw new Error('Invalid --tier.');
   return options;
+}
+
+/** A public YouTube link (video), or a regular file of a declared type inside the working directory (after links are resolved), at most 14 MiB. */
+function inputArgument(input, cwd, deps = {}, kinds = Object.keys(INPUT_TYPES)) {
+  const link = youtube(input);
+  if (link) {
+    if (!kinds.includes('video')) throw new Error('This provider takes no video input.');
+    return link;
+  }
+  if (/^https?:/i.test(input)) throw new Error('Only YouTube links are accepted as URL input.');
+  // Lexical checks first, so a network share or device path is never even probed (on Windows that could send credentials).
+  const lexical = path.relative(path.resolve(cwd), path.resolve(cwd, input));
+  if (/^[\\/]{2}/.test(input) || !lexical || lexical === '..' || lexical.startsWith('..' + path.sep) || path.isAbsolute(lexical)) throw new Error('Input file must be inside the working directory.');
+  // A CLI may trim names or read an alternate data stream (name:stream), and then open another file than the one checked.
+  if (lexical.split(path.sep).some(part => part !== part.trim() || part.includes(':'))) throw new Error('Input file name must not have spaces at its ends or a colon.');
+  const realpath = deps.realpath || fs.realpathSync, stat = deps.stat || fs.statSync;
+  let root, file;
+  try { root = realpath(cwd); file = realpath(path.resolve(cwd, input)); } catch { throw new Error('Input file not found.'); }
+  const relative = path.relative(root, file);
+  if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('Input file must be inside the working directory.');
+  if (relative.split(path.sep).some(part => part.startsWith('.'))) throw new Error('Hidden files and folders are never sent as input.');
+  const type = path.extname(file).slice(1).toLowerCase();
+  if (!kinds.some(kind => (INPUT_TYPES[kind] || []).includes(type))) throw new Error('This provider takes no .' + (type || '(none)') + ' input; it takes: ' + kinds.join(', ') + '.');
+  const info = stat(file);
+  if (!info.isFile()) throw new Error('Input must be a regular file.');
+  if (info.size > MAX_INPUT) throw new Error('Input file is larger than 14 MiB.');
+  return file;
+}
+
+/** Fill {input}; without an input the placeholder goes, and so does the flag right before it. */
+function withInput(args, input, cwd, deps, kinds) {
+  const at = args.indexOf('{input}');
+  if (at < 0) {
+    if (input !== undefined) throw new Error('This provider takes no --input.');
+    return args;
+  }
+  return input !== undefined ? args.map((arg, index) => index === at ? inputArgument(input, cwd, deps, kinds) : arg) : lib.dropInput(args);
 }
 
 function selection(options, config, project) {
@@ -327,7 +380,8 @@ async function run(argv, deps = {}) {
   const executable = native ? native.file : (deps.findExecutable || lib.findExecutable)(selected.cli.command, env, platform, cwd);
   if (!executable) throw new Error('CLI not found on the trusted PATH.');
   const target = invocation(executable, platform);
-  const args = selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt));
+  // The prompt goes in first: the full prompt has a prefix, so it can never become the bare {input} argument.
+  const args = withInput(selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt)), options.input, cwd, deps, selected.cli.inputs || []);
   const junie = path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'junie';
   // With --output-format=json Junie writes its result (errors, models used, tokens) to a private temp file and stdout
   // keeps the readable answer. A user CLI with text output or its own output file is left as it is.
@@ -464,4 +518,4 @@ if (require.main === module) {
   run(process.argv.slice(2)).then(result => { process.stdout.write(result.report); process.exitCode = result.code; })
     .catch(error => { process.stderr.write('cli-run: ' + clean(error.message).replace(/\s+/g, ' ').slice(0, 500) + '\n'); process.exitCode = 2; });
 }
-module.exports = { MAX_PROMPT, TIMEOUT_MS, parseArgs, selection, invocation, spawnPlan, gitStatus, execute, classify, clean, tail, run };
+module.exports = { MAX_PROMPT, MAX_INPUT, inputArgument, withInput, TIMEOUT_MS, parseArgs, selection, invocation, spawnPlan, gitStatus, execute, classify, clean, tail, run };

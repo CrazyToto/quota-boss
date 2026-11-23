@@ -27,7 +27,7 @@ test('every shipped CLI template against local executables', { concurrency: true
     // Independent expansion: explicit effort and default model, as requested by the invocation below.
     const full = 'Your working directory is ' + path.resolve(dir) + ' and every file is inside it. Use relative file paths.\n\n' + prompt;
     const stdin = original.cli.promptVia === 'stdin';
-    const expected = original.cli.args.map(arg => arg.replaceAll('{effort}', 'high').replaceAll('{model}', original.cli.defaultModel || '').replaceAll('{prompt}', full));
+    const expected = require('../scripts/lib').dropInput(original.cli.args).map(arg => arg.replaceAll('{effort}', 'high').replaceAll('{model}', original.cli.defaultModel || '').replaceAll('{prompt}', full));
     for (const [scenario, [kind, feedback]] of Object.entries(cases)) {
       const observed = path.join(dir, 'argv.json'), output = path.join(dir, 'expected.txt');
       fs.rmSync(output, { force: true }); fs.rmSync(observed, { force: true });

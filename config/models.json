@@ -33,7 +33,11 @@
         "image",
         "pdf"
       ],
-      "capabilitySource": "Claude Code Read tool: images and PDFs"
+      "capabilitySource": "Claude Code Read tool: images and PDFs; WebSearch; context: platform.claude.com model overview",
+      "contextTokens": 1000000,
+      "tools": [
+        "web-search"
+      ]
     },
     "claude-opus-5-5": {
       "pool": "claude",
@@ -59,7 +63,11 @@
         "image",
         "pdf"
       ],
-      "capabilitySource": "Claude Code Read tool: images and PDFs"
+      "capabilitySource": "Claude Code Read tool: images and PDFs; WebSearch; context: platform.claude.com model overview",
+      "contextTokens": 1000000,
+      "tools": [
+        "web-search"
+      ]
     },
     "claude-sonnet-5-5": {
       "pool": "claude",
@@ -85,7 +93,11 @@
         "image",
         "pdf"
       ],
-      "capabilitySource": "Claude Code Read tool: images and PDFs"
+      "capabilitySource": "Claude Code Read tool: images and PDFs; WebSearch; context: platform.claude.com model overview",
+      "contextTokens": 1000000,
+      "tools": [
+        "web-search"
+      ]
     },
     "claude-haiku-5-5": {
       "pool": "claude",
@@ -111,7 +123,11 @@
         "image",
         "pdf"
       ],
-      "capabilitySource": "Claude Code Read tool: images and PDFs"
+      "capabilitySource": "Claude Code Read tool: images and PDFs; WebSearch; context: platform.claude.com model overview",
+      "contextTokens": 1000000,
+      "tools": [
+        "web-search"
+      ]
     },
     "gpt-6.2-astra": {
       "$comment": "List price 8/0.40/40 USD (OpenAI, 2026-11-19), so cost 20 instead of GPT-6-Astra's 32. Scores follow GPT-6-Astra until outcomes are logged: Vals Terminal-Bench 4.0 rose from 59.6% to 63.1%, the Artificial Analysis coding agent index stayed flat.",
@@ -136,7 +152,12 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live; context: Codex CLI default (learn.chatgpt.com/docs/models)",
+      "contextTokens": 272000,
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6.2-sol": {
       "$comment": "Same list price as GPT-6.1-Sol (OpenAI, 2026-11-19). Scores follow GPT-6.1-Sol until outcomes are logged: Vals Terminal-Bench 4.0 rose from 55.1% to 60.6%, but the Artificial Analysis coding agent index fell 3 points.",
@@ -161,7 +182,12 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live; context: Codex CLI default (learn.chatgpt.com/docs/models)",
+      "contextTokens": 500000,
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6-astra": {
       "pool": "codex",
@@ -185,7 +211,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6.1-sol": {
       "pool": "codex",
@@ -209,7 +239,12 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live; context: Codex CLI default (learn.chatgpt.com/docs/models)",
+      "contextTokens": 500000,
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6.1-terra": {
       "pool": "codex",
@@ -233,7 +268,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6-sol": {
       "pool": "codex",
@@ -257,7 +296,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-6-luna": {
       "pool": "codex",
@@ -282,7 +325,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-5.6-sol": {
       "pool": "codex",
@@ -306,7 +353,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-5.6-terra": {
       "pool": "codex",
@@ -330,7 +381,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "gpt-5.6-luna": {
       "pool": "codex",
@@ -354,7 +409,11 @@
         "text",
         "image"
       ],
-      "capabilitySource": "codex exec --image"
+      "capabilitySource": "codex exec --image; $imagegen (gpt-image-2, ChatGPT plan limits 3-5x a turn); web_search=live",
+      "tools": [
+        "image-gen",
+        "web-search"
+      ]
     },
     "perplexity-manual": {
       "pool": "perplexity",
@@ -388,7 +447,9 @@
         "review": 6,
         "research": 6,
         "mechanical": 7
-      }
+      },
+      "contextTokens": 500000,
+      "capabilitySource": "context: docs.x.ai/developers/grok-4-7"
     },
     "grok-build": {
       "pool": "grok",
@@ -481,7 +542,12 @@
         "review": 8,
         "research": 8,
         "mechanical": 8
-      }
+      },
+      "contextTokens": 1000000,
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "agy -p search_web tool (antigravity.google/docs/hooks); context: antigravity.google/docs/models"
     },
     "gemini-3.8-flash": {
       "pool": "antigravity",
@@ -500,7 +566,30 @@
         "review": 5,
         "research": 6,
         "mechanical": 7
-      }
+      },
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "agy -p search_web tool (antigravity.google/docs/hooks)"
+    },
+    "gemini-media-3.8-flash": {
+      "pool": "gemini-media",
+      "label": "Gemini 3.8 Flash media (free)",
+      "cost": 0,
+      "cliModel": "gemini-3.8-flash",
+      "specialist": true,
+      "scores": {
+        "research": 7
+      },
+      "inputs": [
+        "text",
+        "image",
+        "pdf",
+        "video",
+        "audio"
+      ],
+      "contextTokens": 1048576,
+      "capabilitySource": "gemini-api analyze -i (aistudio.google.com/docs/cli, video-understanding, audio); free tier, no Google Search"
     },
     "junie-lite": {
       "$comment": "JetBrains' docs name GPT-6 Luna, but runs on 2026-11-19 used Qwen 3.6 27B. Solo bench 2026-11-19: all hidden checks on small to refactor tasks, 94/96 on large and 126/132 on xlarge, so implementation and mechanical rose by 1; the rest stays provisional.",

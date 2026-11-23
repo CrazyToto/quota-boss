@@ -45,6 +45,10 @@ const REGISTRY = Object.freeze({
   antigravity: { label: 'Antigravity', binary: 'agy', source: 'https://antigravity.google/docs/install', install: {},
     note: 'Google only offers an install script; follow the official guide. It replaced Gemini CLI for free and Google One users.',
     login: { command: 'agy', run: [] } },
+  'gemini-media': { label: 'Gemini API CLI', binary: 'gemini-api', source: 'https://aistudio.google.com/docs/cli', install: {},
+    paste: { win32: 'iwr -useb https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.ps1 | iex',
+      all: 'curl -fsSL https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.sh | bash' },
+    login: { command: 'gemini-api configure --api-key <key>', run: [], hint: 'Get a free key at https://aistudio.google.com/apikey, then run gemini-api configure --api-key <key>.' } },
   // One CLI and account login for both Junie Lite and JetBrains AI.
   // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
   junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
