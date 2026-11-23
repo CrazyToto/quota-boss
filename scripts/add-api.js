@@ -11,7 +11,8 @@ const PRESETS = Object.freeze({
     keyHint: 'A balance of 0 is normal: this offer only uses a free model, so it costs nothing.',
     gets: '50 calls a day',
     limit: '50 calls a day',
-    windows: { daily: { budget: 50, unit: 'calls' } },
+    // The counter counts runs, and one OpenCode run sends about 5 API requests, so 50 requests are about 10 runs.
+    windows: { daily: { budget: 10, unit: 'calls' } },
     extraModels: [{ suffix: 'ultra', label: 'OpenRouter Nemotron Ultra', model: 'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free',
       scores: { architecture: 4, debugging: 5, implementation: 6, review: 4, research: 4, mechanical: 7 } }] },
   cloudflare: { label: 'Cloudflare Workers AI', model: 'cloudflare-workers-ai/@cf/zai-org/glm-4.7-flash', keyPage: 'https://dash.cloudflare.com/', free: true, trains: true,
@@ -21,7 +22,7 @@ const PRESETS = Object.freeze({
   cohere: { label: 'Cohere trial', model: 'cohere/north-mini-code-1-0', keyPage: 'https://dashboard.cohere.com/api-keys', free: true, trains: true,
     gets: '1,000 calls a month',
     limit: '1,000 calls a month and 20 chat requests a minute',
-    windows: { monthly: { budget: 1000, unit: 'calls' } },
+    windows: { monthly: { budget: 200, unit: 'calls' } },
     extraModels: [{ suffix: 'plus', label: 'Cohere Command A+', model: 'cohere/command-a-plus-05-2026',
       scores: { architecture: 4, debugging: 5, implementation: 6, review: 4, research: 4, mechanical: 7 } }] },
   'gemini-api': { label: 'Gemini API free', model: 'google/gemini-flash-lite-latest', keyPage: 'https://aistudio.google.com/apikey', free: true, trains: true,

@@ -239,7 +239,9 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
 - **OpenCode Zen** needs no key. Quota Boss offers only the two free models whose providers, [according to OpenCode](https://opencode.ai/docs/zen/),
   keep no data and do not train on it. Only DeepSeek V4.1 Flash is left, because OpenCode retired the free GLM model. It is free for a limited time.
-- **OpenRouter Free** models have a 50-call daily cap, with a higher daily cap after $10 of credits.
+- **OpenRouter Free** models have a 50-call daily cap, with a higher daily cap after $10 of credits. One OpenCode run
+  sends about 5 API requests, so the local counter budgets 10 runs a day (Cohere: 200 runs for 1,000 calls a month).
+  When OpenRouter answers "free-models-per-day" anyway, the route pauses until 00:00 UTC.
 - **Other free API offers** are off until you add them. Each shows its limit and warning first. Gemini's unpaid tier
   is not used to train for users in the EEA, UK or Switzerland. Elsewhere Google may use content to improve products
   and humans may read it. NVIDIA NIM trial terms allow evaluation only, with no production use or confidential code.

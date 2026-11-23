@@ -4,8 +4,26 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `savings --details` lists Claude boss sessions that kept large work (5+ files written whole or 200+ changed lines)
+  without starting a worker, and whether the boss checked `route` first, so a delegation regression shows up.
+- `cli-run` caps parallel runs per provider (`maxParallel`). Copilot defaults to 2, as GitHub allows on Free and
+  Education; set 4 on Pro or Pro+ and 8 on Max.
+- Quota that the longest window would leave unused near its reset counts as nearly free, so routing uses it first.
+  It only relaxes the gate when the worker is about as likely to pass as the boss.
+
 ### Changed
 
+- Every failed outcome carries a kind (`quota`, `outage`, `structural`, `timeout`, `context`, `not-run`). Only a
+  failed check lowers a model's quality score; a limit or a job that never reached the model does not.
+- Worker reports clip CLI output to 6,000 characters (the first three quarters and the last quarter).
+- Relay agents run the runner command as their first call. A runner heredoc whose body holds JSON is saved to a prompt
+  file by the hook, because Claude Code denied those commands even when `node` was allowed.
+- The OpenRouter free preset uses Flint v1.0 free; North Mini Code free is gone from OpenRouter.
+- Offer notes: Z.ai does not train on developer API content, NVIDIA's trial allows evaluation only and is left out of
+  "add all free offers", Cohere trial keys are not for production, and Gemini's free tier does not train for EEA, UK
+  and Swiss users.
 - Routing pauses a model after quota, outage or timeout failures for longer each time in a row (15 minutes for quota, 5 for
   outages, up to 6 hours), or until the reset time the provider names, such as OpenRouter's free daily limit at 00:00 UTC.
   A quota limit with a reset time pauses the whole pool. After a pause one run probes the model before others use it again.
@@ -17,15 +35,17 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Fixed
 
+- OpenCode workers edit the folder they run in. An inherited `PWD` sent their edits to the folder Quota Boss was
+  started from, so OpenCode self-tests failed with "work was not done" and a worktree worker edited the main checkout.
 - `verify --log` now records a pass it reuses when no earlier run logged it, such as a worker's check. Before, the boss
   lost that feedback or ran the tests again with `--fresh` only to log it, which cost an extra turn.
+- The OpenRouter free and Cohere trial presets budget runs, not API requests: one OpenCode run sends about 5 requests,
+  so the counter showed 18% when OpenRouter's 50 daily requests were gone. New budgets: 10 runs a day and 200 runs a
+  month. An existing setup keeps its budget; change it in `config/providers.json` or add the preset again.
 
 ## [0.4.4] - 2026-11-20
 
 ### Added
-
-- `savings --details` lists Claude boss sessions that kept large work (5+ files written whole or 200+ changed lines)
-  without starting a worker, and whether the boss checked `route` first, so a delegation regression shows up.
 
 - `quota-boss --help` and `-h` print the command list and exit with code 0.
 - Routing rows for a free trial end in `[trial: run route first]`, so the boss refreshes the table before the next job.
