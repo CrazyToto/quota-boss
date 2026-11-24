@@ -4,6 +4,10 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- One cheap retry before escalating: when a Codex worker's check fails after in-scope changes, the worker resumes its own Codex session once with only the failing check output, instead of starting the job again on a stronger model. It reports `RECOVERY: resumed`; a second failure escalates as before.
+
 ## [0.4.8] - 2026-11-23
 
 ### Added

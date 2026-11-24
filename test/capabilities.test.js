@@ -460,7 +460,7 @@ test('an input placeholder must be a whole argument and appear at most once', ()
 test('input paths are checked before they are resolved, and media routes have no self-test', () => {
   const run = require('../scripts/cli-run');
   const probe = { realpath: () => { throw new Error('probed'); } };
-  for (const input of ['\\server\share\a.mp4', '//server/share/a.mp4', '../a.mp4']) assert.throws(() => run.inputArgument(input, process.cwd(), probe), /inside the working directory/);
+  for (const input of ['\\\\server\\share\\a.mp4','//server/share/a.mp4', '../a.mp4']) assert.throws(() => run.inputArgument(input, process.cwd(), probe), /inside the working directory/);
   for (const input of ['a.mp4 ', ' a.mp4', 'a.mp4:stream']) assert.throws(() => run.inputArgument(input, process.cwd(), probe), /spaces at its ends or a colon/);
   const { selfTest } = require('../scripts/self-test');
   const config = { providers: require('../config/providers.json'), models: shipped };
