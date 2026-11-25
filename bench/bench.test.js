@@ -204,7 +204,7 @@ test('failed fake host restores profile', t => {
     return { status: 0, stdout: '', stderr: '' };
   };
   assert.throws(() => main(['--host', 'claude', '--arm', 'on:quality', '--task', 'docs', '--out', d], fake), /fake launch failure/);
-  assert.ok(calls.some(a => a.slice(1).join(' ') === 'set profile balanced'));
+  assert.ok(calls.some(a => a.slice(1).join(' ') === 'set profile balanced --project'));
   assert.ok(!fs.existsSync(path.join(d, 'results.jsonl')));
 });
 
@@ -219,7 +219,7 @@ test('legacy mode alias and default balanced profile use fakes', t => {
     main(['--host', 'codex', '--mode', mode, '--task', 'bugfix', '--out', d], fake);
     const r = JSON.parse(fs.readFileSync(path.join(d, 'results.jsonl'), 'utf8'));
     assert.equal(r.arm, mode);
-    if (mode === 'on') assert.ok(calls.some(x => x[1].slice(1).join(' ') === 'on --host codex balanced'));
+    if (mode === 'on') assert.ok(calls.some(x => x[1].slice(1).join(' ') === 'on --host codex balanced --project'));
     else assert.ok(!calls.some(x => x[1][1] === 'on'));
   }
 });

@@ -163,7 +163,7 @@ test.describe('verification review regressions', () => {
       if(path.resolve(to).toLowerCase()===file.toLowerCase()&&!checked){
         checked=true;
         const owner=lib.readJson(lib.getPaths().projectsFile+'.lock');assert.equal(owner.pid,process.pid);assert.ok(owner.nonce);
-        assert.throws(()=>cli.run(['off']),/registry is busy/);
+        assert.throws(()=>cli.run(['off','--project']),/registry is busy/);
       }
       return original(from,to);
     };

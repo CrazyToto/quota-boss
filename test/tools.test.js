@@ -403,3 +403,81 @@ test('Junie is one paste-only CLI for both JetBrains providers, logged in with t
   // The login check never starts the CLI.
   assert.ok(!m.calls.some(call => call[0] === 'junie' && call[1] !== '--version'));
 });
+
+test('only programs Quota Boss installed from scratch are recorded, and only those are offered for removal', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-installed-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'installed-tools.json');
+  const have = new Set(['uv', 'npm', 'codex']);
+  const calls = [];
+  const find = name => (have.has(name) ? '/bin/' + name : null);
+  const spawnSync = (bin, args) => {
+    const name = bin.split('/').pop();
+    calls.push([name, ...args]);
+    if (name === 'uv' && args[1] === 'install') have.add('graphify');
+    if (name === 'uv' && args[1] === 'uninstall') have.delete('graphify');
+    if (name === 'npm' && args[0] === 'install') have.add('opencode');
+    return { status: 0, stdout: name === 'codex' ? 'codex-cli 1.0.0' : '9.9.9', stderr: '' };
+  };
+  const options = { platform: 'linux', env: {}, find, spawnSync, installedFile: file };
+  tools.install(['graphify', 'opencode'], options);
+  // An already installed program that only gets updated is never claimed.
+  have.add('claude');
+  tools.install(['codex', 'claude'], options);
+  assert.deepEqual(tools.readInstalled(file), ['graphify', 'opencode']);
+  // A tampered record cannot add programs or commands.
+  fs.writeFileSync(file, JSON.stringify({ tools: ['graphify', 'opencode', 'rm -rf /', 'codex', 'codex'] }));
+  assert.deepEqual(tools.readInstalled(file), ['graphify', 'opencode', 'codex']);
+  fs.writeFileSync(file, JSON.stringify({ tools: ['graphify', 'opencode'] }));
+
+  const said = [];
+  tools.offerRemoval({ interactive: false, say: line => said.push(line), options, file, ask: () => assert.fail('no questions without a terminal') });
+  assert.match(said.join('\n'), /Kept programs Quota Boss installed: Graphify, OpenCode/);
+  assert.deepEqual(tools.readInstalled(file), ['graphify', 'opencode']);
+  // A shell that cannot see a program decides nothing without a terminal: the record stays whole.
+  have.delete('opencode');
+  tools.offerRemoval({ interactive: false, say: () => {}, options, file, ask: () => assert.fail('no questions') });
+  assert.deepEqual(tools.readInstalled(file), ['graphify', 'opencode']);
+  have.add('opencode');
+
+  calls.length = 0;
+  const questions = [];
+  tools.offerRemoval({ interactive: true, say: () => {}, options, file, ask: q => { questions.push(q); return /Graphify/.test(q) ? 'y' : 'n'; } });
+  assert.equal(questions.length, 2);
+  assert.ok(questions.every(q => /^Quota Boss installed (Graphify|OpenCode)\. Remove it too\? \[y\/N\] $/.test(q)));
+  assert.deepEqual(calls, [['graphify', 'uninstall'], ['uv', 'tool', 'uninstall', 'graphifyy']]);
+  assert.deepEqual(tools.readInstalled(file), ['opencode']);
+  // Removed by hand since then: nothing left to ask, and the record goes away.
+  have.delete('opencode');
+  tools.offerRemoval({ interactive: true, say: () => {}, options, file, ask: () => assert.fail('nothing to ask') });
+  assert.equal(fs.existsSync(file), false);
+});
+
+test('a failed removal keeps the program on record and names the command', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-installed-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'installed-tools.json');
+  fs.writeFileSync(file, JSON.stringify({ tools: ['opencode', 'junie'] }));
+  const find = name => (['npm', 'opencode', 'junie'].includes(name) ? '/bin/' + name : null);
+  const spawnSync = () => ({ status: 1, stdout: '', stderr: 'EPERM' });
+  const said = [];
+  tools.offerRemoval({ interactive: true, say: line => said.push(line), options: { platform: 'linux', env: {}, find, spawnSync }, file, ask: () => 'y' });
+  assert.match(said.join('\n'), /Could not remove OpenCode \(EPERM\)\. Run: npm uninstall -g opencode-ai/);
+  assert.match(said.join('\n'), /Junie CLI was installed by its own script; remove it by hand/);
+  assert.deepEqual(tools.readInstalled(file), ['opencode']);
+});
+
+test('a failed clean-up step keeps the program installed and on record', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-installed-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'installed-tools.json');
+  fs.writeFileSync(file, JSON.stringify({ tools: ['graphify'] }));
+  const calls = [];
+  const find = name => (['uv', 'graphify'].includes(name) ? '/bin/' + name : null);
+  const spawnSync = (cmd, args) => { calls.push([cmd, ...args]); return { status: 1, stdout: '', stderr: 'locked' }; };
+  const said = [];
+  tools.offerRemoval({ interactive: true, say: line => said.push(line), options: { platform: 'linux', env: {}, find, spawnSync }, file, ask: () => 'y' });
+  assert.equal(calls.length, 1);
+  assert.match(said.join('\n'), /Could not remove Graphify \(locked\)\. Run: graphify uninstall, then uv tool uninstall graphifyy/);
+  assert.deepEqual(tools.readInstalled(file), ['graphify']);
+});

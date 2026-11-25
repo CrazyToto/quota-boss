@@ -64,6 +64,32 @@
       "tos": "official-cli",
       "trainsOnData": false
     },
+    "devin": {
+      "evidence": "docs",
+      "label": "Devin (Cognition, free model)",
+      "kind": "free",
+      "enabled": false,
+      "quota": {
+        "source": "none"
+      },
+      "worker": "cli-worker",
+      "cli": {
+        "$comment": "Only SWE-2 Flash Medium is free; every other Devin model bills per token, so the free model is always named. Print mode cannot show the workspace trust prompt and fails without that switch. accept-edits lets it edit files without asking; shell commands are refused in print mode.",
+        "command": "devin",
+        "args": [
+          "--respect-workspace-trust",
+          "false",
+          "--permission-mode",
+          "accept-edits",
+          "--model",
+          "swe-2-flash-medium",
+          "-p",
+          "{prompt}"
+        ]
+      },
+      "tos": "official-cli",
+      "trainsOnData": true
+    },
     "copilot": {
       "label": "GitHub Copilot",
       "maxParallel": 2,

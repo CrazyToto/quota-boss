@@ -1,0 +1,2 @@
+# scripts/cli-run.js: generic exit 0 text; --expect-changes requires a changed Git fingerprint.
+OK

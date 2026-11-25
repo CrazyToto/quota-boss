@@ -21,8 +21,8 @@ const USAGES = {
   'verify': 'verify [--fresh] [--log <model> <category> <tier> [--effort <level>]] -- <command...>',
   'setup': 'setup',
   'handoff': 'handoff save|list|show [<name>]',
-  'on': 'on [--host claude-code|codex|generic] [quality|balanced|frugal]',
-  'off': 'off',
+  'on': 'on [--host claude-code|codex|generic] [quality|balanced|frugal] [--project]',
+  'off': 'off [--project]',
   'status': 'status',
   'settings': 'settings',
   'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio,image-gen,web-search] [--context <tokens>] [category] [tier]',
@@ -39,11 +39,11 @@ const USAGES = {
   'local': 'local [on <model>|off]',
   'savings': 'savings [--days N] [--all] [--details]',
   'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--kind <kind>] [--effort <level>] [--until <ISO time>]',
-  'set': 'set <name> <value> (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
+  'set': 'set <name> <value> [--project] (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on for this project\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
+const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
 const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
@@ -371,7 +371,8 @@ function run(args = process.argv.slice(2), options) {
     if (Object.hasOwn(REMOVED_SETTINGS, setting)) throw new Error(setting + ' was removed in 0.2.0: ' + REMOVED_SETTINGS[setting]);
     if (!Object.hasOwn(SET_NAMES, setting)) throw new Error('Valid settings: ' + Object.keys(SET_NAMES).join(', '));
     const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
-    if (rest.length !== 2 || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
+    const scoped = setting !== 'statusline' && rest.length === 3 && rest[2] === '--project';
+    if (rest.length !== (scoped ? 3 : 2) || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
     command = SET_NAMES[setting]; rest = rest.slice(1);
   } else if (['profile', 'allow-training', 'statusline', 'context'].includes(command)) throw new Error(HELP);
   if (command === 'use') return useCommand(command, rest, options);
@@ -410,6 +411,12 @@ function run(args = process.argv.slice(2), options) {
   if (['providers', 'cap', 'usage', 'timing'].includes(command)) return providerCommand(command, rest, options);
   const active = lib.findProjectConfig();
   let project = lib.normalizeProject(active);
+  // These settings count for every project unless --project is given.
+  let projectOnly = false;
+  if (['on', 'off', 'profile', 'allow-training', 'context'].includes(command) && rest.includes('--project')) {
+    if (rest.filter(a => a === '--project').length > 1) throw new Error(usage(command));
+    projectOnly = true; rest = rest.filter(a => a !== '--project');
+  }
   if (command === 'on') {
     const flags = rest.filter(a => a === '--host').length;
     if (flags > 1) throw new Error(usage(command));
@@ -490,20 +497,53 @@ function run(args = process.argv.slice(2), options) {
   const directory = lib.projectKey(process.cwd());
   const before = settings.snapshot();
   let agent;
-  lib.updateProjects(entries => {
+  const fields = command === 'on' ? ['enabled', ...(args.includes('--host') ? ['host'] : []), ...(rest.length ? ['profile'] : [])]
+    : command === 'off' ? ['enabled'] : command === 'profile' ? ['profile']
+      : [command === 'allow-training' ? 'allowTrainingProviders' : 'contextSuggest'];
+  // Codex projects keep their rules in AGENTS.md, so on, off, profile and a move away from Codex stay per project there.
+  // Training and context hints do not touch AGENTS.md, so they count for all projects from a Codex folder too.
+  const shared = ['allowTrainingProviders', 'contextSuggest'];
+  const global = !projectOnly && (fields.every(field => shared.includes(field)) || project.host !== 'codex' && active.raw?.host !== 'codex');
+  if (global) lib.updateProjects(entries => {
+    const effective = lib.findProjectConfig();
+    const next = {};
+    for (const [key, entry] of Object.entries(entries)) {
+      const current = !!effective.file && key === effective.directory;
+      // Entries from before 0.5 are full snapshots (they carry `rules`) and follow a global change; Codex ones only for shared fields.
+      const legacy = !!entry && typeof entry === 'object' && entry.rules !== undefined;
+      if (!legacy && !current) { next[key] = entry; continue; }
+      const raw = { ...entry };
+      for (const field of fields) {
+        if (!current && entry.host === 'codex' && !shared.includes(field)) continue;
+        // Another project's own training "off" stays a veto when training is turned on for all projects.
+        if (!current && field === 'allowTrainingProviders' && project.allowTrainingProviders && raw.allowTrainingProviders === false) continue;
+        delete raw[field];
+      }
+      next[key] = raw;
+    }
+    // A stale Codex rules block in this folder goes once it follows a non-Codex setting; a Codex project keeps its block.
+    agent = lib.normalizeProject(effective).host === 'codex' ? null : hosts.agentsText(effective.file ? effective.directory : directory, '');
+    return next;
+  }, lib.getPaths().projectsFile, (_next, verify) => {
+    lib.saveDefaults(Object.fromEntries(fields.map(field => [field, project[field]])));
+    if (agent && agent.text !== agent.previous) hosts.writeAgents(agent, verify);
+  });
+  else lib.updateProjects(entries => {
     const effective = lib.findProjectConfig();
     const current = lib.normalizeProject(effective);
-    const fields = command === 'on' ? ['enabled', ...(args.includes('--host') ? ['host'] : []), ...(rest.length ? ['profile'] : [])]
-      : command === 'off' ? ['enabled'] : command === 'profile' ? ['profile']
-        : [command === 'allow-training' ? 'allowTrainingProviders' : 'contextSuggest'];
     for (const field of fields) current[field] = project[field];
     project = current;
     agent = hosts.agentsText(directory, project.enabled && project.host === 'codex' ? hosts.managedBlock(project) : '');
-    return { ...entries, [directory]: { ...effective.raw, ...project,
+    // Only the changed fields: everything else keeps following the global settings. A project write ends the old snapshot.
+    const { rules, ...raw } = effective.raw;
+    // An old full snapshot keeps only what is set here now, so later global switches reach the rest.
+    if (rules !== undefined) for (const field of lib.DEFAULT_FIELDS) if (!fields.includes(field) && !(field === 'host' && raw.host === 'codex')) delete raw[field];
+    return { ...entries, [directory]: { ...raw, ...Object.fromEntries(fields.map(field => [field, project[field]])),
       managedAgents: effective.raw.managedAgents === true || project.enabled && project.host === 'codex' } };
   }, lib.getPaths().projectsFile, (_next, verify) => {
     hosts.writeAgents(agent, verify);
   });
+  if (global) project = lib.normalizeProject(lib.findProjectConfig());
   let claudeNotice = '';
   if (command === 'on' && project.host !== 'claude-code' && lib.loadConfig().providers.providers.claude?.enabled !== false && !lib.findExecutable('claude')) {
     // The provider switch refreshes registered Codex blocks again with the final state.
@@ -517,7 +557,7 @@ function run(args = process.argv.slice(2), options) {
     if (result.message) hookNotice = '\nNote: Could not install Codex SessionStart hook: ' + result.message;
     else if (result.changed) hookNotice = '\nCodex skips new hooks until you trust them: type /hooks in Codex once; until then the boss runs route itself.';
   }
-  return 'Quota Boss ' + (project.enabled ? 'on' : 'off') + ' | profile ' + project.profile
+  return 'Quota Boss ' + (project.enabled ? 'on' : 'off') + ' | profile ' + project.profile + (global ? ' | all projects' : ' | this project')
     + '\n' + settings.effect(command, rest, before, after) + claudeNotice + hookNotice
     + (command === 'on' && project.host === 'codex' && lib.loadConfig().providers.providers.claude?.enabled !== false ? '\nWarning: ' + providerHelp.SCRIPTED_CLAUDE_WARNING : '');
 }

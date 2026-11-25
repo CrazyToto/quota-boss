@@ -25,7 +25,7 @@ const wins = (input, tier) => route(input).rows.some(c => c.model === 'tiny' && 
 
 test('shipped capabilities are documented, with a source for every claim', () => {
   const documented = { 'claude-fable-5-2': 1000000, 'claude-opus-5-5': 1000000, 'claude-sonnet-5-5': 1000000, 'claude-haiku-5-5': 1000000,
-    'gpt-6.2-astra': 272000, 'gpt-6.2-sol': 500000, 'gpt-6.1-sol': 500000, 'grok-4.7': 500000, 'gemini-4-argon': 1000000, 'gemini-media-3.8-flash': 1048576 };
+    'gpt-6.2-astra': 272000, 'gpt-6.2-sol': 500000, 'gpt-6.1-sol': 500000, 'grok-4.7': 500000, 'gemini-4-argon': 1000000, 'gemini-media-3.8-flash': 1048576, 'devin-swe-2-flash': 262144 };
   for (const [id, model] of Object.entries(shipped.models)) {
     assert.equal(model.contextTokens, documented[id], id);
     assert.equal(model.webSearch, undefined);

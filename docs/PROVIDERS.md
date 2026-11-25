@@ -1,6 +1,6 @@
 # Providers, pools and user caps
 
-Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok, Antigravity, Junie Lite and JetBrains AI). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
+Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok, Devin, Antigravity, Junie Lite and JetBrains AI). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
 
 
 Quota Boss is not tied to Claude + Codex. Any subscription or API can be added as a **provider** (= quota pool),
@@ -128,6 +128,7 @@ every provider it showed as answered.
 | ollama | winget (Windows), brew (macOS), by hand on Linux | no | not needed |
 | graphify (optional, not a provider) | `uv tool install graphifyy`, then `graphify install`; asked in setup | no | not needed |
 | grok | xAI's install script | no | none |
+| devin | by hand from docs.devin.ai/cli, then `devin auth login` | no | none |
 | antigravity | by hand from Google's guide | no | none |
 | junie (junie-lite, jetbrains) | JetBrains' install script | no | Windows: a saved login in the folder `~/.junie/dpapi_credentials`; elsewhere none |
 
@@ -173,6 +174,23 @@ five minutes on Windows for its saved login. The CLI's "Cannot find authorizatio
   tokens and the model Junie really ran (`ran Qwen/...`). A plan that Junie does not accept for paid models fails the
   self-test with "JetBrains license not accepted for this model"; Junie Lite works without it.
 - Headless Junie trusts the project folder by itself and loads its MCP servers, hooks and skills.
+
+## Devin
+
+Devin runs Cognition's official [Devin CLI](https://docs.devin.ai/cli) in print mode (`devin -p`), always with
+`--model swe-2-flash-medium`: SWE-2 Flash Medium is the only model `devin models list` marks as free, every other one
+bills per token. `--permission-mode accept-edits` lets it edit files; it refuses shell commands in print mode, so it
+cannot run tests itself and the boss's check matters more. `--respect-workspace-trust false` skips the trust prompt
+that print mode cannot show. It prints plain text with no usage, and there is no CLI quota command (only `/usage` in
+a session and the web dashboard), so the status line has no Devin numbers.
+
+- Data: on the free plan Cognition may use your data to train its models, and only paid plans can opt out, so the
+  preset says it trains on data and Devin gets no work until you allow that (`quota-boss set training on`).
+- Terms: Cognition's terms forbid using the service to build competing products or train competing models. Quota Boss
+  only starts the official CLI on your own coding tasks.
+- Quality (solo bench 2026-11-25, see [Benchmarks](BENCHMARKS.md)): about the level of Junie Lite. In 3 of 24 runs the
+  CLI kept running for 24 to 30 minutes after it had written the work; cli-run stops a worker after 10 minutes, so
+  such a job reports a timeout and the boss checks what was written.
 
 Antigravity stays off by default and shows an account warning, because Google's terms treat third-party access to the
 service as a breach and it is unclear whether starting Google's own program from another tool counts.

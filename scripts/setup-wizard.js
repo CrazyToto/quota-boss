@@ -18,11 +18,13 @@ const OWN = ['codex', 'perplexity'];
 const LITE = 'junie-lite';
 const JUNIE = 'junie';
 const OTHER = ['copilot', 'grok', 'antigravity', 'jetbrains'];
+// Free like the offers below, but its own program and only for video, audio and long PDFs.
+const MEDIA = 'gemini-media';
 const FREE = ['zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'nvidia', 'zai', 'kilo-free'];
 const GRAPH = 'graphify';
 const graph = require('./graph');
 const newProviders = require('./new-providers');
-const CHOICES = ['claude', ...OWN, LITE, ...OTHER, ...FREE, GRAPH];
+const CHOICES = ['claude', ...OWN, LITE, ...OTHER, MEDIA, ...FREE, GRAPH];
 const USABLE = new Set(['ok', 'outdated']);
 const TOTAL_SECTIONS = 6;
 const YES = ['y', 'yes'], NO = ['n', 'no'];
@@ -96,7 +98,7 @@ const choicesOf = w => CHOICES.filter(id => id !== hostPool(w));
 const chosen = (w, ids) => ids.filter(id => w.state.choices[id]);
 const retiredApis = config => config.providers.retired ?? [];
 const keptApis = w => Object.entries(w.config.providers.providers).filter(([id, p]) => p?.custom === true && !Object.hasOwn(PRESETS, id));
-const mayTrain = id => id === 'kilo-free' || PRESETS[id].trains;
+const mayTrain = id => id === 'kilo-free' || id === MEDIA || PRESETS[id].trains;
 const keyStored = (stored, name, provider) => stored.includes(name.toLowerCase()) || stored.includes(provider.toLowerCase());
 
 function apiKeys(w) {
@@ -121,7 +123,7 @@ function apiKeys(w) {
 
 /** Everything chosen that may send project data to a provider allowed to train on it. */
 function trainers(w) {
-  return [...chosen(w, FREE).filter(mayTrain).map(id => nameOf(id)),
+  return [...chosen(w, [...FREE, MEDIA]).filter(mayTrain).map(id => nameOf(id)),
     ...w.state.apis.filter(api => api.trains).map(api => api.id),
     ...keptApis(w).filter(([, p]) => p.enabled !== false && p.trainsOnData === true).map(([id]) => id)];
 }
@@ -223,7 +225,7 @@ function trainingScreen(w) {
   return { section: 5, applies: () => trainers(w).length > 0, run: () => {
     frame(w, 5);
     w.io.say(w.text.trainingTitle + '\n');
-    const warnings = chosen(w, FREE).filter(mayTrain).map(id => [nameOf(id), (helpOf(id).warning || '').replace(UNCONFIRMED_TRAINING, '').trim()]).filter(([, text]) => text);
+    const warnings = chosen(w, [...FREE, MEDIA]).filter(mayTrain).map(id => [nameOf(id), (helpOf(id).warning || '').replace(UNCONFIRMED_TRAINING, '').trim()]).filter(([, text]) => text);
     say(w, [w.text.trainingNames(trainers(w).join(', ')), '', w.text.trainingOn, w.text.trainingOff, ...(warnings.length ? ['', ...warnings.map(([name, text]) => name + ': ' + text)] : [])]);
     w.io.say('');
     const answer = yesNo(w, w.text.trainingAsk, w.state.training);
@@ -255,7 +257,7 @@ function summaryScreen(w) {
     w.plan = plan(w);
     frame(w, 6);
     const on = [...chosen(w, choicesOf(w)).map(id => nameOf(id)), ...w.state.apis.map(api => api.id)];
-    const off = choicesOf(w).filter(id => !w.state.choices[id] && (id !== GRAPH || asksForGraph(w))).map(id => nameOf(id));
+    const off = choicesOf(w).filter(id => !w.state.choices[id] && (id !== GRAPH || asksForGraph(w)) && (id !== MEDIA || !!w.config.providers.providers[MEDIA])).map(id => nameOf(id));
     off.push(...retiredApis(w.config).map(({ id }) => id));
     const blocked = w.state.training ? [] : trainers(w);
     say(w, [w.text.profile + ': ' + w.state.profile, w.text.assistant + ': ' + w.state.host, w.text.turnedOn + ': ' + (on.join(', ') || w.text.none),
@@ -318,11 +320,12 @@ function buildCommands(w, usable) {
   const { state, project, config } = w;
   const commands = [['on', '--host', state.host, state.profile]];
   if (state.host === 'claude-code' && config.providers.providers.claude && !enabledNow(config, 'claude')) commands.push(['use', 'claude', 'on']);
-  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), LITE, ...OTHER, 'kilo-free']) {
+  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), LITE, ...OTHER, MEDIA, 'kilo-free']) {
     const want = state.choices[id] && usable(toolOf(id));
-    // Codex and Perplexity replace the old per-project worker switches, so they change this project only.
+    // Setup counts for every project. A project switch left off here would still block a yes, so that one goes too.
     // A provider that needs a self-test is tested after the logins below, not before them.
-    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off', ...(OWN.includes(id) ? ['--project'] : []), ...(want && needsTest(config, id) ? ['--no-test'] : [])]);
+    if (config.providers.providers[id] && enabledNow(config, id) !== want) commands.push(['use', id, want ? 'on' : 'off', ...(want && needsTest(config, id) ? ['--no-test'] : [])]);
+    if (config.providers.providers[id] && want && project.use?.providersOff?.includes(id)) commands.push(['use', id, 'on', '--project']);
   }
   for (const id of Object.keys(PRESETS)) {
     const want = state.choices[id] && usable(OPENCODE), present = !!config.providers.providers[id];
@@ -333,7 +336,8 @@ function buildCommands(w, usable) {
   if (usable(OPENCODE)) {
     for (const api of state.apis) commands.push(['add-api', api.id, api.model, '--trains', api.trains ? 'yes' : 'no', ...(api.free ? ['--free'] : [])]);
   }
-  if (trainers(w).length && state.training !== project.allowTrainingProviders) commands.push(['set', 'training', state.training ? 'on' : 'off']);
+  // Training counts for all projects, so both the global value and this project's own one must match the answer.
+  if (trainers(w).length && (state.training !== project.allowTrainingProviders || state.training !== (lib.readDefaults().allowTrainingProviders === true))) commands.push(['set', 'training', state.training ? 'on' : 'off']);
   return commands;
 }
 
@@ -439,7 +443,7 @@ function liteDefault(config, active, userProviders) {
 
 function initialState(config, project, active, userProviders) {
   const choices = {};
-  for (const id of ['claude', ...OWN, ...OTHER, ...FREE]) choices[id] = enabledNow(config, id);
+  for (const id of ['claude', ...OWN, ...OTHER, MEDIA, ...FREE]) choices[id] = enabledNow(config, id);
   choices[LITE] = liteDefault(config, active, userProviders);
   choices[GRAPH] = false;
   return { profile: project.profile, host: project.host, choices, apis: [], training: project.allowTrainingProviders };
@@ -476,6 +480,7 @@ function setup(args, run, deps = {}) {
     { ...switchScreen(w, 'claude', 3), applies: () => w.state.host !== 'claude-code' },
     switchScreen(w, LITE, 3),
     ...OTHER.map(id => switchScreen(w, id, 3, text.onlyWithPlan)),
+    { ...switchScreen(w, MEDIA, 3), applies: () => !!w.config.providers.providers[MEDIA] },
     freeScreen(w),
     ...FREE.map(id => ({ ...switchScreen(w, id, 4), applies: () => w.state.freeChoice === 'one-by-one' })),
     apiScreen(w),

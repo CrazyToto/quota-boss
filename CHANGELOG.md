@@ -4,6 +4,22 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Devin (Cognition) as a free provider through its official Devin CLI, off by default. It always uses SWE-2 Flash Medium, the only free Devin model; every other Devin model bills per token. Install it from docs.devin.ai/cli and sign in with `devin auth login`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. Setup and the status line do not show it yet.
+
+### Fixed
+
+- A setting for a provider that this version does not know, for example `use devin on` saved by a newer copy, no longer stops every command with "Invalid provider kind". It is skipped, and `status` shows a warning to update.
+- Setup now asks about Gemini media, so its `gemini-api` program is installed when you turn it on, and it counts as an offer that may train on your data. Before, setup never mentioned it.
+- The Gemini media login opens `gemini-api configure --interactive` instead of only printing the program's help.
+
+### Changed
+
+- Boss mode settings count for every project: `on`, `off` and `set profile|training|context` apply everywhere, and setup saves its choices for all projects. Add `--project` for one project only. Codex as the assistant stays per project, because its rules live in that project's AGENTS.md. A project override keeps only what you changed there.
+- The uninstaller asks in a terminal whether to delete your settings too (with --force they always go, even without an install record), and asks about each program Quota Boss installed itself. Programs you already had, such as Graphify, are never offered for removal. It also names the command that removes the global `quota-boss` command.
+- `/handoff` notes keep your own requirements word for word, quote the last failing command exactly, add no new work and stay under about 1200 words.
+
 ## [0.4.9] - 2026-11-24
 
 ### Changed

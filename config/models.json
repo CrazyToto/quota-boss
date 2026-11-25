@@ -470,6 +470,22 @@
         "mechanical": 7
       }
     },
+    "devin-swe-2-flash": {
+      "$comment": "The only free Devin model (devin models list, 2026-11-25). Solo bench 2026-11-25: all hidden checks on small to refactor tasks, 95/96 on large and 130/132 on xlarge, the same level as Junie Lite, so implementation and mechanical match it; the rest stays provisional.",
+      "pool": "devin",
+      "label": "Devin SWE-2 Flash",
+      "cost": 0,
+      "scores": {
+        "architecture": 3,
+        "debugging": 4,
+        "implementation": 6,
+        "review": 3,
+        "research": 3,
+        "mechanical": 8
+      },
+      "contextTokens": 262144,
+      "capabilitySource": "context: devin models list (\"262K context, Free\"), 2026-11-25"
+    },
     "copilot-default": {
       "pool": "copilot",
       "label": "GitHub Copilot",

@@ -246,7 +246,7 @@ test.describe('security review regressions', () => {
   test('finding 12: mutations inherit enablement, privacy and caps from nearest registered real path', () => {
     lib.saveProject(project,{enabled:true,profile:'quality',allowTrainingProviders:true,host:'generic',terse:true,consensus:false,workers:{gpt:false},caps:{codex:{weekly:10}}});
     const nested=path.join(project,'nested');fs.mkdirSync(nested);process.chdir(nested);
-    cli.run(['set', 'profile','frugal']);const effective=lib.findProjectConfig();
+    cli.run(['set', 'profile','frugal','--project']);const effective=lib.findProjectConfig();
     assert.equal(effective.enabled,true);assert.equal(effective.allowTrainingProviders,true);assert.equal(effective.host,'generic');
     assert.equal(effective.workers,undefined);assert.equal(effective.terse,undefined);assert.equal(effective.consensus,undefined);assert.equal(effective.caps.codex.weekly,10);
     assert.equal(effective.directory,lib.projectKey(nested));assert.equal(lib.findProjectConfig(project).profile,'quality');

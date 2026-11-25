@@ -409,15 +409,32 @@ function saveProject(directory, value) {
   const key = projectKey(directory);
   return updateProjects(entries => ({ ...entries, [key]: value }))[key];
 }
+/** on, off, profile, training and context settings for every project; a project entry overrides them. Codex rules need an AGENTS.md per project, so host codex is never global. */
+const DEFAULT_FIELDS = ['enabled', 'host', 'profile', 'allowTrainingProviders', 'contextSuggest'];
+function defaultsFile() { return path.join(getPaths().quotaBossHome, 'defaults.json'); }
+function readDefaults() {
+  let value;
+  try { value = object(JSON.parse(readBounded(defaultsFile(), 64 * 1024))); } catch { return {}; }
+  return Object.fromEntries(DEFAULT_FIELDS.filter(key => Object.hasOwn(value, key) && !(key === 'host' && value.host === 'codex')).map(key => [key, value[key]]));
+}
+function saveDefaults(fields) {
+  const file = defaultsFile();
+  const saved = withLock(file, verify => {
+    const next = { ...readDefaults(), ...Object.fromEntries(DEFAULT_FIELDS.filter(key => Object.hasOwn(fields, key)).map(key => [key, fields[key]])) };
+    atomicWrite(file, JSON.stringify(next, null, 2) + '\n', verify); return next;
+  });
+  if (saved === null) throw new Error('Settings are busy; retry.');
+  return saved;
+}
 /** Only the nearest registered real path supplies project policy. No checkout config reads. */
 function findProjectConfig(cwd = process.cwd()) {
   const entries = readProjects();
   let directory = projectKey(typeof cwd === 'string' && cwd ? cwd : process.cwd());
   const initial = directory;
   while (true) {
-    if (Object.hasOwn(entries, directory)) return { ...normalizeProject(entries[directory]), directory, file: getPaths().projectsFile, raw: entries[directory] };
+    if (Object.hasOwn(entries, directory)) return { ...normalizeProject({ ...readDefaults(), ...object(entries[directory]) }), directory, file: getPaths().projectsFile, raw: entries[directory] };
     const parent = path.dirname(directory);
-    if (parent === directory) return { ...normalizeProject(null), directory: initial, file: null, raw: {} };
+    if (parent === directory) return { ...normalizeProject(readDefaults()), directory: initial, file: null, raw: {} };
     directory = parent;
   }
 }
@@ -1159,9 +1176,11 @@ function mergeProviders(base, override = {}, project = {}) {
   if (override.providers !== undefined) requireObject(override.providers, 'providers');
   if (override.caps !== undefined) validateCaps(override.caps);
   if (project.caps !== undefined) validateCaps(project.caps);
-  const providers = structuredClone(base.providers);
+  const providers = structuredClone(base.providers), ignored = [];
   for (const [id, value] of Object.entries(override.providers ?? {})) {
     requireObject(value, 'Provider override');
+    // A switch saved by a newer version (for example `use devin on`) has no defaults here; skip it instead of failing every command.
+    if (validProviderId(id) && !Object.hasOwn(providers, id) && value.kind === undefined) { ignored.push(id); continue; }
     providers[id] = { ...object(providers[id]), ...value };
   }
   const caps = tightenCaps(mergeCaps(base.caps ?? {}, override.caps ?? {}), project.caps ?? {});
@@ -1173,7 +1192,8 @@ function mergeProviders(base, override = {}, project = {}) {
     if (p.trainsOnData === undefined) p.trainsOnData = false;
     if (p.tos === undefined) p.tos = p.kind === 'api' ? 'api' : 'official-cli';
   }
-  return validateProviders({ providers, caps, ...(retired.length ? { retired } : {}) });
+  for (const id of Object.keys(caps)) if (ignored.includes(id)) delete caps[id];
+  return validateProviders({ providers, caps, ...(retired.length ? { retired } : {}), ...(ignored.length ? { ignored } : {}) });
 }
 function readProviderConfig(file) {
   try { return requireObject(JSON.parse(readBounded(file, 1024 * 1024)), 'Provider config'); }
@@ -1352,7 +1372,8 @@ function providerContext(config = BUILTIN_PROVIDERS, limits = {}, history = {}) 
 function providerWarnings(models, config) {
   return [...new Set(Object.values(object(models.models)).map(m => m?.pool))]
     .filter(id => !Object.hasOwn(config.providers, id))
-    .map(id => 'Warning: ignored models of unknown provider ' + (validProviderId(id) ? id : '(invalid id)'));
+    .map(id => 'Warning: ignored models of unknown provider ' + (validProviderId(id) ? id : '(invalid id)'))
+    .concat((config.ignored ?? []).map(id => 'Warning: ignored setting for unknown provider ' + id + ' (saved by a newer Quota Boss? Update it)'));
 }
 // Free offers cost the user nothing and routing already skips them when spent, so their percentages would only add noise.
 function formatProvidersCompact(config, limits) {
@@ -1575,7 +1596,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

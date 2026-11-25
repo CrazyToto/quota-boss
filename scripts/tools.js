@@ -35,7 +35,7 @@ const REGISTRY = Object.freeze({
   'kilo-free': { label: 'Kilo', binary: 'kilo', source: 'https://kilo.ai/docs/code-with-ai/platforms/cli',
     install: { all: npm('@kilocode/cli') } },
   // Not a provider: only the setup installs it, after asking. `graphify install` registers its Claude Code skill.
-  graphify: { label: 'Graphify', binary: 'graphify', source: 'https://github.com/Graphify-Labs/graphify', noVersionCheck: true, postInstall: ['install'],
+  graphify: { label: 'Graphify', binary: 'graphify', source: 'https://github.com/Graphify-Labs/graphify', noVersionCheck: true, postInstall: ['install'], preUninstall: ['uninstall'],
     install: { all: { manager: 'uv', args: ['tool', 'install', '--default-index', 'https://pypi.org/simple', 'graphifyy'] } } },
   ollama: { label: 'Ollama', binary: 'ollama', source: 'https://ollama.com/download',
     install: { win32: winget('Ollama.Ollama'), darwin: { manager: 'brew', args: ['install', 'ollama'] } } },
@@ -48,7 +48,7 @@ const REGISTRY = Object.freeze({
   'gemini-media': { label: 'Gemini API CLI', binary: 'gemini-api', source: 'https://aistudio.google.com/docs/cli', install: {},
     paste: { win32: 'iwr -useb https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.ps1 | iex',
       all: 'curl -fsSL https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.sh | bash' },
-    login: { command: 'gemini-api configure --api-key <key>', run: [], hint: 'Get a free key at https://aistudio.google.com/apikey, then run gemini-api configure --api-key <key>.' } },
+    login: { command: 'gemini-api configure --interactive', run: ['configure', '--interactive'], hint: 'Get a free key at https://aistudio.google.com/apikey from a project without billing, then paste it into the form.' } },
   // One CLI and account login for both Junie Lite and JetBrains AI.
   // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
   junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
@@ -109,7 +109,7 @@ function context(options = {}) {
     return lib.childEnv(path.basename(String(file)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase(), env, native, platform);
   };
   return { platform, env, scripts: options.scripts, home: options.home || env.USERPROFILE || env.HOME || null, find: options.find || (name => locate(name, env, platform)),
-    call: (file, args, timeout) => lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024 }),
+    call: (file, args, timeout, workingDirectory) => lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024, workingDirectory }),
     attach: (file, args, poll) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file),
       spawnSync: poll ? (cmd, argv, opts) => spawnSync(cmd,
         [...argv.slice(0, -1), argv.at(-1).replace(/^("start "Quota Boss login") \/wait /, '$1 ')],
@@ -248,6 +248,7 @@ function installOne(id, d) {
   const result = d.call(manager, route.args, INSTALL_TIMEOUT);
   if (!succeeded(result)) return '- ' + id + ': FAILED (' + failureText(result) + ')';
   const after = inspect(id, d);
+  if (before.state === 'missing' && after.state === 'ok' && d.installedFile) rememberInstalled(id, d.installedFile);
   if (after.state === 'ok' && REGISTRY[id].postInstall) {
     const setupStep = d.call(d.find(REGISTRY[id].binary), REGISTRY[id].postInstall, INSTALL_TIMEOUT);
     if (!succeeded(setupStep)) return '- ' + id + ': FAILED (installed, but its setup step failed: ' + failureText(setupStep) + ')';
@@ -259,9 +260,68 @@ function installOne(id, d) {
   return '- ' + id + ': installed; open a new terminal if it is not found yet';
 }
 
+/** Programs Quota Boss installed from scratch, so the uninstaller never offers one the user already had. */
+function installedFile() { return path.join(lib.getPaths().quotaBossHome, 'installed-tools.json'); }
+function readInstalled(file = installedFile()) {
+  try {
+    const value = JSON.parse(lib.readBounded(file, 64 * 1024));
+    return Array.isArray(value?.tools) ? [...new Set(value.tools.filter(id => typeof id === 'string' && Object.hasOwn(REGISTRY, id)))] : [];
+  } catch { return []; }
+}
+function writeInstalled(ids, file) {
+  if (ids.length) lib.atomicWrite(file, JSON.stringify({ tools: ids }, null, 2) + '\n');
+  else fs.rmSync(file, { force: true });
+}
+function rememberInstalled(id, file) {
+  try { const ids = readInstalled(file); if (!ids.includes(id)) writeInstalled([...ids, id], file); } catch {}
+}
+
+/** The removal command comes from this registry, never from the record file. Script installs have none. */
+function uninstallRoute(id, platform) {
+  const route = REGISTRY[id].install[platform] || REGISTRY[id].install.all;
+  if (route?.manager === 'npm') return { manager: 'npm', args: ['uninstall', '-g', route.latestPackage] };
+  if (route?.manager === 'uv') return { manager: 'uv', args: ['tool', 'uninstall', route.args.at(-1)] };
+  if (route?.manager === 'winget') return { manager: 'winget', args: ['uninstall', '--id', route.args[route.args.indexOf('--id') + 1], '-e', '--disable-interactivity'] };
+  if (route?.manager === 'brew') return { manager: 'brew', args: ['uninstall', route.args.at(-1)] };
+  return null;
+}
+
+/** On uninstall: ask about each program Quota Boss installed itself; programs the user had before are never listed. */
+function offerRemoval({ ask = lib.askLine, say = console.log, interactive = !!(process.stdin.isTTY && process.stdout.isTTY), options, file = installedFile() } = {}) {
+  const d = context(options);
+  const recorded = readInstalled(file), ids = recorded.filter(id => d.find(REGISTRY[id].binary));
+  // Without a terminal nothing is decided, so the record stays whole even for programs this shell cannot see.
+  if (!interactive && !recorded.length) return;
+  if (!ids.length && interactive) { writeInstalled([], file); return; }
+  const display = route => route.manager + ' ' + route.args.join(' ');
+  if (!interactive) {
+    say('Kept programs Quota Boss installed: ' + recorded.map(id => REGISTRY[id].label).join(', ') + '. Run the uninstaller in a terminal to choose which to remove.');
+    writeInstalled(recorded, file); return;
+  }
+  const kept = [];
+  for (const id of ids) {
+    const tool = REGISTRY[id], route = uninstallRoute(id, d.platform);
+    if (!route) { say(tool.label + ' was installed by its own script; remove it by hand if you like: ' + tool.source); continue; }
+    if (!/^y(es)?$/i.test(ask('Quota Boss installed ' + tool.label + '. Remove it too? [y/N] '))) { kept.push(id); continue; }
+    // Its own clean-up first (Graphify removes its skill); if that fails, the program stays so nothing is half removed.
+    const binary = d.find(tool.binary);
+    if (tool.preUninstall) {
+      const step = binary ? d.call(binary, tool.preUninstall, INSTALL_TIMEOUT, d.home || undefined) : { status: 1, stderr: tool.binary + ' not found' };
+      if (!succeeded(step)) { say('Could not remove ' + tool.label + ' (' + failureText(step) + '). Run: ' + tool.binary + ' ' + tool.preUninstall.join(' ') + ', then ' + display(route)); kept.push(id); continue; }
+    }
+    const manager = d.find(route.manager);
+    const result = manager ? d.call(manager, route.args, INSTALL_TIMEOUT) : { status: 1, stderr: route.manager + ' not found' };
+    if (succeeded(result)) say('Removed ' + tool.label + '.');
+    else { say('Could not remove ' + tool.label + ' (' + failureText(result) + '). Run: ' + display(route)); kept.push(id); }
+  }
+  writeInstalled(kept, file);
+}
+
 /** One tool failing never stops the others; each id gets exactly one result line. */
 function install(ids, options) {
+  // Test doubles pass their own spawnSync; only real installs are recorded.
   const d = { ...context(options), scripts: options?.approved === true,
+    installedFile: options?.installedFile !== undefined ? options.installedFile : options?.spawnSync ? null : installedFile(),
     say: options?.say || (options?.approved === true ? console.log : undefined) };
   return ids.map(id => installOne(id, d)).join('\n');
 }
@@ -414,4 +474,4 @@ function command(args, config, options) {
   throw new Error('Usage: quota-boss tools | tools install <id...> | tools logins');
 }
 
-module.exports = { REGISTRY, enabledIds, check, installable, report, install, logins, pendingLogins, runLogin, finishLogin, activate, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };
+module.exports = { REGISTRY, enabledIds, check, installable, report, install, offerRemoval, readInstalled, logins, pendingLogins, runLogin, finishLogin, activate, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };

@@ -297,6 +297,25 @@ Junie CLI 26.11.2, Junie Lite (it ran Qwen/Qwen3.6-27B-FP8), `bench/run.js --hos
 | large | 94/96 | about 110 s |
 | xlarge | 126/132 | about 95 s |
 
+### Devin SWE-2 Flash (2026-11-25)
+
+Devin CLI 3000.14, SWE-2 Flash Medium (the free model), `bench/run.js --host devin --arm off`, 3 runs per task, cost 0.
+Devin cannot run shell commands in print mode, so it never ran its own tests:
+
+| Task | Hidden checks | Time per run |
+| --- | --- | --- |
+| small | 15/15 | about 7 s |
+| medium | 54/54 | about 24 s |
+| mixed | 66/66 | about 28 s |
+| bugfix | 27/27 | about 11 s |
+| refactor | 30/30 | about 14 s |
+| docs | 21/21 | about 15 s |
+| large | 95/96 | 79 s and 108 s; once 1,463 s |
+| xlarge | 130/132 | 553 s; 1,426 s; once stopped by the 30-minute bench limit (43/44 already written) |
+
+Same quality as Junie Lite and faster on small jobs, but on the two biggest tasks the CLI sometimes kept running long
+after it had written the work.
+
 `bench/effort.js` (scheduler task, 11 checks): Junie Lite 11/11 in 3 of 4 runs and 10/11 once, about 11 s.
 GPT-6.2 Sol and GPT-6.2 Astra passed 11/11 at every level in 2 runs each. Output grew from about 900 tokens at low to
 about 2,650 (Sol) and 2,150 (Astra) at xhigh without a better result; Astra stayed at about 900 tokens up to medium.

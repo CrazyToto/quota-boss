@@ -221,7 +221,9 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
       if (result.message) say('Could not remove Codex SessionStart hook: ' + result.message);
       else if (result.changed) say('Remove Quota Boss Codex SessionStart hook (keep hooks.json).');
     };
-    if (!previous) { removeCodexHook(); cleanupProjects(); say('No Quota Boss installation manifest found; nothing to uninstall.'); return; }
+    // Settings the user asked to delete: the registry goes after cleanupProjects has used it.
+    const forget = () => { if (force) for (const name of ['state.json', 'defaults.json', 'projects.json', path.join('config', 'use.json')]) remove(path.join(dirs.home, name)); };
+    if (!previous) { removeCodexHook(); cleanupProjects(); forget(); say('No Quota Boss installation manifest found; nothing to uninstall.'); return; }
     // Validate every manifest path before making changes. Never follow directory symlinks.
     for (const entry of manifest.files) {
       const base = entry.kind === 'agent' ? path.join(dirs.claude, 'agents')
@@ -267,7 +269,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
       }
       remove(entry.path);
     }
-    if (force) remove(path.join(dirs.home, 'state.json'));
+    forget();
     if (manifest.mcpAdded || manifest.mcpPending) {
       if (skipMCP) {
         say('MCP removal skipped; retaining the manifest so it can be retried.');
@@ -280,7 +282,7 @@ function installLocked(options = {}, verifyInstaller = () => {}) {
       }
     }
     remove(manifestFile);
-    say(`Quota Boss uninstalled. ${force ? 'Installed config and state removed.' : 'Config and state kept.'}`);
+    say(`Quota Boss uninstalled. ${force ? 'Settings and state removed.' : 'Settings and state kept.'}`);
     return;
   }
 
@@ -523,9 +525,17 @@ if (require.main === module) {
   try {
     const args = process.argv.slice(2);
     const installing = !args.includes('--dry-run') && !args.includes('--uninstall');
+    const removing = args.includes('--uninstall') && !args.includes('--dry-run');
+    const terminal = !!(process.stdin.isTTY && process.stdout.isTTY);
     const newProviders = require('./scripts/new-providers');
     const before = installing ? newProviders.beforeInstall() : null;
+    if (removing && terminal && !args.includes('--force') && ['config', 'defaults.json'].some(name => fs.existsSync(path.join(paths(process.env).home, name)))
+      && /^y(es)?$/i.test(lib.askLine('Also delete your Quota Boss settings? [y/N] '))) args.push('--force');
     install({ args });
+    if (removing) {
+      try { require('./scripts/tools').offerRemoval({ interactive: terminal }); } catch (error) { console.error(`Program check skipped (${error.message}).`); }
+      if (findExecutable('quota-boss', process.env, process.platform)) console.log('The quota-boss command itself stays; remove it with: npm uninstall -g quota-boss');
+    }
     if (installing) {
       // Before the CLI check, so a provider turned on here gets its program offered right away.
       try { newProviders.recordInstall(before); newProviders.offer(); } catch (error) { console.error(`New provider check skipped (${error.message}); run quota-boss setup later.`); }

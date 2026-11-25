@@ -137,7 +137,7 @@ test('setup removes both legacy Mistral pools with Zen GLM after confirmation', 
   const { commands, said, installs, keyed } = play(flow(OTHER_NONE, FREE_NONE, ['y']), options);
   assert.deepEqual(commands.slice(1), [['remove-api', 'zen-glm'], ['remove-api', 'mistral-api'], ['remove-api', 'mistral']]);
   assert.match(said, /zen-glm, mistral-api, mistral/);
-  assert.doesNotMatch(said, /Already added:.*mistral-api|Key 1 of|Allow them in this folder/);
+  assert.doesNotMatch(said, /Already added:.*mistral-api|Key 1 of|Allow them in all your projects/);
   assert.deepEqual(installs, []);
   assert.deepEqual(keyed, []);
   assert.deepEqual(play(flow(OTHER_NONE, FREE_NONE, ['n']), options).commands, []);
@@ -157,7 +157,7 @@ test('one answer turns on the grouped free offers except NVIDIA, and missing key
   assert.ok(commands.some(c => c[0] === 'add-api' && c[1] === 'gemini-api'));
   assert.deepEqual(commands.filter(c => c[0] === 'remove-api').map(c => c[1]), ['openrouter-free', 'cloudflare', 'cohere', 'gemini-api', 'zai']);
   assert.match(said, /humans may read/);
-  assert.match(said, /Allow them in this folder/);
+  assert.match(said, /Allow them in all your projects/);
   assert.match(said, /Left out because no key was entered: OpenRouter Free/);
   assert.doesNotMatch(said, /Still not logged in/);
   assert.doesNotMatch(said, /could not confirm whether it trains/);
@@ -175,7 +175,7 @@ test('the add-all free offers choice excludes NVIDIA', () => {
 test('the no-training group adds only offers that do not train and asks no training question', () => {
   const { said, commands } = play(flow(OTHER_NONE, ['1'], ['y']), { stored: ['1 credentials'] });
   assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek'], ['add-api', 'zai'], ['remove-api', 'zai']]);
-  assert.doesNotMatch(said, /Allow them in this folder/);
+  assert.doesNotMatch(said, /Allow them in all your projects/);
   assert.match(said, /Free offers ready to use: OpenCode Zen DeepSeek\./);
 });
 
@@ -247,9 +247,9 @@ test('the setup asks for more APIs, re-asks bad input and needs a stated trainin
 
 test('the training question appears only when a chosen offer may train', () => {
   const none = play(flow(OTHER_NONE, FREE_NONE, ['y']));
-  assert.doesNotMatch(none.said, /Allow them in this folder/);
+  assert.doesNotMatch(none.said, /Allow them in all your projects/);
   const cohere = play(flow(OTHER_NONE, COHERE, ['n', 'y']));
-  assert.match(cohere.said, /Allow them in this folder/);
+  assert.match(cohere.said, /Allow them in all your projects/);
   assert.deepEqual(cohere.commands.slice(1), [['add-api', 'cohere']]);
   const allowed = play(flow(OTHER_NONE, COHERE, ['y', 'y']));
   assert.ok(allowed.commands.some(c => c[0] === 'set' && c[1] === 'training' && c[2] === 'on'));
@@ -266,7 +266,7 @@ test('f moves forward and keeps the answer; the summary cannot be skipped', () =
   const { said, commands } = play(answers);
   assert.match(said, /Enter or f = next page, b = previous page/);
   assert.match(said, /one of the shown letters/);
-  assert.deepEqual(commands.slice(1), [['use', 'codex', 'off', '--project']]);
+  assert.deepEqual(commands.slice(1), [['use', 'codex', 'off']]);
 });
 
 test('confirmed setup starts required logins without asking again', () => {
@@ -300,7 +300,7 @@ test('OpenCode Zen is added without a key screen or a training question', () => 
   assert.deepEqual(commands.slice(1), [['add-api', 'zen-deepseek']]);
   assert.deepEqual(keyed, []);
   assert.deepEqual(opened, []);
-  assert.doesNotMatch(said, /Allow them in this folder/);
+  assert.doesNotMatch(said, /Allow them in all your projects/);
   assert.doesNotMatch(said, /Key 1 of/);
 });
 
@@ -454,6 +454,23 @@ test('the Junie Lite screen has no plan note, JetBrains AI has one', () => {
   assert.deepEqual(commands.slice(1), [['use', 'junie-lite', 'on'], ['use', 'jetbrains', 'on']]);
 });
 
+test('Gemini media gets its own screen after the plans, installs its program and counts as a training offer', () => {
+  const providers = { ...baseProviders(), 'gemini-media': provider(false, { kind: 'free', evidence: 'docs', cli: { command: 'gemini-api' } }) };
+  // The extra screen comes after the 4 plan screens; a yes there brings up the training question before the summary.
+  const on = play(flow([...OTHER_NONE, 'y'], FREE_NONE, ['y', 'y']), { providers, programs: { 'gemini-media': 'missing' }, afterInstall: { 'gemini-media': 'ok' } });
+  assert.match(on.said, /Gemini media \(free\) \(off\)/);
+  assert.ok(on.said.indexOf('GitHub Copilot (') < on.said.indexOf('Gemini media (free) ('));
+  assert.ok(on.said.includes(TEXT.trainingNames('Gemini media (free)')));
+  assert.deepEqual(on.installs, ['gemini-media']);
+  assert.ok(on.commands.some(c => c.join(' ') === 'use gemini-media on'));
+  assert.deepEqual(on.left, []);
+  const off = play(flow([...OTHER_NONE, ''], FREE_NONE, ['y']), { providers });
+  assert.ok(!off.commands.some(c => c.includes('gemini-media')));
+  assert.deepEqual(off.left, []);
+  // Without the provider in the config there is no screen, so older answer lists still fit.
+  assert.doesNotMatch(play(flow(OTHER_NONE, FREE_NONE, ['y'])).said, /Gemini media/);
+});
+
 test('a provider that needs a self-test is turned on without one and tested after the login, unless that login stays open', () => {
   const docs = () => ({ ...baseProviders(), 'junie-lite': provider(false, { evidence: 'docs', cli: { command: 'junie' } }), jetbrains: provider(false) });
   const done = play(flow(OTHER_NONE, FREE_NONE, ['y']), { providers: docs() });
@@ -510,4 +527,11 @@ test('the Junie login shows its hint and runs junie on yes', () => {
   assert.match(said, /Logging in: junie \(new window\)/);
   assert.match(said, /Continue\s+with\s+JetBrains\s+account/);
   assert.deepEqual(logged, ['junie']); assert.deepEqual(opened, []);
+});
+
+test('setup counts for every project; a yes also clears a project switch that still blocks the provider', () => {
+  const plain = play(flow(OTHER_NONE, FREE_NONE, ['y'])).commands;
+  assert.ok(plain.every(command => !command.includes('--project')));
+  const { commands } = play([...START, ...FIRST_TWO, 'y', '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'], { use: { providersOff: ['codex'] } });
+  assert.ok(commands.some(command => command.join(' ') === 'use codex on --project'), JSON.stringify(commands));
 });

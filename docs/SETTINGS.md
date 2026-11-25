@@ -15,7 +15,7 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 <!-- settings-help:start; generated from config/settings-help.json -->
 | Setting | What it does | Quality | Quota | When to use |
 |---|---|---|---|---|
-| `enabled` | Turn task routing on or off for this project. | → | saved | Turn it on when you want the boss to share work across your available tools. |
+| `enabled` | Turn task routing on or off for all projects; add --project for this project only. | → | saved | Turn it on when you want the boss to share work across your available tools. |
 | `profile` | Quality favors stronger answers, balanced shares the trade-off, and frugal favors lower quota use. | ↑ | used | Choose quality for difficult work, balanced for everyday work, or frugal when quota is scarce. |
 | `host` | Choose the assistant you talk to: Claude Code, Codex, or another tool using generic instructions. | → | same | Choose the tool where you are working; this changes how routing instructions and workers are delivered. |
 | `training` | Permit enabled providers marked as training on your data to receive project tasks. | → | saved | Leave it off unless you accept those providers using the project prompts and code for training. |

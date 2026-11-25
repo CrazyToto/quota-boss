@@ -86,6 +86,16 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.throws(() => lib.mergeProviders(defaults, { providers: { custom: { ...p, trainsOnData: 'false' } } }), /trainsOnData/);
   });
 
+  test('a switch for a provider this version does not know is ignored with a warning, not a crash', () => {
+    const merged = lib.mergeProviders(defaults, { providers: { 'future-cli': { enabled: true } }, caps: { 'future-cli': { fiveHour: 50 } } });
+    assert.equal(merged.providers['future-cli'], undefined);
+    assert.equal(merged.caps['future-cli'], undefined);
+    assert.deepEqual(merged.ignored, ['future-cli']);
+    assert.match(lib.providerWarnings({ models: {} }, merged).join('\n'), /ignored setting for unknown provider future-cli/);
+    // A full custom entry still validates as before.
+    assert.throws(() => lib.mergeProviders(defaults, { providers: { 'future-cli': { kind: 'bogus' } } }), /Invalid provider kind/);
+  });
+
   test('zero and small costs use a 0.2 floor without bypassing probability floors', () => {
     const providers = lib.mergeProviders(defaults, { providers: { ollama: { enabled: true } } });
     const registry = { categories: ['mechanical'], models: {
@@ -222,13 +232,13 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.doesNotMatch(cli.run(['route']), /Kilo Auto Free/);
     for (const [command, key] of [['training', 'allowTrainingProviders']]) {
       for (const value of ['on', 'off']) {
-        const output = cli.run(['set', command, value]);
+        const output = cli.run(['set', command, value, '--project']);
         assert.equal(output.split('\n').filter(l => l.startsWith('Effect:')).length, 1);
         assert.equal(projectValue()[key], value === 'on');
         assert.equal(projectValue().custom.keep, 42);
       }
     }
-    cli.run(['set', 'training', 'on']); assert.match(cli.run(['route', '--explain']), /Kilo Auto Free/);
+    cli.run(['set', 'training', 'on', '--project']); assert.match(cli.run(['route', '--explain']), /Kilo Auto Free/);
     assert.throws(() => cli.run(['set', 'short-answers', 'on']), /short-answers was removed in 0\.2\.0/);
     assert.equal(projectValue().custom.keep, 42);
   });

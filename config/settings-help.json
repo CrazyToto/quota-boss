@@ -1,7 +1,7 @@
 {
   "enabled": {
     "title": "Boss mode",
-    "what": "Turn task routing on or off for this project.",
+    "what": "Turn task routing on or off for all projects; add --project for this project only.",
     "quality": "same",
     "quota": "saves",
     "when": "Turn it on when you want the boss to share work across your available tools.",

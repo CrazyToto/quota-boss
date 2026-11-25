@@ -49,7 +49,8 @@ npx quota-boss@latest
 
 This works the same on Windows, macOS and Linux. To see first what would change, add `--dry-run`. The installer backs
 up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
-everything again. Run the first command again to update. An update asks about each new provider in a terminal.
+everything again. In a terminal it asks whether to delete your settings too, and asks about each program Quota Boss
+installed itself; programs you already had, such as Graphify, are never touched. Run the first command again to update. An update asks about each new provider in a terminal.
 Session starts ask again until you answer. A yes in setup, after an update, or through `quota-boss use <id> on` in a
 terminal installs the CLI if needed, starts the login, and runs the self-test (free providers skip it and start with small jobs).
 
@@ -81,7 +82,7 @@ Inside Claude Code:
 | Command | What it does |
 |---|---|
 | `/boss-setup` | Start the step-by-step setup |
-| `/boss on [quality\|balanced\|frugal]` | Turn boss mode on for this project, with a profile |
+| `/boss on [quality\|balanced\|frugal]` | Turn boss mode on for all projects, with a profile; add `--project` for this one only |
 | `/boss off` | Turn it off |
 | `/boss status` | Show limits, mode, profile and workers |
 | `/boss settings` | Show every setting with its current value and the command that changes it |
@@ -165,7 +166,7 @@ in [bench/](https://github.com/CrazyToto/quota-boss/blob/main/bench/README.md), 
 
 | Kind | Examples | How it is used |
 |---|---|---|
-| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
+| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Devin, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
 | Free CLI offers | Junie Lite, Kilo, Gemini media | Junie Lite is on by default: one yes installs Junie, opens the login and tests it. Gemini media (Google's `gemini-api` CLI) is the route for video, audio and YouTube links: `quota-boss use gemini-media on` |
 | Free API offers | OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
@@ -189,8 +190,8 @@ unless you allow them for a project. Details are in [docs/PROVIDERS.md](docs/PRO
 - **No credentials.** Quota Boss never reads keys, tokens or cookies. API keys stay in OpenCode.
 - **No dependencies.** Plain Node.js; the package pulls in no other npm packages. Network access happens only through
   the official CLIs.
-- **Opt-in per project.** A cloned repository cannot turn boss mode on or give consent to send data to a provider
-  that trains on it.
+- **Opt-in, never from a repository.** Settings live in your home folder and count for all projects unless you add
+  `--project`. A cloned repository cannot turn boss mode on or give consent to send data to a provider that trains on it.
 - **Reversible.** The installer backs up your settings and removes exactly what it added.
 
 The design principles, the trust boundary and how to report a problem are in [SECURITY.md](SECURITY.md).

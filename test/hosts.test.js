@@ -70,7 +70,7 @@ test.describe('hosts and diagnostics', () => {
     const legacy = path.join(project, '.claude', 'harness.json');
     lib.writeJson(legacy, { enabled: true, profile: 'frugal', custom: 42 });
     assert.equal(lib.findProjectConfig().profile, 'balanced');
-    cli.run(['on', '--host', 'generic']);
+    cli.run(['on', '--host', 'generic', '--project']);
     assert.equal(projectValue().custom, undefined);
     assert.equal(lib.findProjectConfig().host, 'generic');
     assert.equal(lib.findProjectConfig().file, projectFile());

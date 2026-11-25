@@ -103,34 +103,95 @@ test('-h is an alias for --help', () => {
 });
 function config() { return lib.readProjects()[lib.projectKey(project)]; }
 
-test('on, profile and off persist only in the current project', () => {
-  let result = command(['on']);
+test('on, profile and off with --project persist only in the current project', () => {
+  let result = command(['on', '--project']);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Quota Boss on \| profile balanced/);
   assert.equal(config().enabled, true);
-  assert.equal(command(['set', 'profile', 'frugal']).status, 0);
+  assert.equal(command(['set', 'profile', 'frugal', '--project']).status, 0);
   assert.equal(config().profile, 'frugal');
   const removed = command(['set', 'codex-tasks', 'off']);
   assert.equal(removed.status, 1);
   assert.match(removed.stderr, /codex-tasks was removed in 0.2.0: switch Codex with quota-boss use codex on|off./);
   assert.equal(config().workers, undefined);
-  assert.equal(command(['off']).status, 0);
+  assert.equal(command(['off', '--project']).status, 0);
   assert.equal(config().enabled, false);
   assert.equal(config().profile, 'frugal');
-  assert.equal(command(['on', 'quality']).status, 0);
+  assert.equal(command(['on', 'quality', '--project']).status, 0);
   assert.equal(config().profile, 'quality');
   assert.equal(lib.readProjects()[lib.projectKey(temporary)], undefined);
 });
 
+test('on, off and set count for every project unless --project is given, and the current project follows them', () => {
+  const other = path.join(temporary, 'other');
+  fs.mkdirSync(other);
+  enable({ custom: { retain: true } });
+  assert.match(command(['on', 'frugal']).stdout, /Quota Boss on | profile frugal | all projects/);
+  // The project's own copy of the changed fields goes; other keys stay.
+  assert.equal(config().enabled, undefined);
+  assert.equal(config().profile, undefined);
+  assert.deepEqual(config().custom, { retain: true });
+  assert.deepEqual(lib.readDefaults(), { enabled: true, profile: 'frugal' });
+  process.chdir(other);
+  assert.equal(lib.findProjectConfig().enabled, true);
+  assert.equal(lib.findProjectConfig().profile, 'frugal');
+  assert.equal(lib.readProjects()[lib.projectKey(other)], undefined);
+  // A project override wins over the global value.
+  assert.match(command(['off', '--project']).stdout, /| this project/);
+  assert.equal(lib.findProjectConfig().enabled, false);
+  process.chdir(project);
+  assert.equal(lib.findProjectConfig().enabled, true);
+  assert.equal(command(['set', 'training', 'on']).status, 0);
+  assert.equal(lib.readDefaults().allowTrainingProviders, true);
+  process.chdir(other);
+  assert.equal(lib.findProjectConfig().allowTrainingProviders, true);
+  assert.equal(lib.findProjectConfig().enabled, false);
+  // Codex rules live in each project's AGENTS.md, so host codex stays per project and never becomes global.
+  assert.match(command(['on', '--host', 'codex']).stdout, /| this project/);
+  assert.equal(lib.readDefaults().host, undefined);
+  fs.writeFileSync(lib.defaultsFile(), JSON.stringify({ host: 'codex', enabled: 'yes', other: 1 }));
+  assert.deepEqual(lib.readDefaults(), { enabled: 'yes' });
+  process.chdir(project);
+  assert.equal(lib.findProjectConfig().host, 'claude-code');
+  assert.equal(lib.findProjectConfig().enabled, false);
+  assert.equal(command(['set', 'statusline', 'boss', '--project']).status, 1);
+});
+
+test('a global switch reaches projects saved as full snapshots before 0.5, and another project training veto stays', () => {
+  const old = path.join(temporary, 'old'), vetoed = path.join(temporary, 'vetoed');
+  fs.mkdirSync(old); fs.mkdirSync(vetoed);
+  lib.saveProject(old, { enabled: true, profile: 'quality', allowTrainingProviders: true, rules: 'tiny', host: 'claude-code' });
+  lib.saveProject(vetoed, { enabled: true, profile: 'quality', allowTrainingProviders: false, rules: 'tiny', host: 'claude-code' });
+  enable({ allowTrainingProviders: false });
+  assert.equal(command(['off']).status, 0);
+  assert.equal(command(['set', 'training', 'on']).status, 0);
+  // Run here, so this project follows; the other project's own "off" is kept.
+  assert.equal(lib.findProjectConfig().allowTrainingProviders, true);
+  process.chdir(vetoed);
+  assert.equal(lib.findProjectConfig().allowTrainingProviders, false);
+  assert.equal(lib.findProjectConfig().enabled, false);
+  process.chdir(old);
+  assert.equal(lib.findProjectConfig().enabled, false);
+  assert.equal(lib.findProjectConfig().profile, 'quality');
+  assert.equal(lib.findProjectConfig().allowTrainingProviders, true);
+  // A project write ends the snapshot: only the field set here stays, the rest follows global switches.
+  assert.equal(command(['set', 'context', 'off', '--project']).status, 0);
+  assert.deepEqual(Object.keys(lib.readProjects()[lib.projectKey(old)]).filter(key => lib.DEFAULT_FIELDS.includes(key) || key === 'rules'), ['contextSuggest']);
+  assert.equal(command(['on']).status, 0);
+  assert.equal(lib.findProjectConfig().enabled, true);
+  assert.equal(command(['set', 'training', 'off']).status, 0);
+  assert.equal(lib.findProjectConfig().allowTrainingProviders, false);
+});
+
 test('mutations preserve unknown config keys and write locally under an enabled ancestor', () => {
   enable({ custom: { retain: true } });
-  command(['set', 'profile', 'frugal']);
+  command(['set', 'profile', 'frugal', '--project']);
   assert.deepEqual(config().custom, { retain: true });
   const nested = path.join(project, 'child');
   fs.mkdirSync(nested);
   process.chdir(nested);
   assert.match(command(['status']).stdout, /Quota Boss on/);
-  command(['off']);
+  command(['off', '--project']);
   assert.equal(lib.readProjects()[lib.projectKey(nested)].enabled, false);
   assert.equal(config().enabled, true);
 });

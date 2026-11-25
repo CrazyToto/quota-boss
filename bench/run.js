@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex|junie --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex|junie|devin --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex|junie --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex|junie|devin --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 const { find: findTranscript, analyze: analyzeTranscript } = require('./transcript');
 function parseArm(value) {
@@ -34,9 +34,10 @@ if (reps > 1) {
  return;
 }
 const task = args.task;
-// Junie is a worker CLI, not a boss host, so it runs only the off arm (solo quality of one model).
-if (!['claude', 'codex', 'junie'].includes(host) || !['on', 'off'].includes(mode) || (host === 'junie' && mode !== 'off') || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
-const model = args.model || { claude: 'opus', codex: 'gpt-6.1-sol', junie: 'junie-lite' }[host];
+// Junie and Devin are worker CLIs, not boss hosts, so they run only the off arm (solo quality of one model).
+const solo = ['junie', 'devin'].includes(host);
+if (!['claude', 'codex', 'junie', 'devin'].includes(host) || !['on', 'off'].includes(mode) || (solo && mode !== 'off') || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
+const model = args.model || { claude: 'opus', codex: 'gpt-6.1-sol', junie: 'junie-lite', devin: 'swe-2-flash-medium' }[host];
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
 const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`);
 const n = args.n || '1';
@@ -70,7 +71,8 @@ try {
   const status = quota('settings');
   previousProfile = /^profile\s*\|\s*(quality|balanced|frugal)\b/m.exec(status.stdout || '')?.[1];
   if (!previousProfile) throw new Error('Could not determine previous profile');
-  const on = mode === 'off' ? quota('off') : quota('on', '--host', host === 'codex' ? 'codex' : 'claude-code', profile);
+  // --project: on, off and profile are global by default, and a bench must only change its own fixture.
+  const on = mode === 'off' ? quota('off', '--project') : quota('on', '--host', host === 'codex' ? 'codex' : 'claude-code', ...(profile ? [profile] : []), '--project');
   if (on.status !== 0) throw new Error('quota-boss setup failed: ' + (on.stdout + on.stderr).slice(0, 300));
 }
 
@@ -100,6 +102,11 @@ if (host === 'claude') {
   const native = nativeLauncher('junie', process.env, process.platform, dir);
   const cli = ['--input-format=text', '--output-format=json', '--skip-update-check', `--model=${model}`, ...(effort ? [`--effort=${effort}`] : [])];
   run = execute(native ? native.file : 'junie', cli, { cwd: dir, input: prompt, encoding: 'utf8', shell: !native && process.platform === 'win32', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: childEnv('junie', process.env, native) });
+} else if (host === 'devin') {
+  // The same switches as the devin preset: free model, no trust prompt, edits without asking. Plain text output, no usage.
+  const bin = process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'devin', 'cli', 'bin') : null;
+  const env = { ...process.env, ...(bin ? { PATH: bin + path.delimiter + (process.env.PATH || '') } : {}) };
+  run = execute('devin', ['--respect-workspace-trust', 'false', '--permission-mode', 'accept-edits', '--model', model, '-p', prompt], { cwd: dir, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env });
 } else {
   run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
     { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, QUOTA_BOSS_BENCH: runName, ...modeEnv } });
@@ -186,7 +193,7 @@ const line = {
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');
 console.log(`done ${runName} ${seconds}s hidden=${hidden} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);
 
-} finally { if (previousProfile) { const off = quota('off'); const restored = quota('set', 'profile', previousProfile); if (off.status !== 0 || restored.status !== 0) throw new Error('Could not restore quota-boss profile'); } }
+} finally { if (previousProfile) { const off = quota('off', '--project'); const restored = quota('set', 'profile', previousProfile, '--project'); if (off.status !== 0 || restored.status !== 0) throw new Error('Could not restore quota-boss profile'); } }
 }
 module.exports = { main, parseArm };
 if (require.main === module) { try { main(); } catch (e) { console.error(e.message); process.exitCode = 1; } }

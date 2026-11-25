@@ -4,7 +4,7 @@ Boss mode on versus off on a fresh fixture with hidden acceptance tests. Every r
 Quota Boss (`node install.js` first), so it spends real quota. The folder is not part of the npm package.
 
 ```
-node bench/run.js --host claude|codex --mode on|off --task small|medium|mixed [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--out <dir>]
+node bench/run.js --host claude|codex|junie|devin --mode on|off --task small|medium|mixed [--model <id>] [--effort <level>] [--label <name>] [--n <k>] [--out <dir>]
 ```
 
 - `small`: one function and its tests (5 hidden checks).
@@ -12,7 +12,7 @@ node bench/run.js --host claude|codex --mode on|off --task small|medium|mixed [-
 - `mixed`: `medium` plus four chores: a rename, JSDoc comments, two `package.json` fields and a README usage section
   (22 hidden checks). The chores give the boss trivial work it could hand down.
 
-Defaults: `opus` for `--host claude`, `gpt-6.1-sol` at `medium` for `--host codex`, results in
+Defaults: `opus` for `--host claude`, `gpt-6.1-sol` at `medium` for `--host codex`, `junie-lite` and `swe-2-flash-medium` for the worker CLIs `junie` and `devin` (off arm only, solo quality), results in
 `<tmp>/quota-boss-bench`. Each run appends one line to `results.jsonl` there: time, hidden and own test results, Claude
 cost per model from the `claude -p` result, and every Codex session started in the fixture with its tokens and an
 estimated USD price (list prices from [docs/MODELS.md](../docs/MODELS.md)).
