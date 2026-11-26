@@ -135,7 +135,7 @@ function guide(config) {
 
 // Benched by the maintainer. A paid docs-only provider stays gated by its self-test, which also proves the CLI and
 // login work on this machine; a free one proves itself with its first real trivial jobs.
-const MAINTAINER_TESTED = new Set(['junie-lite']);
+const MAINTAINER_TESTED = new Set(['junie-lite', 'devin']);
 function evidenceNotice(id) {
   const provider = require('./lib').BUILTIN_PROVIDERS.providers[id];
   if (provider?.evidence !== 'docs') return '';
