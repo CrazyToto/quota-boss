@@ -55,6 +55,30 @@
     "when": "Show quota numbers everywhere or only with boss mode.",
     "advanced": true
   },
+  "statusline-style": {
+    "title": "Status line style",
+    "what": "minimal: thin coloured bars; rounded: bars in soft pills with round ends (needs a Nerd Font); classic: the compact text line.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Pick the look you find easiest to read.",
+    "advanced": true
+  },
+  "statusline-logos": {
+    "title": "Status line symbols",
+    "what": "Show a symbol for Claude and Codex in the status line.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Turn off when your terminal font shows the symbols badly.",
+    "advanced": true
+  },
+  "statusline-names": {
+    "title": "Status line names",
+    "what": "Show the names Claude and Codex in the status line. With symbols and names off, the letters C and X are shown.",
+    "quality": "same",
+    "quota": "same",
+    "when": "Turn off for a shorter line.",
+    "advanced": true
+  },
   "context": {
     "title": "Context handoff threshold",
     "what": "Suggest a handoff from this token count; also stops a message once after an hour-long pause in a large session.",

@@ -203,7 +203,7 @@ test.describe('free/local providers, code intelligence, consensus and settings',
     assert.match(text, /set profile <quality\|balanced\|frugal>/);
     assert.throws(() => cli.run(['explain', 'profile']));
     const entries = settings.entries(lib.findProjectConfig(), lib.loadConfig());
-    assert.deepEqual(entries.map(e => e.key), ['enabled', 'profile', 'host', 'training', 'statusline', 'context']);
+    assert.deepEqual(entries.map(e => e.key), ['enabled', 'profile', 'host', 'training', 'statusline', 'statusline-style', 'statusline-logos', 'statusline-names', 'context']);
     const listed = Object.keys(defaults.providers).filter(id => defaults.providers[id].kind !== 'local');
     for (const id of listed) assert.match(text, new RegExp('^  ' + id + ' +(on|off) ', 'm'));
     assert.equal(text.split('\n').filter(l => /^  \S+ +(on|off) /.test(l)).length, listed.length);

@@ -23,6 +23,9 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 | `providers.enabled` | Enable or disable a provider globally so its models can enter project routing. | → | same | Enable only providers you have configured and accept; training providers also need project permission. |
 | `caps` | Limit the percentage of each provider window available for delegation and raise its routing price as usage approaches that cap. | → | saved | Set a lower cap to reserve quota for other work; project off preserves any global cap. |
 | `statusline` | Show the Claude and Codex quota numbers everywhere or only where boss mode is on. | → | same | Show quota numbers everywhere or only with boss mode. |
+| `statusline-style` | minimal: thin coloured bars; rounded: bars in soft pills with round ends (needs a Nerd Font); classic: the compact text line. | → | same | Pick the look you find easiest to read. |
+| `statusline-logos` | Show a symbol for Claude and Codex in the status line. | → | same | Turn off when your terminal font shows the symbols badly. |
+| `statusline-names` | Show the names Claude and Codex in the status line. With symbols and names off, the letters C and X are shown. | → | same | Turn off for a shorter line. |
 | `context` | Suggest a handoff from this token count; also stops a message once after an hour-long pause in a large session. | → | same | Suggest a handoff from this token count; also stops a message once after a pause of an hour or more in a large session, before the expired cache is paid for. Turn both checks off with context off. |
 <!-- settings-help:end -->
 
@@ -31,6 +34,11 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 `quota-boss set context <tokens>|off` sets the handoff suggestion threshold and controls the check that stops a message once after an hour or more away from a large Claude Code session, before paying for its expired cache.
 The status line shows only in projects with boss mode on. `/boss set statusline always` keeps the Claude and Codex numbers
 visible everywhere, and `/boss set statusline boss` goes back to the default. This choice applies to all projects.
+
+The look is your choice too, for all projects: `/boss set statusline-style minimal` (thin coloured bars, the default),
+`rounded` (bars in soft pills with round ends; needs a Nerd Font) or `classic` (the compact text line).
+`/boss set statusline-logos on|off` and `/boss set statusline-names on|off` show or hide the Claude and Codex symbols and
+names; with both off the letters C and X are shown. With boss mode on, a small pie (`○ ◔ ◑ ◕ ●`) shows how full the context is.
 Training providers default to off. Usage journals compact under a lock above 256 KiB, preserving all active-window
 records; reset windows report real usage, never a fabricated 100%. Every settings mutation reports an Effect using current usage and routing numbers.
 Caps show all four windows; a provider without quota data cannot measure or enforce a usage cap until a quota source is configured.

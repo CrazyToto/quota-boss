@@ -71,7 +71,7 @@ test('full flow: measure, suggest once, save, load after /clear, once', t => {
   assert.equal(box.cli('on', '--host', 'claude-code', 'balanced').status, 0);
 
   const status = box.hook('statusline.js', window(16));
-  assert.match(status.stdout, /ctx 160k 16%/);
+  assert.match(status.stdout, /◔ 160k/);
   assert.match(box.hook('hook-prompt.js').stdout, /Context is large: 160k/);
   assert.doesNotMatch(box.hook('hook-prompt.js').stdout, /Context is large/);
 

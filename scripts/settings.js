@@ -24,9 +24,10 @@ function snapshot(project = lib.findProjectConfig()) {
   return { project, config, limits, result, now, history: state.history };
 }
 function entries(project, config) {
+  const look = lib.statuslineLook();
   const values = { enabled: project.enabled, profile: project.profile, host: project.host,
     training: project.allowTrainingProviders,
-    statusline: lib.showsWithoutBoss() ? 'always' : 'boss', context: project.contextSuggest === false ? 'off' : project.contextSuggest };
+    statusline: lib.showsWithoutBoss() ? 'always' : 'boss', 'statusline-style': look.style, 'statusline-logos': look.logos, 'statusline-names': look.names, context: project.contextSuggest === false ? 'off' : project.contextSuggest };
   return Object.entries(values).map(([key, value]) => ({ key, value, help: helpFor(key) }));
 }
 /** One compact line per provider instead of one row per provider x cap window. */
@@ -51,7 +52,7 @@ function table(project = lib.findProjectConfig()) {
   const rows = entries(project, config);
   const keyWidth = Math.max('Setting'.length, ...rows.map(r => r.key.length));
   const valueWidth = Math.max('Current'.length, ...rows.map(r => String(r.value).length));
-  const changes = { enabled: 'on / off', host: 'on --host <claude-code|codex|generic>', profile: 'set profile <quality|balanced|frugal>', training: 'set training <on|off>', statusline: 'set statusline <always|boss>', context: 'set context <tokens>|off' };
+  const changes = { enabled: 'on / off', host: 'on --host <claude-code|codex|generic>', profile: 'set profile <quality|balanced|frugal>', training: 'set training <on|off>', statusline: 'set statusline <always|boss>', 'statusline-style': 'set statusline-style <minimal|rounded|classic>', 'statusline-logos': 'set statusline-logos <on|off>', 'statusline-names': 'set statusline-names <on|off>', context: 'set context <tokens>|off' };
   const output = ['Setting'.padEnd(keyWidth) + ' | ' + 'Current'.padEnd(valueWidth) + ' | Change with'];
   for (const r of rows) {
     output.push(r.key.padEnd(keyWidth) + ' | ' + (typeof r.value === 'boolean' ? r.value ? 'on' : 'off' : String(r.value)).padEnd(valueWidth) + ' | ' + changes[r.key]);

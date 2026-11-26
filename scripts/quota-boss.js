@@ -39,12 +39,12 @@ const USAGES = {
   'local': 'local [on <model>|off]',
   'savings': 'savings [--days N] [--all] [--details]',
   'feedback': 'feedback <model> <category> <tier> <pass|fail|unavailable|limited> [--kind <kind>] [--effort <level>] [--until <ISO time>]',
-  'set': 'set <name> <value> [--project] (profile quality|balanced|frugal; training on|off; statusline always|boss; context <tokens>|off)',
+  'set': 'set <name> <value> [--project] (profile quality|balanced|frugal; training on|off; statusline always|boss; statusline-style minimal|rounded|classic; statusline-logos on|off; statusline-names on|off; context <tokens>|off)',
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
 const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
-const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', context: 'context' };
+const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', 'statusline-style': 'statusline-style', 'statusline-logos': 'statusline-logos', 'statusline-names': 'statusline-names', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
   'short-answers': 'replies always use the normal format.',
@@ -79,10 +79,19 @@ function providerReport(config, limits, models = {}, selfTests = {}) {
 function statuslineCommand(rest) {
   const command = 'set';
   if (rest.length > 1 || (rest.length && !['always', 'boss'].includes(rest[0]))) throw new Error(usage(command));
-  if (rest.length) lib.writeJson(lib.statuslineFile(), { showWithoutBoss: rest[0] === 'always' });
+  if (rest.length) lib.saveStatusline({ showWithoutBoss: rest[0] === 'always' });
   return lib.showsWithoutBoss()
     ? 'Status line: the Claude and Codex numbers also show where boss mode is off. Hide them with: quota-boss set statusline boss'
     : 'Status line: shown only where boss mode is on. Keep the Claude and Codex numbers everywhere with: quota-boss set statusline always';
+}
+/** Style, brand symbols and names of the status line, for the whole machine. */
+function statuslineLookCommand(command, rest) {
+  const key = command.slice('statusline-'.length);
+  if (rest.length) lib.saveStatusline(key === 'style' ? { style: rest[0] } : { [key]: rest[0] === 'on' });
+  const look = lib.statuslineLook();
+  return 'Status line: style ' + look.style + ', logos ' + (look.logos ? 'on' : 'off') + ', names ' + (look.names ? 'on' : 'off')
+    + '. Change with: quota-boss set statusline-style minimal|rounded|classic, set statusline-logos on|off, set statusline-names on|off.'
+    + (look.style === 'rounded' ? ' The round ends need a Nerd Font in your terminal.' : '');
 }
 function rawProviders(project = {}) {
   return lib.mergeProviders(lib.BUILTIN_PROVIDERS,
@@ -370,11 +379,12 @@ function run(args = process.argv.slice(2), options) {
   if (setting !== null) {
     if (Object.hasOwn(REMOVED_SETTINGS, setting)) throw new Error(setting + ' was removed in 0.2.0: ' + REMOVED_SETTINGS[setting]);
     if (!Object.hasOwn(SET_NAMES, setting)) throw new Error('Valid settings: ' + Object.keys(SET_NAMES).join(', '));
-    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'statusline' ? ['always', 'boss'] : ['on', 'off'];
-    const scoped = setting !== 'statusline' && rest.length === 3 && rest[2] === '--project';
+    const values = setting === 'profile' ? ['quality', 'balanced', 'frugal'] : setting === 'statusline' ? ['always', 'boss']
+      : setting === 'statusline-style' ? lib.STATUSLINE_STYLES : ['on', 'off'];
+    const scoped = !setting.startsWith('statusline') && rest.length === 3 && rest[2] === '--project';
     if (rest.length !== (scoped ? 3 : 2) || setting !== 'context' && !values.includes(rest[1])) throw new Error('Valid values for ' + setting + ': ' + (setting === 'context' ? '<tokens>|off' : values.join('|')));
     command = SET_NAMES[setting]; rest = rest.slice(1);
-  } else if (['profile', 'allow-training', 'statusline', 'context'].includes(command)) throw new Error(HELP);
+  } else if (['profile', 'allow-training', 'statusline', 'context'].includes(command) || command?.startsWith('statusline-')) throw new Error(HELP);
   if (command === 'use') return useCommand(command, rest, options);
   if (command === 'graph') {
     const graph = require('./graph');
@@ -397,6 +407,7 @@ function run(args = process.argv.slice(2), options) {
   if (command === 'setup') return setupWizard.setup(rest, run);
   if (command === 'handoff') return context.handoffCommand(rest, lib.findProjectConfig());
   if (command === 'statusline') return statuslineCommand(rest);
+  if (['statusline-style', 'statusline-logos', 'statusline-names'].includes(command)) return statuslineLookCommand(command, rest);
   if (command === 'tools') return tools.command(rest, lib.loadConfig());
   if (command === 'add-api') return addApi.add(rest);
   if (command === 'remove-api') return addApi.remove(rest);

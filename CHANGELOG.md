@@ -6,6 +6,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Added
 
+- A new status line look. The default `minimal` style shows a coloured bar per pool: `✻ Claude ━━━━━━━━━━ 34% ↻00:50  wk 43%    ⌬ Codex ━━━━━━━━━━ 10%  wk 2%    ● boss  ◔ 100k`. `set statusline-style rounded` puts the bars in soft pills with round ends (needs a Nerd Font), and `classic` keeps the old compact line. `set statusline-logos on|off` and `set statusline-names on|off` show or hide the symbols and names. The minimal and rounded styles leave out the extra provider counters, and a small pie shows how full the context is.
 - Devin (Cognition) as a free provider through its official Devin CLI, off by default. It always uses SWE-2 Flash Medium, the only free Devin model; every other Devin model bills per token. Setup asks about it, shows the official install command and starts `devin auth login`; `tools` checks the login with `devin auth status`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. The status line does not show Devin usage yet.
 
 ### Fixed

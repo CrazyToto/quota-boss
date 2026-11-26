@@ -83,6 +83,6 @@ test.describe('state locks and session discovery', () => {
     lib.readInput=()=>({cwd:project,session_id:'new'}); lib.readStdin=()=>JSON.stringify({cwd:project,rate_limits:{five_hour:{used_percentage:1}}});
     process.stdout.write=s=>{output+=s;return true;};
     try {require('../scripts/hook-prompt').main();require('../scripts/statusline').main();} finally {lib.readInput=old.input;lib.readStdin=old.stdin;process.stdout.write=old.out;}
-    assert.match(output,/\[quota-boss\]/);assert.match(output,/boss on:balanced/);assert.deepEqual(lib.readState(),{keep:true});
+    assert.match(output,/\[quota-boss\]/);assert.match(output.replace(/\x1b\[[0-9;]*m/g, ""),/● boss/);assert.deepEqual(lib.readState(),{keep:true});
   });
 });

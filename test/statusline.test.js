@@ -83,6 +83,7 @@ const strip = value => value.replace(/\x1b\[[0-9;]*m/g, '');
 
 test('statusline persists Claude windows, preserves absent fields, and displays active project', () => {
   enable();
+  lib.saveStatusline({ style: 'classic', logos: false, names: false });
   codexLog(0, 2);
   const input = { cwd: project, rate_limits: { five_hour: { used_percentage: 4, resets_at: Date.now() / 1000 + 3600 }, seven_day: { used_percentage: 49 } } };
   const first = invoke(statusline.main, JSON.stringify(input));
@@ -106,7 +107,7 @@ test('statusline colors weekly thresholds, keeps only Claude and Codex when boss
   assert.match(line, /\x1b\[31m95%/);
   assert.match(strip(line), /^C 5h .* │ X 5h \d+% · wk \d+%/);
   assert.doesNotMatch(line, /boss|ctx/);
-  lib.writeJson(lib.statuslineFile(), { showWithoutBoss: true });
+  lib.writeJson(lib.statuslineFile(), { showWithoutBoss: true, style: 'classic', logos: false, names: false });
   const unknown = invoke(statusline.main, '{}');
   assert.match(strip(unknown.stdout), /X 5h \? · wk \?.*codex data unknown/);
 });
@@ -125,11 +126,36 @@ test('quota-boss statusline saves the choice for every project and rejects anyth
   assert.match(cli.run(['set', 'statusline', 'boss']), /only where boss mode is on/);
   assert.match(cli.run(['set', 'statusline', 'always']), /also show where boss mode is off/);
   assert.equal(lib.showsWithoutBoss(), true);
+  assert.match(cli.run(['set', 'statusline-style', 'classic']), /style classic/);
+  assert.match(cli.run(['set', 'statusline-logos', 'off']), /logos off/);
+  assert.match(cli.run(['set', 'statusline-names', 'off']), /names off/);
+  assert.equal(lib.showsWithoutBoss(), true);
   codexLog(0, 2);
   assert.match(strip(invoke(statusline.main, JSON.stringify({ cwd: project })).stdout), /^C 5h .* │ X 5h 0% · wk 2%\n$/);
   assert.match(cli.run(['set', 'statusline', 'boss']), /only where boss mode is on/);
   assert.equal(lib.showsWithoutBoss(), false);
   assert.throws(() => cli.run(['set', 'statusline', 'sometimes']), /Valid values/);
+  assert.throws(() => cli.run(['set', 'statusline-style', 'fancy']), /Valid values/);
+  assert.throws(() => cli.run(['set', 'statusline-names', 'on', '--project']), /Valid values/);
+  assert.deepEqual(lib.statuslineLook(), { style: 'classic', logos: false, names: false });
+});
+
+test('statusline styles show symbols, names, bars and context, and never the extra providers', () => {
+  const cfg = lib.loadConfig();
+  const now = Date.now();
+  const sample = limits(34, 43, 10, 2);
+  const ctx = { tokens: '100k', percent: 10, warn: false };
+  const minimal = statusline.formatStatus(sample, { enabled: true }, cfg.thresholds, now, cfg.providers, ctx, { style: 'minimal', logos: true, names: true });
+  assert.match(strip(minimal), /^✻ Claude ━{10} 34%.* wk 43% {4}⌬ Codex ━{10} 10% {2}wk 2% {4}● boss {2}◔ 100k/);
+  assert.match(minimal, /\x1b\[38;2;166;227;161m━━━\x1b/);
+  assert.doesNotMatch(strip(minimal), /copilot|│/);
+  const rounded = statusline.formatStatus(sample, { enabled: true, profile: 'frugal' }, cfg.thresholds, now, cfg.providers, ctx, { style: 'rounded', logos: false, names: true });
+  assert.match(strip(rounded), /^Claude ▰▰▰▱▱▱▱▱ 34%.*· wk 43% Codex ▰▱▱▱▱▱▱▱ 10% · wk 2% ● boss frugal/);
+  const letters = statusline.formatStatus(sample, { enabled: false }, cfg.thresholds, now, cfg.providers, ctx, { style: 'minimal', logos: false, names: false });
+  assert.match(strip(letters), /^C ━+ 34%/);
+  assert.doesNotMatch(strip(letters), /boss|100k/);
+  const full = statusline.formatStatus(sample, { enabled: true }, cfg.thresholds, now, cfg.providers, { tokens: '900k', percent: 90, warn: true }, { style: 'classic', logos: true, names: false });
+  assert.match(strip(full), /^✻ 5h 34%.* │ ⌬ 5h 10% · wk 2% │ boss on:balanced.* │ ctx 900k 90%$/);
 });
 
 test('the status line remembers which model the boss runs on', () => {
@@ -226,12 +252,12 @@ test('wrapped status command receives identical stdin with bounded execution and
   try {
     const wrapped = require('../scripts/statusline');
     const result = invoke(wrapped.main, input);
-    assert.match(result.stdout, /^previous status\nC 5h/);
+    assert.match(strip(result.stdout), /^previous status\n✻ Claude/);
     assert.equal(called, 1);
     childProcess.spawnSync = () => ({ status: null, error: new Error('timeout') });
     delete require.cache[modulePath];
     const failed = invoke(require('../scripts/statusline').main, input);
-    assert.match(failed.stdout, /^C 5h/);
+    assert.match(strip(failed.stdout), /^✻ Claude/);
     assert.equal(failed.status, 0);
   } finally {
     childProcess.spawnSync = originalSpawn;

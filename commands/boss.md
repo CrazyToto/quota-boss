@@ -15,6 +15,7 @@ Take <args> from $ARGUMENTS; empty means status. Only these forms are allowed:
 - set profile <quality|balanced|frugal>
 - set training <on|off>
 - set statusline <always|boss>
+- set statusline-style <minimal|rounded|classic>, set statusline-logos <on|off>, set statusline-names <on|off>
 - set context <tokens>|off
 - rules --host <claude-code|codex|generic>
 - doctor [--probe|--report]

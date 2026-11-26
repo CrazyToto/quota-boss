@@ -366,6 +366,14 @@ function delegationBoss(models, project) {
 function statuslineFile() { return path.join(getPaths().quotaBossHome, 'config', 'statusline.json'); }
 /** Personal choice for the whole machine: keep the Claude and Codex numbers visible where boss mode is off. */
 function showsWithoutBoss() { return object(readJson(statuslineFile(), {})).showWithoutBoss === true; }
+const STATUSLINE_STYLES = ['minimal', 'rounded', 'classic'];
+/** Personal look of the status line for the whole machine: style, brand symbols and provider names. */
+function statuslineLook() {
+  const saved = object(readJson(statuslineFile(), {}));
+  return { style: STATUSLINE_STYLES.includes(saved.style) ? saved.style : 'minimal', logos: saved.logos !== false, names: saved.names !== false };
+}
+/** Change some status line choices and keep the others. */
+function saveStatusline(changes) { writeJson(statuslineFile(), { ...object(readJson(statuslineFile(), {})), ...changes }); }
 
 /** Normalize project enums before using them in context. Settings removed in 0.2.0 (terse, rules, consensus, split,
  * research, workers) are ignored when stored; Claude Code always starts with tiny rules. */
@@ -1597,7 +1605,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
 }
 
 module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
-  atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, normalizeProject, findProjectConfig, readState, writeState, logTail,
+  atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, statuslineLook, saveStatusline, STATUSLINE_STYLES, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };
 

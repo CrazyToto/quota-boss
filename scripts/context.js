@@ -143,10 +143,15 @@ function sessionStarts(project) {
   return { entries, count: starts.length, median: starts[starts.length >> 1] };
 }
 
+function statusInfo(entry, setting) {
+  if (!entry || finite(entry.tokens) === undefined) return null;
+  return { tokens: thousands(entry.tokens), percent: entry.percent, warn: !!setting && entry.tokens >= limitFor(entry, setting) };
+}
 function statusSegment(entry, setting) {
-  if (!entry || finite(entry.tokens) === undefined) return '';
-  const text = 'ctx ' + thousands(entry.tokens) + ' ' + entry.percent + '%';
-  return setting && entry.tokens >= limitFor(entry, setting) ? '\x1b[33m' + text + '\x1b[0m' : text;
+  const info = statusInfo(entry, setting);
+  if (!info) return '';
+  const text = 'ctx ' + info.tokens + ' ' + info.percent + '%';
+  return info.warn ? '\x1b[33m' + text + '\x1b[0m' : text;
 }
 
 /** One suggestion per threshold. Returns the updated entry and the sentence, if one is due. */
@@ -258,4 +263,4 @@ function handoffCommand(args, project, readInput = lib.readStdin) {
   throw new Error('Usage: quota-boss handoff save | list | show [<name>]');
 }
 
-module.exports = { coldStart, automatedPrompt, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, HOOK_BUDGET };
+module.exports = { coldStart, automatedPrompt, recordColdWarning, validSession, sessionStarts, COLD_AFTER_MS, parseSetting, projectId, recordContext, statusInfo, statusSegment, suggestion, scrub, save, sessionStartText, pendingHandoffText, deferTable, handoffCommand, HOOK_BUDGET };
