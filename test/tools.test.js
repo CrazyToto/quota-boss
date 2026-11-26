@@ -481,3 +481,15 @@ test('a failed clean-up step keeps the program installed and on record', t => {
   assert.match(said.join('\n'), /Could not remove Graphify \(locked\)\. Run: graphify uninstall, then uv tool uninstall graphifyy/);
   assert.deepEqual(tools.readInstalled(file), ['graphify']);
 });
+
+test('Devin is a paste-only CLI whose login is read from devin auth status', () => {
+  assert.deepEqual(tools.enabledIds({ providers: { providers: { devin: { enabled: true, cli: { command: 'devin' } } } } }), ['devin']);
+  const [devin] = tools.check(['devin'], { ...machine({}).options, find: () => null, platform: 'win32' });
+  assert.equal(devin.state, 'manual');
+  assert.match(devin.note, /irm https:\/\/static\.devin\.ai\/cli\/setup\.ps1 \| iex/);
+  const loggedIn = machine({ have: { devin: '3000.14' }, status: { devin: 'Logged in (via Devin).\n\nAccount:\n  Plan: Free\n' } });
+  assert.equal(tools.logins(['devin'], loggedIn.options), '- devin: logged in');
+  assert.deepEqual(loggedIn.calls.at(-1), ['devin', 'auth', 'status']);
+  const out = machine({ have: { devin: '3000.14' }, status: { devin: 'Not logged in.\n' } });
+  assert.equal(tools.logins(['devin'], out.options), '- devin: NOT logged in, run: devin auth login');
+});

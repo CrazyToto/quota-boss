@@ -6,7 +6,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Added
 
-- Devin (Cognition) as a free provider through its official Devin CLI, off by default. It always uses SWE-2 Flash Medium, the only free Devin model; every other Devin model bills per token. Install it from docs.devin.ai/cli and sign in with `devin auth login`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. Setup and the status line do not show it yet.
+- Devin (Cognition) as a free provider through its official Devin CLI, off by default. It always uses SWE-2 Flash Medium, the only free Devin model; every other Devin model bills per token. Setup asks about it, shows the official install command and starts `devin auth login`; `tools` checks the login with `devin auth status`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. The status line does not show Devin usage yet.
 
 ### Fixed
 

@@ -17,6 +17,8 @@ const OWN = ['codex', 'perplexity'];
 // Free and practically unlimited, so it is the one choice that starts on.
 const LITE = 'junie-lite';
 const JUNIE = 'junie';
+// Free model only, through its own program; no paid plan needed.
+const DEVIN = 'devin';
 const OTHER = ['copilot', 'grok', 'antigravity', 'jetbrains'];
 // Free like the offers below, but its own program and only for video, audio and long PDFs.
 const MEDIA = 'gemini-media';
@@ -24,7 +26,7 @@ const FREE = ['zen-deepseek', 'openrouter-free', 'cloudflare', 'cohere', 'gemini
 const GRAPH = 'graphify';
 const graph = require('./graph');
 const newProviders = require('./new-providers');
-const CHOICES = ['claude', ...OWN, LITE, ...OTHER, MEDIA, ...FREE, GRAPH];
+const CHOICES = ['claude', ...OWN, LITE, DEVIN, ...OTHER, MEDIA, ...FREE, GRAPH];
 const USABLE = new Set(['ok', 'outdated']);
 const TOTAL_SECTIONS = 6;
 const YES = ['y', 'yes'], NO = ['n', 'no'];
@@ -320,7 +322,7 @@ function buildCommands(w, usable) {
   const { state, project, config } = w;
   const commands = [['on', '--host', state.host, state.profile]];
   if (state.host === 'claude-code' && config.providers.providers.claude && !enabledNow(config, 'claude')) commands.push(['use', 'claude', 'on']);
-  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), LITE, ...OTHER, MEDIA, 'kilo-free']) {
+  for (const id of [...['claude', ...OWN].filter(id => id !== hostPool(w)), LITE, DEVIN, ...OTHER, MEDIA, 'kilo-free']) {
     const want = state.choices[id] && usable(toolOf(id));
     // Setup counts for every project. A project switch left off here would still block a yes, so that one goes too.
     // A provider that needs a self-test is tested after the logins below, not before them.
@@ -443,7 +445,7 @@ function liteDefault(config, active, userProviders) {
 
 function initialState(config, project, active, userProviders) {
   const choices = {};
-  for (const id of ['claude', ...OWN, ...OTHER, MEDIA, ...FREE]) choices[id] = enabledNow(config, id);
+  for (const id of ['claude', ...OWN, DEVIN, ...OTHER, MEDIA, ...FREE]) choices[id] = enabledNow(config, id);
   choices[LITE] = liteDefault(config, active, userProviders);
   choices[GRAPH] = false;
   return { profile: project.profile, host: project.host, choices, apis: [], training: project.allowTrainingProviders };
@@ -479,6 +481,7 @@ function setup(args, run, deps = {}) {
     ...OWN.map(id => ({ ...switchScreen(w, id, 2), applies: () => id !== hostPool(w) })),
     { ...switchScreen(w, 'claude', 3), applies: () => w.state.host !== 'claude-code' },
     switchScreen(w, LITE, 3),
+    { ...switchScreen(w, DEVIN, 3), applies: () => !!w.config.providers.providers[DEVIN] },
     ...OTHER.map(id => switchScreen(w, id, 3, text.onlyWithPlan)),
     { ...switchScreen(w, MEDIA, 3), applies: () => !!w.config.providers.providers[MEDIA] },
     freeScreen(w),

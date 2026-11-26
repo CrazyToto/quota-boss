@@ -38,7 +38,7 @@ const PROVIDER_HELP = Object.freeze({
   devin: { group: more, name: 'Devin (free)', what: 'Cognition\'s free SWE-2 Flash model through the official Devin CLI.',
     on: 'Small coding tasks that cost none of your paid limits.', off: 'Small tasks use your paid limits instead.',
     catch: 'No limit is published and Quota Boss cannot see your Devin usage. It edits files without asking you first, and shell commands are refused.',
-    needs: 'A free Devin account. Quota Boss only uses the free model, never a paid one. Install the Devin CLI from docs.devin.ai/cli and run `devin auth login`.' },
+    needs: 'A free Devin account. Quota Boss only uses the free model, never a paid one. Setup shows the install command and starts `devin auth login`.' },
   antigravity: { group: more, name: 'Google Antigravity', what: 'Google Gemini through the Antigravity program, which replaced Gemini CLI for free and Google One users.',
     on: 'One more limit for normal coding tasks and research.', off: 'Nothing is lost if you do not use Google\'s AI.',
     catch: 'You install it by hand. Quota Boss runs it in auto mode, so it can edit files without you approving each step.', needs: 'A Google account.',

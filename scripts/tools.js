@@ -49,6 +49,9 @@ const REGISTRY = Object.freeze({
     paste: { win32: 'iwr -useb https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.ps1 | iex',
       all: 'curl -fsSL https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.sh | bash' },
     login: { command: 'gemini-api configure --interactive', run: ['configure', '--interactive'], hint: 'Get a free key at https://aistudio.google.com/apikey from a project without billing, then paste it into the form.' } },
+  devin: { label: 'Devin CLI', binary: 'devin', source: 'https://docs.devin.ai/cli', install: {},
+    paste: { win32: 'irm https://static.devin.ai/cli/setup.ps1 | iex', all: 'curl -fsSL https://cli.devin.ai/install.sh | bash' },
+    login: { command: 'devin auth login', run: ['auth', 'login'], check: ['auth', 'status'], loggedIn: /^Logged in\b/m } },
   // One CLI and account login for both Junie Lite and JetBrains AI.
   // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
   junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
