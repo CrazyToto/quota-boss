@@ -24,7 +24,7 @@ Quota Boss is a harness around **Claude Code** or **Codex**: it adds the rules, 
 that turn your agent into an orchestrator. Your best model plans, decides and checks the results. Everything else goes
 to a cheaper model on one of your subscriptions (**Claude**, **ChatGPT / Codex**, **GitHub Copilot**, **Grok**,
 **Google Antigravity / Gemini**, **JetBrains AI**), to **Perplexity** for research, or to a free offer such as
-**Junie Lite** or a local model you have switched on. When a free route is about as likely to succeed as a paid
+**Junie Lite**, **Devin's free model** or a local model you have switched on. When a free route is about as likely to succeed as a paid
 worker, it gets the job, so your paid limits last longer. An untested free route gets a few small jobs to prove itself;
 its own results decide after that.
 
@@ -49,10 +49,12 @@ npx quota-boss@latest
 
 This works the same on Windows, macOS and Linux. To see first what would change, add `--dry-run`. The installer backs
 up your Claude Code settings, keeps your existing status line, and `npx quota-boss@latest --uninstall` removes
-everything again. In a terminal it asks whether to delete your settings too, and asks about each program Quota Boss
-installed itself; programs you already had, such as Graphify, are never touched. Run the first command again to update. An update asks about each new provider in a terminal.
-Session starts ask again until you answer. A yes in setup, after an update, or through `quota-boss use <id> on` in a
-terminal installs the CLI if needed, starts the login, and runs the self-test (free providers skip it and start with small jobs).
+everything again. It asks whether to delete your settings too and asks about each program Quota Boss installed
+itself; programs you already had, such as Graphify, are never touched.
+
+Run the same command again to update. An update asks once about each new provider. A yes, in setup, after an update
+or through `quota-boss use <id> on`, installs the CLI if needed, starts the login and runs the self-test (free
+providers skip it and start with small jobs).
 
 <details>
 <summary>Other ways to install</summary>
@@ -111,14 +113,14 @@ The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `
 ```
 You ─► Claude Code (Opus = boss: plan, classify, delegate, verify)
         │  every prompt: "Claude 5h 41% wk 49% | Codex 5h 3% wk 12% | profile balanced | mode normal"
-        ├─► codex-worker  ─► Codex (GPT-6.2-Sol, effort medium) ─► implements, runs tests, 10-line report
+        ├─► codex-worker  ─► Codex (GPT-6.2-Sol) ─► implements, runs tests, 10-line report
         ├─► gpt-advisor   ─► Codex read-only ─► independent second opinion
         ├─► sonnet-worker ─► Sonnet, larger implementation
         ├─► haiku-worker  ─► Haiku, small edits, tests, docs
         ├─► scout         ─► Haiku, code search
         ├─► Explore       ─► Haiku, replaces the built-in search agent
         ├─► reviewer      ─► Sonnet, reviews diffs
-        ├─► cli-worker    ─► another official CLI: Copilot, Grok, Antigravity (Gemini), OpenCode
+        ├─► cli-worker    ─► another official CLI: Copilot, Grok, Antigravity, Junie, Devin, Kilo, OpenCode
         ├─► self-worker   ─► the boss model in a separate context for large or parallel jobs
         └─► researcher    ─► web search, or a ready-made prompt for Perplexity
 ```
@@ -166,16 +168,16 @@ in [bench/](https://github.com/CrazyToto/quota-boss/blob/main/bench/README.md), 
 
 | Kind | Examples | How it is used |
 |---|---|---|
-| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Devin, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
+| Subscriptions | Claude, ChatGPT / Codex, GitHub Copilot, Grok, Google Antigravity (Gemini), JetBrains AI | Through each provider's official CLI, signed in as you |
 | Research | Perplexity Pro | The boss writes the prompt and copies it to your clipboard; you paste the answer back with `/pplx-result` |
-| Free CLI offers | Junie Lite, Kilo, Gemini media | Junie Lite is on by default: one yes installs Junie, opens the login and tests it. Gemini media (Google's `gemini-api` CLI) is the route for video, audio and YouTube links: `quota-boss use gemini-media on` |
+| Free CLI offers | Junie Lite, Devin, Kilo, Gemini media | Junie Lite is on by default: one yes installs Junie, opens the login and tests it. Devin uses only its free SWE-2 Flash model. Gemini media (Google's `gemini-api` CLI) is the route for video, audio and YouTube links |
 | Free API offers | OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai | Off until you choose them; each shows its limit and data warning first |
 | Local models | Ollama | `/boss-local` |
 | Anything else | Any API with a key | `/boss-add-api` |
 
-Claude, ChatGPT / Codex and Junie Lite are tested end to end. Copilot, Grok, Antigravity and JetBrains AI are built
-from their official documentation and stay off until you turn them on; Grok has not been run by the maintainer yet, and
-Antigravity carries an account warning because of Google's terms. A paid one gets work only after its self-test
+Claude, ChatGPT / Codex, Junie Lite and Devin are tested end to end. Copilot, Grok, Antigravity and JetBrains AI are
+built from their official documentation and stay off until you turn them on; Grok has not been run by the maintainer
+yet, and Antigravity carries an account warning because of Google's terms. A paid one gets work only after its self-test
 passes on your machine (setup runs it for you); a free one starts with small jobs and earns more with each verified pass.
 
 Free offers can take simple work instead of your paid quota. Some of them train on what you send, so those stay off
@@ -268,6 +270,6 @@ your keys, and on [models.dev](https://github.com/anomalyco/models.dev) for chec
 
 [MIT](LICENSE)
 
-Not affiliated with or endorsed by Anthropic, OpenAI, Perplexity, GitHub, Google, xAI, JetBrains, Mistral, OpenRouter,
-Cloudflare, Cohere, NVIDIA, Z.ai, OpenCode or Ollama. Their names are used only to say which services this tool can
+Not affiliated with or endorsed by Anthropic, OpenAI, Perplexity, GitHub, Google, xAI, JetBrains, Cognition, OpenRouter,
+Cloudflare, Cohere, NVIDIA, Z.ai, Kilo, OpenCode or Ollama. Their names are used only to say which services this tool can
 work with.

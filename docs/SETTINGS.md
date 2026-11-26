@@ -2,10 +2,11 @@
 
 Run `quota-boss settings` to see every setting with its current value, what it does and the command that changes it;
 providers and caps follow.
-Provider switches are global. All project switches, profiles, hosts, privacy consent and caps live in
-user-owned `QUOTA_BOSS_HOME/projects.json`, keyed by the project's real path (lowercase on Windows).
-Lookup walks up from cwd to the nearest registered real path; mutations start with inherited settings.
-Writes are locked, atomic and limited to 1 MiB. Project caps can only tighten global caps: the effective cap
+Global routing defaults live in user-owned `QUOTA_BOSS_HOME/defaults.json`. They cover boss mode, host,
+profile, training consent and context hints. Codex host activation is per project. Project overrides live
+in `QUOTA_BOSS_HOME/projects.json`, keyed by real path (lowercase on Windows). Lookup walks up from cwd
+to the nearest registration and applies its overrides to the global defaults.
+Registry writes are locked, atomic and limited to 1 MiB. Project caps can only tighten global caps: the effective cap
 is the minimum of both, and project `off` preserves global reservations.
 
 Repository `.claude/quota-boss.json` and `.claude/harness.json` are **no longer read**. Doctor reports
@@ -26,7 +27,7 @@ choices through the CLI. A cloned repository cannot enable routing or grant trai
 <!-- settings-help:end -->
 
 `quota-boss set profile quality|balanced|frugal` chooses the profile.
-`quota-boss set training on|off` lets providers that train on your data receive project tasks.
+`quota-boss set training on|off` changes the global consent default. Add `--project` to change consent for this project.
 `quota-boss set context <tokens>|off` sets the handoff suggestion threshold and controls the check that stops a message once after an hour or more away from a large Claude Code session, before paying for its expired cache.
 The status line shows only in projects with boss mode on. `/boss set statusline always` keeps the Claude and Codex numbers
 visible everywhere, and `/boss set statusline boss` goes back to the default. This choice applies to all projects.

@@ -30,7 +30,6 @@
     "model-routing",
     "rate-limits",
     "usage-limits",
-    "gemini-cli",
     "antigravity",
     "grok",
     "github-copilot",

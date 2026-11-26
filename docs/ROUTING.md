@@ -17,7 +17,7 @@ and escalate through a ladder instead of always starting with the most expensive
 |---|---|
 | task `tier` (critical / normal / trivial) and `category` | classified by the boss (see templates/RULES.md) |
 | model registry `scores[cat]` (1-10), `cost`, `pool` | `config/models.json` (+ user override) |
-| profile (quality / balanced / frugal) | user-owned `QUOTA_BOSS_HOME/projects.json` real-path registration |
+| profile (quality / balanced / frugal) | user-owned `QUOTA_BOSS_HOME/defaults.json` with overrides from the nearest real-path registration in `projects.json` |
 | quota per pool and window: `used` (0-100), `resets_at`, `window_minutes` | status line (Claude), Codex logs |
 | usage history samples per pool | state.json `history[pool]` = last 48 samples `{t, u5, uw}` (deduplicated, >= 5 min apart) |
 | job needs (`--needs`, `--context`) | inputs, tools and context size; routes that cannot take them are dropped before scoring, and specialist models only enter when a need asks for them (PROVIDERS.md, Capabilities) |
@@ -90,11 +90,12 @@ For the same pool, add `workerCost` to `bossSide`; `total = bossSide` must be at
 For another pool, `total = bossSide + workerCost`: require `bossSide <= margin * selfCost` and
 `total <= maxTotalRatio * selfCost`. Relay is the existing relay charge, counted once, or zero for direct workers.
 Defaults are `margin = 0.8`, `maxTotalRatio = 1.3`, and `reread = 0.3` medium worker jobs.
-Handover `(fixed, perSize)` in medium boss jobs is Claude Code `(0.2, 0.35)`, Codex `(1.5, 0.4)`, generic `(0.5, 0.35)`.
+Handover `(fixed, perSize)` in medium boss jobs is Claude Code `(0.2, 0.35)`, Codex `(1.5, 0.4)`, generic `(0.5, 0.35)`. Claude Code uses a fixed cost of `0.5` for normal-tier implementation.
 
 Time must also pass: `extraSeconds = handoverSeconds + s * workerSeconds - s * ownSeconds`.
 Missing worker latency uses `workSeconds` (default: the boss speed, so an unmeasured worker is assumed as fast as the boss); the boss's own time per medium job is `bossSeconds` (Claude Code `50`, measured with an Opus boss on the large bench task; Codex and generic `150`); handover seconds are Claude Code `50`, Codex `90`, generic `60`.
-The maximum extra seconds are small `60`, medium `180`, large `600`. Cost failures take precedence over time failures.
+The default extra time limits for small, medium and large jobs are 30, 90 and 300 seconds.
+While the boss pool is saving quota they are 60, 180 and 600 seconds. Cost failures take precedence over time failures.
 Idle quota of another pool relaxes the gate: with `relief = clamp((idle_worker - idle_boss) / idleDiscount, 0, 1)`,
 the margin moves from `margin` toward `gate.idleMargin` (default `0.95`) by `relief`, and the time limit moves toward the
 saving-mode limit by `min(1, 2 * relief)`. Relief is `0` when the worker's `P` is more than `gate.idleMaxPGap`

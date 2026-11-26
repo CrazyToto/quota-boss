@@ -67,7 +67,7 @@ test('the README links to provider terms documentation and OpenCode is for API k
   assert.match(providers, /## Provider terms/);
   assert.ok(readme.includes('docs/PROVIDERS.md#provider-terms'));
   assert.doesNotMatch(readme, /stays within the providers' terms/);
-  for (const name of ['GitHub', 'Google', 'xAI', 'Mistral', 'OpenRouter', 'Cloudflare', 'Cohere', 'NVIDIA', 'Z\\.ai']) assert.match(readme, new RegExp('Not affiliated[\\s\\S]*' + name));
+  for (const name of ['GitHub', 'Google', 'xAI', 'Cognition', 'OpenRouter', 'Cloudflare', 'Cohere', 'NVIDIA', 'Z\\.ai']) assert.match(readme, new RegExp('Not affiliated[\\s\\S]*' + name));
   assert.match(help.guide(config({ ...defaults.providers, acme: { custom: true, enabled: true } })), /never use a subscription login/i);
 });
 

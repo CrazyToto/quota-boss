@@ -59,18 +59,22 @@ allow suspending your account. Whether starting Google's own program from Quota 
 
 ### Free offers
 
-The setup asks about them together: all of them, only those that do not train on your data, none, or one by one under
+The setup asks about Junie Lite, Devin and Gemini media separately. It asks about the other offers together: all of them, only those that do not train on your data, none, or one by one under
 Advanced. If you pick a group and skip a key, that offer is left out. `quota-boss doctor` shows any offer with a
 missing key or a model that is gone. A rate-limited offer is paused (15 minutes at first, longer if it keeps failing, or until the reset time the provider names) and the next one takes over.
 
-Limits change often, so check the provider's page. Offers that may train on your data stay blocked per project
-until you run `quota-boss set training on`.
+Limits change often, so check the provider's page. Offers that may train on your data need consent.
+`quota-boss set training on` sets the global default. Add `--project` to grant consent only for this project.
+A project can also opt out with `quota-boss set training off --project`.
 
 Groq and SambaNova are not offered. Groq's free limit of 8,000 tokens a minute is smaller than a single OpenCode
 request, and SambaNova asks for a payment method.
 
 | Offer | How to add | Rough limit | May train on your data |
 |---|---|---|---|
+| Junie Lite | preselected in setup unless you turned it off. Needs the Junie CLI and a free JetBrains account | none published | treated as no |
+| Devin (SWE-2 Flash Medium) | off by default. Choose it in setup and sign in to the Devin CLI with a free account | none published | yes |
+| Gemini media | off by default. Choose it in setup. Needs the Gemini API CLI and a key from a project without billing | one file up to 14 MiB or one public YouTube URL per job | treated as yes |
 | OpenRouter free models (needs OpenCode) | choose it in the setup | 50 requests/day | treated as yes |
 | Cloudflare Workers AI (needs OpenCode) | choose it in the setup | 10,000 Neurons/day | treated as yes |
 | Cohere trial (needs OpenCode) | choose it in the setup | 1,000 calls/month | treated as yes |

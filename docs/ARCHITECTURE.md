@@ -9,7 +9,7 @@ subscriptions you already pay for (Claude, ChatGPT/Codex, Perplexity) based on
 - **Zero runtime dependencies.** Node >= 18 built-ins only (`fs`, `path`, `os`, `child_process`, `node:test`).
 - **No network access** from any script, except provider CLIs (run as workers), official package managers started by `quota-boss tools`, tool installers, and an explicitly approved browser launch for issue reports. No telemetry. The weekly free-models workflow downloads the public lists in GitHub Actions with curl, not a project script.
 - **Never read credential files** (`~/.codex/auth.json`, `~/.claude/.credentials.json`, env secrets).
-- **No `eval`, no `new Function`, no `shell: true`** - with one documented exception (wrapped status line, see below).
+- **No `eval` or `new Function`.** The saved status line uses `shell: true`, as does `quota-boss verify` on POSIX. Verification uses the system command shell on Windows.
 - **Cross-platform**: Windows, macOS, Linux. Use `path.join`, never hard-code `/` or `\`. In commands written to
   settings.json use forward slashes and double quotes around paths.
 - **Fail silent in hooks/status line**: any error -> print nothing (hooks) or a minimal fallback (status line), exit 0.
@@ -46,10 +46,10 @@ keyed by `fs.realpathSync(projectDirectory)`, case-normalised to lowercase on wi
 { "enabled": true, "host": "claude-code", "allowTrainingProviders": false, "profile": "balanced", "caps": {}, "managedAgents": false }
 ```
 
-Unregistered projects default to OFF with training permission false. Starting at hook stdin cwd or the CLI's
-cwd, lookup resolves the real directory and walks to the filesystem root, choosing the nearest registered
-real path. Aliases share one registration; nested registrations take precedence, including an explicit OFF.
-Mutations start from effective inherited settings, then register the current real directory. Project cap
+Unregistered projects inherit `QUOTA_BOSS_HOME/defaults.json`. The initial defaults are OFF and no training consent.
+Starting at hook stdin cwd or the CLI's cwd, lookup resolves the real directory and walks to the filesystem root.
+The nearest registration overrides the global defaults, including an explicit OFF. Aliases share one registration.
+Project mutations start from effective inherited settings. Project cap
 commands update the nearest registration (or cwd when none exists). Registry writes reread under an
 ownership lock; managed AGENTS.md changes remain inside that same lock. They atomically replace the file, and reject results larger than 1 MiB; registry reads have the
 same byte ceiling. `on`/`off` and slash-command UX are unchanged.
@@ -119,12 +119,12 @@ Workers that need the same files can use separate `qb/<name>` branches in the si
 | File | Behaviour |
 |---|---|
 | `scripts/lib.js` | paths, safe JSON read, atomic write, config loading/merge, project config lookup, state read/write, `readCodexLimits()`, `readCodexModels()`, `computeModes()`, `sanitizeLabel()`, `formatReset(epochSec)` (local `HH:MM`, or `Mon HH:MM` if > 24h away) |
-| `scripts/statusline.js` | read stdin JSON, persist Claude limits, print one line: `C 5h 4% ↻01:20 · wk 49% │ X 5h 0% · wk 2% │ boss on:balanced`. When boss mode is off for the project, nothing of ours is printed, unless `quota-boss set statusline always` saved `showWithoutBoss` in `QUOTA_BOSS_HOME/config/statusline.json`; then only the Claude and Codex numbers are shown. ANSI colours: green < save, yellow < emergency, red >=. If `QUOTA_BOSS_HOME/wrapped-statusline.json` has `{command}`, run it with the same stdin (`spawnSync`, `shell: true`, timeout 2000 ms - the documented exception: it is the user's own previous status line command) and print its output first, then ours on the next line. |
+| `scripts/statusline.js` | read stdin JSON, persist Claude limits, print one line: `C 5h 4% ↻01:20 · wk 49% │ X 5h 0% · wk 2% │ boss on:balanced`. When boss mode is off for the project, nothing of ours is printed, unless `quota-boss set statusline always` saved `showWithoutBoss` in `QUOTA_BOSS_HOME/config/statusline.json`; then only the Claude and Codex numbers are shown. ANSI colours: green < save, yellow < emergency, red >=. If `QUOTA_BOSS_HOME/wrapped-statusline.json` has `{command}`, run it with the same stdin (`spawnSync`, `shell: true`, timeout 2000 ms - the user's own previous status line command) and print its output first, then ours on the next line. |
 | `scripts/hook-session.js` | With `--host codex`, enabled Codex projects receive only the table and limits line (8,000-byte cap, otherwise a `route` command), using stdin `model` before host fallbacks. Without that flag: Claude Code SessionStart hook. Stdin JSON (`cwd`, `session_id`, `source`). If project enabled: print `templates/RULES.md` with the installed home placeholder substituted (from `path.join(__dirname,'..','templates','RULES.md')`) + `formatTable(route(...))` + the limits line. Else print nothing. |
 | `scripts/codex-hooks.js` | Locked, bounded, atomic merge/removal of our SessionStart entry in `CODEX_DIR/hooks.json`; `on --host codex` adds it, `/hooks` trust is required in Codex, `off` keeps it, uninstall removes it. Foreign entries survive; empty files are retained. |
 | `scripts/hook-prompt.js` | UserPromptSubmit hook. If enabled: print ONE line `[quota-boss] Claude 5h 4% wk 49% | Codex 5h 0% wk 2% | profile balanced | mode normal`. If mode changed since the last prompt of this `session_id` (stored in state `sessions[session_id].mode`, keep max 50 sessions, drop oldest), also print `[quota-boss] mode changed -> <mode>. New routing:` + table. |
 | `scripts/hook-agent.js` | Claude Code PreToolUse hook (matcher `Agent\|Task\|Read`). Agent/Task: in an enabled tiny project, a Quota Boss worker handover before the full rules are loaded (or after a compaction) is denied with the rules as the reason. Read: in an enabled Claude Code project, a read that covers 40 KB or more of a saved tool output of this session (`<transcript>/tool-results/`), whole or as a line range, is denied with a hint to Grep it or read a smaller range. Fails silent. |
-| `scripts/quota-boss.js` | CLI used by the `/boss` slash command: `on [profile]`, `off`, `status`, `settings`, `set <name> <value>`, `help`, `route`, `use`, `cap`, `savings`, `doctor`. Operates on `process.cwd()` project (registers the current real path in user-owned `projects.json`). Human-readable output. Exit 1 with a message on bad input. |
+| `scripts/quota-boss.js` | CLI used by the `/boss` slash command: `on [profile]`, `off`, `status`, `settings`, `set <name> <value>`, `help`, `route`, `use`, `cap`, `savings`, `doctor`. Uses the current directory to resolve project settings. Writes global defaults or project overrides according to the command and scope. Human-readable output. Exit 1 with a message on bad input. |
 | `scripts/pplx.js` | Perplexity manual bridge. `ask [--model <hint>] <prompt...>` (or prompt from stdin): writes `QUOTA_BOSS_HOME/pplx/pending.md`, copies prompt to clipboard (`clip` on win32, `pbcopy` darwin, `wl-copy` then `xclip -selection clipboard` linux; spawn with argument arrays + stdin, no shell), prints instructions. `result` reads answer from stdin, saves to `QUOTA_BOSS_HOME/pplx/<timestamp>.md`, clears pending, prints the saved path. |
 | `install.js` | see below |
 

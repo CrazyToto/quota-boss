@@ -1,16 +1,13 @@
 # Roadmap and known limits
 
-What may come after v0.1.0, and what does not work well yet. Nothing here is a promise or has a date.
+Ideas for future releases and known limits. Nothing here is a promise or has a date.
 Ideas and reports are welcome as issues.
 
 ## Ideas for later versions
 
 - Install as a Claude Code plugin from a marketplace (`/plugin marketplace add`). Open: the installer also sets the
   status line, hooks in the user settings and the Codex side, which a plugin may not be able to do.
-- Extend deterministic runners to more worker adapters. `cli-worker` already uses `scripts/cli-run.js` for
-  time limits, failure classification, feedback, usage and timing; `claude-worker` still runs its CLI directly.
 - A larger benchmark: many tasks, several repetitions, three arms, blinded review and confidence intervals.
-- Changesets for releases.
 - Grok is untested, because no plan was available. If you have one, run `quota-boss providers test grok` and report
   the result.
 - Unverified candidates: Tencent CodeBuddy, Cursor CLI, and Cerebras (it needs a verified payment
@@ -45,6 +42,4 @@ Ideas and reports are welcome as issues.
 - With several sessions open on different models, `route` and a mode change use the last status line. Only the table
   at session start uses that session's own model. A resumed older Codex session in the same project can be mistaken
   for a newer one.
-- A registry cleanup during install can overwrite an API added at the very same moment. The installer is not meant to
-  run alongside `add-api`.
 - All routing thresholds are estimates. Weighted tokens only approximate real subscription accounting.

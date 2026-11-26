@@ -1,6 +1,6 @@
 # Providers, pools and user caps
 
-Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok, Devin, Antigravity, Junie Lite and JetBrains AI). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
+Providers built only from vendor documentation carry `"evidence": "docs"` (currently Grok, Devin, Antigravity, Gemini media, Junie Lite and JetBrains AI). Allowed values are `docs` and `real`; omitting the field leaves providers ungated, including APIs you add. Run `quota-boss providers test <id> [--model <registry-id>] [--effort <level>]` to verify actual file editing. Each model test spends quota, runs in a disposable directory with a 180-second limit, and records a pass only after the expected file is written. Disabled providers can be tested before enabling them. Self-tests do not count as verified quality feedback.
 
 
 Quota Boss is not tied to Claude + Codex. Any subscription or API can be added as a **provider** (= quota pool),
@@ -19,9 +19,12 @@ and every provider can be **capped** by the user (e.g. "Grok may use at most 20 
     "grok":       { "label": "Grok",        "kind": "subscription", "enabled": false,
                     "quota": { "source": "counter", "windows": { "weekly": { "budget": 200, "unit": "calls" } } },
                     "worker": "cli-worker", "cli": { "command": "grok", "args": ["-p", "{prompt}"] } },
-    "openrouter": { "label": "OpenRouter",  "kind": "api", "enabled": false,
-                    "quota": { "source": "counter", "windows": { "monthly": { "budget": 10, "unit": "usd" } } },
-                    "worker": "cli-worker" }
+    "my-api":     { "label": "My API", "kind": "api", "enabled": true, "custom": true,
+                    "tos": "api", "trainsOnData": true,
+                    "quota": { "source": "counter", "windows": { "monthly": { "budget": 200, "unit": "calls" } } },
+                    "worker": "cli-worker",
+                    "cli": { "command": "opencode", "args": ["run", "-m", "{model}", "{prompt}"],
+                             "defaultModel": "cohere/north-mini-code-1-0" } }
   },
   "caps": {
     "grok":  { "weekly": 20 },
@@ -32,12 +35,12 @@ and every provider can be **capped** by the user (e.g. "Grok may use at most 20 
 
 - `tos`: `official-cli` (subscription default), `api`, or `avoid`. An avoided provider is never an automatic pick or escalation step; manual options remain manual.
 - `kind`: `subscription` | `api` | `manual` | `free` | `local`.
-- `trainsOnData`: boolean, default false. Training providers never enter primary routes, ladders, manual options or boss recommendations unless the user-owned project registry grants `allowTrainingProviders: true` (`quota-boss set training on`). Enabling a provider globally does not grant this project permission.
-- Disabled OpenCode free and Ollama examples have matching zero-cost models. Effective model cost is `max(cost, 0.2)`. Local providers are hidden from `settings` and refused by `use <id> on` until `quota-boss local on <model>` turns them on.
+- `trainsOnData`: boolean, default false. Training providers never enter primary routes, ladders, manual options or boss recommendations unless effective training consent is on. Run `quota-boss set training on` to set the global default, or add `--project` to grant consent only for this project. A project can veto global consent.
+- The disabled Ollama example has a matching zero-cost model. Effective model cost is `max(cost, 0.2)`. Local providers are hidden from `settings` and refused by `use <id> on` until `quota-boss local on <model>` turns them on.
 - `quota.source`:
   - `claude-statusline`, `codex-logs` - exact live data (built in).
-  - `counter` - Quota Boss counts usage itself from `quota-boss.js usage <provider> <amount> <calls|tokens|usd|credits>` calls that the worker
-    agent makes after each job (calls, tokens, USD or AI credits). Windows: `fiveHour`, `daily`, `weekly`, `monthly`, each with
+  - `counter` - The runner records usage for providers with a counter. You can also record usage with
+    `quota-boss usage <provider> <amount> <calls|tokens|usd|credits>`. Windows: `fiveHour`, `daily`, `weekly`, `monthly`, each with
     a positive `budget` and matching `unit`; used % = `counted / budget * 100`.
     Windows use fixed UTC boundaries: epoch-aligned five-hour blocks, calendar days,
     Monday-start weeks and calendar months. Records at the start belong to the new window.
@@ -71,7 +74,9 @@ Successful exits ignore provider error words; permission-rejection markers are a
 classify stderr first, then the stdout tail, with invalid requests taking priority over provider limits.
 The runner refuses sandbox/permission bypass flags and final prompts over 24 KiB on Windows or 100 KiB elsewhere
 (including the directory prefix); stdin remains capped at 200 KiB. These refusals launch nothing and record nothing.
-Counter usage is one configured unit per started call, even on failure; token/cost extraction is not supported.
+For non-credit counters the runner records one configured unit per started call, even on failure.
+For Copilot it records metered AI credits, or an estimate when the meter is missing. A metered zero adds no usage.
+Claude and Junie token counts, when available, appear in the run report and timing journal.
 
 ## User caps
 
@@ -197,9 +202,9 @@ service as a breach and it is unclear whether starting Google's own program from
 
 ## Security
 
-- `cli` templates are argument arrays executed by the worker agent through its normal (permission-checked)
-  Bash tool, never through Quota Boss scripts. Quota Boss scripts open no network connections themselves;
-  `quota-boss tools` starts official package managers (see below).
+- The worker invokes `scripts/cli-run.js`, which starts the provider CLI with an argument array.
+  Quota Boss scripts open no network connections themselves. `quota-boss tools` starts official package managers
+  or approved vendor installers.
 - Registry/provider writes are locked and atomic. Registry reads and writes are capped at 1 MiB.
 - Configuration and journals reject symlinks/non-regular files before open and check descriptors; writes
   also reject symlinked parent directories. Live lock owners are never evicted on a timer; dead-owner
@@ -215,10 +220,9 @@ otherwise the adapter uses an estimated daily call counter. Configure `claude.qu
 
 ## Free and local provider examples
 
-OpenCode free is a disabled example marked trainsOnData: true; enabling it also requires
-`quota-boss set training on` for each project. Ollama is an advanced option marked trainsOnData: false, separate from `/boss-setup`.
-Kilo Free is also off by default. Setup can install its CLI; no account or key was needed in testing. Kilo allows 200 anonymous free requests per hour per IP address. Free models may change. See [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication). Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
-All three have zero-cost, conservatively scored models; routing uses max(cost, 0.2) to avoid division by zero.
+Ollama is an advanced option marked trainsOnData: false, separate from `/boss-setup`.
+Kilo Free is off by default. Setup can install its CLI; no account or key was needed in testing. Kilo allows 200 anonymous free requests per hour per IP address. Free models may change. See [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication). Kilo says Auto Free may send prompts and outputs to providers that log and use them for improvement. Do not send personal or confidential data.
+Ollama and Kilo Free have zero-cost models. Routing uses max(cost, 0.2) to avoid division by zero.
 Turn Ollama on with `/boss-local`, which asks for your installed model. Free API offers (OpenCode Zen, OpenRouter, Cloudflare, Cohere, Gemini, NVIDIA, Z.ai) are presets in the setup and in `/boss-add-api`. None is added unless you choose it: setup can add all offers except NVIDIA at once, add only those that do not train on your data, or let you choose one by one. NVIDIA's trial terms allow evaluation only, with no production use or confidential code. They use official API keys, or no key at all for OpenCode Zen, and never web-cookie or subscription logins.
 Example scores and training flags are conservative configuration declarations; check the selected service/model terms before changing them.
 
@@ -263,8 +267,8 @@ get an account suspended. This is a summary from November 2026, not legal advice
   key for automation and [says not to use a ChatGPT login in CI for public or open-source repositories](https://learn.chatgpt.com/docs/non-interactive-mode).
   Use that login on your own machine only, never on a CI runner.
 - **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
-- **OpenCode Zen** needs no key. Quota Boss offers only the two free models whose providers, [according to OpenCode](https://opencode.ai/docs/zen/),
-  keep no data and do not train on it. Only DeepSeek V4.1 Flash is left, because OpenCode retired the free GLM model. It is free for a limited time.
+- **OpenCode Zen** needs no key. Quota Boss offers only DeepSeek V4.1 Flash, whose provider, [according to OpenCode](https://opencode.ai/docs/zen/),
+  keeps no data and does not train on it. It is free for a limited time.
 - **OpenRouter Free** models have a 50-call daily cap, with a higher daily cap after $10 of credits. One OpenCode run
   sends about 5 API requests, so the local counter budgets 10 runs a day (Cohere: 200 runs for 1,000 calls a month).
   When OpenRouter answers "free-models-per-day" anyway, the route pauses until 00:00 UTC.

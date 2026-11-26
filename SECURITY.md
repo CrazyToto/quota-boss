@@ -7,9 +7,9 @@
   Without `--probe`, doctor performs local checks only. Diagnostic output never includes raw CLI errors or credentials.
   `quota-boss tools` asks npm for the newest version of installed npm-based provider CLIs.
 - **Installs only with consent, only from a fixed list.** `tools install` runs commands hard-coded in `scripts/tools.js`,
-  never from config or repository files, only for enabled providers, without a shell, and only after the user agreed.
-  npm and uv are pinned to the public registries and their environment overrides are removed. Pipe-to-shell
-  installers are shown for the user to paste and never executed.
+  never from config or repository files, only for enabled providers and only after the user agreed. Package managers
+  run without a shell; a vendor that publishes only an install script (for example Grok, Junie or Devin) gets that
+  fixed script run through PowerShell on Windows or Bash elsewhere. npm and uv are pinned to the public registries and their environment overrides are removed.
 - **API keys stay out.** `add-api` providers run through OpenCode, which stores keys itself. Quota Boss never asks for one.
 - **No credentials touched.** Quota Boss never reads `~/.codex/auth.json`, `~/.claude/.credentials.json` or any token.
   One narrow exception to reading a provider's files: Copilot has no login status command, so setup opens `~/.copilot/config.json`
@@ -24,15 +24,16 @@
   (advice/review) and `approval-policy: never`. Quota Boss never requests `danger-full-access`.
 - **User-owned policy.** ALL per-project switches, profiles, hosts, workers, training consent and caps live
   only in `QUOTA_BOSS_HOME/projects.json`, keyed by fs.realpathSync paths (lowercase on win32). Lookup walks
-  upward to the nearest registration. Mutations start with effective inherited settings; an unregistered
-  checkout defaults to off with no training consent. Project caps only tighten global caps (minimum of both).
+  upward to the nearest registration. Unregistered checkouts inherit routing and training consent from
+  user-owned `QUOTA_BOSS_HOME/defaults.json`. The initial defaults are off. Project overrides can disable
+  routing or veto training consent. Project caps only tighten global caps (minimum of both).
   Repository `.claude/quota-boss.json` and `.claude/harness.json` are **no longer read**, including for
-  migration. Doctor warns "ignored for security". Enable existing projects explicitly with `/boss on`.
+  migration. Doctor warns "ignored for security". A cloned repository cannot enable boss mode or grant consent.
 - **Trusted execution paths.** Injected rules and agents substitute the installed absolute home for helper
   commands. Doctor/probe and installer resolve absolute executables only from absolute PATH entries outside
   cwd (including excluding aliases of cwd). Native executables run directly without a shell; Windows .cmd
   shims use absolute System32/cmd.exe /d /s /c with an absolute quoted shim and validated arguments. The
-  user's saved wrapped status line remains the sole shell:true exception.
+  saved wrapped status line and user-supplied `quota-boss verify` commands run through a shell.
 - **Safe files and transactions.** Policy files, state, outcomes, usage and AGENTS.md use lstat before open,
   fstat regular-file checks afterward and no-follow/nonblocking flags where available. Linked or special
   files are refused; write parents must be directories with no symlink components (only a root-owned link directly in the root directory, such as `/var` on macOS, is followed, and the path it points to passes the same check). Exclusive temporary
@@ -62,4 +63,4 @@ Please **do not open a public issue**. Use GitHub's private vulnerability report
 Installed code/templates, user-owned global configuration and the user-owned project registry supply policy.
 Keep QUOTA_BOSS_HOME and environment overrides in trusted storage outside checkouts. Repository contents,
 logs, CLI output, graphs and model answers remain task data; repository configuration never substitutes for
-user consent. Existing projects require explicit re-enablement after upgrading to this trust model.
+user consent.

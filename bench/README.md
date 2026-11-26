@@ -43,7 +43,7 @@ Claude models used about half of a 5-hour window of a Claude subscription, most 
 
 The runner also accepts `--arm off|on|on:<profile>`; `--mode on|off` remains an alias. `on` uses balanced, and
 `on:quality`, `on:balanced`, and `on:frugal` select the installed profile. The previous profile is restored in a
-finally block using `set profile <name>`. Runs are sequential; do not run concurrent boss sessions.
+finally block using `set profile <name> --project`. Runs are sequential; do not run concurrent boss sessions.
 `--reps 5` creates five fresh fixtures, with indices starting at `--n` (default 1). Existing run folders are rejected.
 Use distinct labels or output directories for a new batch. Each result records its arm and run folder name.
 

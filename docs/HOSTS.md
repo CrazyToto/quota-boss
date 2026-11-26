@@ -83,7 +83,6 @@ haiku; Codex: astra, sol, terra, luna), then the default boss pick if no family 
   pytest, Cargo, Go, TypeScript and ESLint output. Saves boss tokens.
 - Providers get a `tos` field: `official-cli` (default for subscriptions used via their own CLI), `api`,
   `avoid`. Providers marked `avoid` are never routed automatically.
-- Project option `"terse": true` adds one rule line asking the boss for terse answers (fewer output tokens).
 
 All project switches, profiles, hosts, consent and caps live exclusively in user-owned
 `QUOTA_BOSS_HOME/projects.json` (1 MiB maximum, locked atomic writes). Keys use fs.realpathSync,
@@ -107,7 +106,7 @@ before activation so interrupted installs can be uninstalled.
 
 `quota-boss verify [--fresh] -- <command...>` reuses passing test evidence for the same Git revision
 for six hours (up to 50 entries); `--fresh` forces a run. `--log <model> <category> <tier> [--effort <level>]`
-records the run's pass or fail as feedback, so no separate `feedback` call is needed; a reused pass is not logged again.
+records the run's pass or fail as feedback. A cached pass can be logged once if it was saved without feedback.
 
 Set `QUOTA_BOSS_HOME` to override `~/.claude/quota-boss`. Deprecated `HARNESS_HOME` remains a user environment fallback. Project files in the checkout are ignored.
 The Claude Code slash command is `/boss on`. After installing, invoke the CLI directly with

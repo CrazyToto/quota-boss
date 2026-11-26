@@ -12,9 +12,9 @@ Measured from real session transcripts (11 boss-mode sessions over 2 days, numer
 | The boss thread is the cost | About 99% of weighted Claude usage. Relay agents that only launch a CLI are about 1%. | Cheaper relays save little. Fewer boss turns in a large context save a lot. |
 | The boss did nearly all the work itself | Over 3 days, 21 of about 1,270 tool calls went to agents (10 cli-worker, 4 codex-worker, 4 researcher, 2 gpt-advisor, 1 consensus). None went to Haiku or Sonnet as a working model. 397 Edit and 69 Write calls ran on Opus. | The 99% above is partly a result of this. Cheap workers now exist, so measure again. |
 | Context size drives it | Cache reads are 40-77% of cost, cache writes 7-34%, output 16-48%. Average context per turn is 80k-210k tokens, the maximum 382k. A fresh session starts near 45k. | Warn earlier and avoid extra turns. |
-| Small delegations are risky | A delegation adds about three boss turns, each more expensive in a large context. A 13-line file sent to a free provider cost 14.4k Haiku tokens and 38 s, failed with HTTP 422, and the boss wrote it anyway. In a small fresh context the benchmark below shows no Claude loss, but 4x the time. | Add a delegation gate and test it. templates/RULES.md has no minimum task size today. |
-| Verification has a hole | TRIVIAL work is checked with tests and `git diff --stat`. Docs have no tests, so nobody reads the result. | Always read the changed content. |
-| Reviews are doubled | templates/RULES.md rule 5 and `agents/reviewer.md` both ask for a GPT counter-review. | Keep one. |
+| Small delegations are risky | A delegation adds about three boss turns, each more expensive in a large context. A 13-line file sent to a free provider cost 14.4k Haiku tokens and 38 s, failed with HTTP 422, and the boss wrote it anyway. In a small fresh context the benchmark below shows no Claude loss, but 4x the time. | This led to a delegation gate and the size rule in templates/RULES.md. |
+| Verification has a hole | At the time, TRIVIAL work was checked with tests and `git diff --stat`. | Always read the changed content. |
+| Reviews are doubled | At the time, templates/RULES.md rule 5 and `agents/reviewer.md` both asked for a GPT counter-review. | Keep one. |
 
 Using Codex or free quota instead of Claude is the purpose of the tool, so those pools are expected to go up. The goal is
 that they are only spent on work that replaces more expensive work, and that Claude usage goes down without worse results.
@@ -61,7 +61,7 @@ USD is an estimate from token counts of every session in the run folder at list 
 After the `route` fix the table arrives, but `QUOTA_BOSS_BOSS_MODEL` does not reach Codex's `node_repl`, so the boss still saw the table for an unknown boss and sent the whole task to its own model at low effort. With the model known, `route` picks GPT-6.1 Terra at half the price instead.
 Breakdown of one boss-on run: boss 0.21 (off: 0.07), worker 0.12, auto-review of all agents 0.17 (off: 0.04). The overhead of handing over (waiting turns in the boss context, the worker reading the project again, a review, approvals for every agent) costs more than the work. Shell launches were refused in boss on and boss off alike, so that does not explain the gap.
 
-One sample per row. Small is even within noise. **Medium costs about 2.3 to 2.7 times boss off with no gain on the hidden tests, so a Codex boss currently breaks the rule that boss mode must not cost more.**
+One sample per row. Small was even within noise. In this earlier benchmark, medium cost about 2.3 to 2.7 times boss off with no gain on the hidden tests. The later rerun showed no extra cost.
 No Claude usage in any run. The six runs moved the Codex 5h window by about 5 points for the first four.
 
 What the logs show:
@@ -258,8 +258,8 @@ checks).
 | xlarge | on, split allowed | 1 | 44/44 | 292 | 0.632 (+0.115 Codex) |
 
 In both split runs the rule was in the session, but the boss judged the modules too dependent on each other and sent
-one worker, as with split off; the gap in time is spread between runs, not the feature. The bench was stopped there, so
-split stays off by default until a task where the boss actually splits shows a gain.
+one worker, as with split off. The gap in time reflects spread between runs. The bench stopped there.
+The split setting was removed in 0.2.0.
 
 ### Claude Code: research by read volume (2026-11-17)
 
@@ -277,10 +277,10 @@ Codex), which returns one line per claim with source and date. Mean of 3 runs ea
 | research on | save | 1/3 | 0.348 | 0.034 | 50 |
 
 Delegated research uses about 25% less Claude at the same quality, but adds about 0.09 Codex and takes about twice as
-long. Left to choose, the boss read the docs itself in 5 of 6 runs, even with quota to spare, so the rule now applies
-only while Claude is saving and not when the worker's own pool is tight. Research stays off by default. Kept for
-everyone: the claim, source and date report form of `gpt-advisor` and `researcher`, and `codex-run --search
-cached|live|disabled`.
+long. Left to choose, the boss read the docs itself in 5 of 6 runs, even with quota to spare.
+The rule is now built in. It applies to research over about 40 KB while Claude is saving, unless the worker's pool is tight.
+The claim, source and date report form still applies to `gpt-advisor` and `researcher`.
+The `codex-run --search cached|live|disabled` options still apply.
 
 ### Junie Lite and GPT-6.2 (2026-11-19)
 
