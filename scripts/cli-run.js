@@ -18,6 +18,12 @@ const AUTH_MISSING = /^Cannot find authorization\. Please authenticate before ru
 // Junie reports request errors (a refused license, limits) only in its JSON result, not on stdout or in the exit code.
 const JUNIE_LICENSE = /\b492\b|untrusted license|no (?:valid |active )?licen[cs]e/i;
 const JUNIE_REPORT_MAX = 8 * 1024 * 1024;
+// Devin prints these at the start of a line and can still exit 0 (texts from the CLI 3000.14, 2026-11-27).
+const DEVIN_AUTH = /^(?:Not logged in\b|Authentication required\b)/m;
+const DEVIN_LIMIT = /^(?:You've reached your monthly usage limit|Your organization has reached its monthly usage limit|(?:Organization )?usage limit reached|Usage paused|Monthly ACU limit reached|Quota exhausted)\b/mi;
+// A CLI with settleMinutes is stopped once it has changed files and the work tree then stays the same that long:
+// Devin sometimes keeps running for half an hour after its last edit.
+const SETTLE_POLL_MS = 30 * 1000;
 const COPILOT_EVENTS_MAX = 32 * 1024 * 1024;
 // Booked when a credit counter has no meter reading: about a median Copilot worker job (4.6-10 credits seen).
 const CREDIT_ESTIMATE = 5;
@@ -218,13 +224,14 @@ function execute(plan, deps = {}) {
   const platform = deps.platform || process.platform;
   const schedule = deps.setTimeout || setTimeout, cancel = deps.clearTimeout || clearTimeout;
   return new Promise(resolve => {
-    let child, killer, timer, reapTimer, settled = false;
+    let child, killer, timer, reapTimer, poller, settled = false;
     const result = { status: null, stdout: '', stderr: '', stderrMatches: new Set(), noWork: false, timedOut: false };
     const windows = { stdout: '', stderr: '' };
     const finish = () => {
       if (settled) return;
       settled = true; cancel(timer); cancel(reapTimer);
-      if (result.timedOut) {
+      if (poller) (deps.clearInterval || clearInterval)(poller);
+      if (result.timedOut || result.settled) {
         // Pipes inherited by an orphan must not keep this runner alive after the watchdog.
         child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy(); child?.unref?.();
         try { killer?.kill?.('SIGKILL'); } catch { /* already gone */ }
@@ -240,8 +247,8 @@ function execute(plan, deps = {}) {
       if (plan.input !== undefined && stream === 'stdout' && result.stdout.length + text.length > TAIL_CHARS) result.stdoutTruncated = true;
       result[stream] = (result[stream] + text).slice(-TAIL_CHARS);
     };
-    const kill = () => {
-      result.timedOut = true;
+    const kill = (done = false) => {
+      if (done === true) result.settled = true; else result.timedOut = true;
       // Bound shutdown too: descendants can keep pipes open even after their parent exits.
       const fallback = () => { try { child.kill('SIGKILL'); } catch { /* already gone */ } };
       reapTimer = schedule(() => { fallback(); finish(); }, 5000);
@@ -267,6 +274,17 @@ function execute(plan, deps = {}) {
       child.on('error', error => { result.error = error; finish(); });
       child.on('close', status => { result.status = status; finish(); });
       timer = schedule(kill, TIMEOUT_MS);
+      if (deps.settle) {
+        const { ms, poll, before } = deps.settle, now = deps.now || Date.now;
+        let last = before, changedAt = null;
+        poller = (deps.setInterval || setInterval)(() => {
+          if (settled || result.timedOut || result.settled) return;
+          const current = poll();
+          if (current === null) return;
+          if (current !== last) { last = current; changedAt = now(); return; }
+          if (current !== before && changedAt !== null && now() - changedAt >= ms) { cancel(timer); kill(true); }
+        }, SETTLE_POLL_MS);
+      }
       if (plan.input !== undefined) {
         child.stdin.on('error', () => {});
         try { child.stdin.end(plan.input); } catch { /* close decides, including EPIPE */ }
@@ -275,8 +293,15 @@ function execute(plan, deps = {}) {
   });
 }
 
-function classify(result, expectChanges, before, after, env, claude = false, junie = false) {
+function classify(result, expectChanges, before, after, env, claude = false, junie = false, devin = false) {
   if (result.timedOut) return { kind: 'timeout', reason: '10-minute timeout' };
+  if (devin) {
+    const text = ['stdout', 'stderr'].map(stream => (result[stream] || '').slice(-TAIL_CHARS)).join('\n');
+    if (DEVIN_AUTH.test(text)) return { kind: 'unavailable', reason: 'not logged in' };
+    if (DEVIN_LIMIT.test(text)) return { kind: 'limited', reason: 'provider limit', cause: 'quota' };
+  }
+  // Stopped after its edits settled: the exit code is the kill, and the boss's checks judge the work.
+  if (result.settled) return before !== null && after !== null && before === after ? { kind: 'no-work', reason: 'git fingerprint unchanged' } : { kind: 'ok', reason: '' };
   if (result.noWork || (!claude && NO_WORK.test(result.stdout || '')) || NO_WORK.test(result.stderr || '')) return { kind: 'no-work', reason: 'permission rejected' };
   if (result.error) return { kind: 'failed', reason: 'could not run CLI' + (result.error.code ? ' (' + result.error.code + ')' : '') };
   // Junie prints its login hint and still exits 0, so this one exact line counts even on success.
@@ -383,6 +408,7 @@ async function run(argv, deps = {}) {
   // The prompt goes in first: the full prompt has a prefix, so it can never become the bare {input} argument.
   const args = withInput(selected.args.map(arg => arg.replaceAll('{prompt}', () => fullPrompt)), options.input, cwd, deps, selected.cli.inputs || []);
   const junie = path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'junie';
+  const devin = path.basename(String(selected.cli?.command)).replace(/\.(exe|bat|cmd)$/i, '').toLowerCase() === 'devin';
   // With --output-format=json Junie writes its result (errors, models used, tokens) to a private temp file and stdout
   // keeps the readable answer. A user CLI with text output or its own output file is left as it is.
   const junieReport = junie && args.includes('--output-format=json') && !args.some(arg => arg.startsWith('--json-output-file'))
@@ -415,7 +441,8 @@ async function run(argv, deps = {}) {
   let result;
   try {
     result = slot.timeout ? { timedOut: true, status: null, stdout: '', stderr: '' }
-      : await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude });
+      : await execute(spawnPlan(target, args, lib.childEnv(selected.cli.command, env, native, platform), platform, cwd, selected.stdin ? fullPrompt : undefined), { ...deps, platform, claude: selected.claude,
+        ...(selected.cli.settleMinutes && before !== null ? { settle: { ms: selected.cli.settleMinutes * 60000, poll: status, before } } : {}) });
   } catch (error) {
     releaseProbe();
     throw error;
@@ -461,7 +488,7 @@ async function run(argv, deps = {}) {
   // The model the vendor really ran (Junie Lite does not pin one).
   const ran = [...new Set([...junieUsage.map(item => item.model), copilotModel].filter(name => typeof name === 'string' && /^[\w./:@-]{1,100}$/.test(name)))].slice(0, 3);
   const outcome = slot.timeout ? { kind: 'timeout', reason: slot.timeout }
-    : classify(result, options['expect-changes'], before, after, env, selected.claude, junie);
+    : classify(result, options['expect-changes'], before, after, env, selected.claude, junie, devin);
   const ok = outcome.kind === 'ok';
   // Quota and outage pauses are told apart, and a reset time the provider names (OpenRouter's daily free counter,
   // Retry-After, "try again in ...") sets how long the route sits out.

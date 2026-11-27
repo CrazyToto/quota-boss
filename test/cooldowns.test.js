@@ -30,6 +30,8 @@ test('reset hints: OpenRouter daily counter, headers, Retry-After, durations and
   // A reset header wins over the daily guess; seconds and milliseconds both work.
   assert.equal(lib.resetHint('free-models-per-day "X-RateLimit-Reset":"' + (T0 + 3 * MIN) + '"', T0), T0 + 3 * MIN);
   assert.equal(lib.resetHint('x-ratelimit-reset: ' + Math.round((T0 + 120000) / 1000), T0), T0 + 120000);
+  assert.equal(lib.resetHint("You've reached your monthly usage limit. Wait for the limit to reset next month.", T0), Date.UTC(2026, 11, 1));
+  assert.equal(lib.resetHint('monthly usage limit', T0), null);
   assert.equal(lib.resetHint('Retry-After: 90', T0), T0 + 90000);
   assert.equal(lib.resetHint('please retry after 30 seconds', T0), T0 + 30000);
   assert.equal(lib.resetHint('Retry after 2 minutes', T0), T0 + 2 * MIN);

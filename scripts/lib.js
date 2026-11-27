@@ -898,6 +898,11 @@ function resetHint(text, now = Date.now()) {
     const day = new Date(now);
     return valid(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + 1));
   }
+  // Devin's monthly limit names no date, only "next month": the route sits out until the 1st (UTC).
+  if (/monthly (?:usage|acu) limit[^\n]{0,120}reset next month/i.test(value)) {
+    const day = new Date(now), next = Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1);
+    if (next > now && next <= now + 32 * 86400000) return next;
+  }
   match = value.match(/retry[- ]after["']?\s*[:=]?\s*["']?(\d{1,7})(?:\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b)?/i);
   if (match) {
     const unit = { h: 3600, m: 60 }[String(match[2] || 's')[0].toLowerCase()] || 1;
@@ -1153,6 +1158,7 @@ function validateProviders(config) {
         || p.cli.promptVia !== undefined && p.cli.promptVia !== 'stdin'
         || p.cli.inputs !== undefined && (!Array.isArray(p.cli.inputs) || p.cli.inputs.some(a => !['text', 'image', 'pdf', 'video', 'audio'].includes(a)))
         || p.cli.tools !== undefined && (!Array.isArray(p.cli.tools) || p.cli.tools.some(a => !['image-gen', 'web-search'].includes(a)))
+        || p.cli.settleMinutes !== undefined && !(Number.isInteger(p.cli.settleMinutes) && p.cli.settleMinutes >= 1 && p.cli.settleMinutes <= 9)
         // An input file goes in as one whole argument, so the CLI can never read it as a flag or a second value.
         || p.cli.args.some(a => a.includes('{input}') && a !== '{input}') || p.cli.args.filter(a => a === '{input}').length > 1
         // A stdin prompt must not also land in argv, and an argv prompt needs its placeholder.

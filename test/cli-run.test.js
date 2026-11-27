@@ -608,6 +608,57 @@ test('the Junie login hint is unavailable for Junie even with exit 0, but a quot
   assert.equal(runner.classify({ status: 0, stdout: hint, claude: { subtype: 'success' } }, false, null, null, {}, true).kind, 'ok');
 });
 
+test('Devin login and limit lines count even with exit 0, but not when quoted or for another CLI', () => {
+  const devin = result => runner.classify(result, false, null, null, {}, false, false, true);
+  for (const stream of ['stdout', 'stderr']) {
+    assert.deepEqual(devin({ status: 0, [stream]: 'Not logged in. Run `devin auth login`.' }), { kind: 'unavailable', reason: 'not logged in' });
+    assert.deepEqual(devin({ status: 1, [stream]: 'x\r\nAuthentication required' }), { kind: 'unavailable', reason: 'not logged in' });
+    for (const line of ["You've reached your monthly usage limit. Wait for the limit to reset next month.", 'Usage limit reached', 'Organization usage limit reached', 'Usage paused', 'Monthly ACU limit reached']) {
+      assert.deepEqual(devin({ status: 0, [stream]: 'work\n' + line }), { kind: 'limited', reason: 'provider limit', cause: 'quota' }, line);
+    }
+    assert.equal(devin({ status: 0, [stream]: 'The CLI prints "Usage limit reached" when the quota is gone.' }).kind, 'ok');
+    assert.equal(runner.classify({ status: 0, [stream]: 'Not logged in.' }).kind, 'ok', 'another CLI is not marked unavailable');
+  }
+});
+
+test('a settled run is ok when files changed and no-work when they did not', () => {
+  assert.deepEqual(runner.classify({ settled: true, status: null }, true, 'a', 'b'), { kind: 'ok', reason: '' });
+  assert.equal(runner.classify({ settled: true, status: null }, true, 'a', 'a').kind, 'no-work');
+  assert.equal(runner.classify({ settled: true, timedOut: true, status: null }, true, 'a', 'b').kind, 'timeout');
+});
+
+test('settle stops the CLI only after files changed and then stayed the same for the settle time', async () => {
+  const intervals = []; const child = fakeChild(); let clock = 0, killed = 0, cleared = false;
+  const states = ['base', 'base', 'one', 'two'];
+  const promise = runner.execute({ file: 'unused', args: [], options: { env: {} } }, {
+    platform: 'linux', now: () => clock, setTimeout: () => 1, clearTimeout() {},
+    setInterval: (callback, ms) => { intervals.push({ callback, ms }); return 'poll'; }, clearInterval: id => { assert.equal(id, 'poll'); cleared = true; },
+    kill: () => { killed++; queueMicrotask(() => child.emit('close', null)); },
+    spawn: () => child, settle: { ms: 5 * 60000, poll: () => states.shift() ?? 'two', before: 'base' },
+  });
+  assert.equal(intervals[0].ms, 30000);
+  const tick = minutes => { clock += minutes * 60000; intervals[0].callback(); };
+  tick(1); tick(1); assert.equal(killed, 0, 'no change yet');
+  tick(1); tick(1); assert.equal(killed, 0, 'still changing');
+  tick(4); assert.equal(killed, 0, 'quiet for 4 minutes');
+  tick(1); assert.equal(killed, 1, 'quiet for 5 minutes');
+  const result = await promise;
+  assert.equal(result.settled, true); assert.equal(result.timedOut, false); assert.equal(cleared, true);
+});
+
+test('settle never stops a CLI whose work tree did not change', async () => {
+  const intervals = []; const child = fakeChild(); let clock = 0, killed = 0;
+  const promise = runner.execute({ file: 'unused', args: [], options: { env: {} } }, {
+    platform: 'linux', now: () => clock, setTimeout: () => 1, clearTimeout() {},
+    setInterval: callback => { intervals.push(callback); return 1; }, clearInterval() {},
+    kill: () => { killed++; }, spawn: () => child, settle: { ms: 60000, poll: () => 'base', before: 'base' },
+  });
+  for (let i = 0; i < 20; i++) { clock += 60000; intervals[0](); }
+  assert.equal(killed, 0);
+  child.emit('close', 0);
+  assert.equal((await promise).settled, undefined);
+});
+
 test('permission rejection is no-work and records fail for every exit code and either stream', async () => {
   for (const status of [0, 1, 2]) for (const stream of ['stdout', 'stderr']) for (const marker of ['auto-rejecting', 'rejected permission']) {
     const h = harness({ status, [stream]: 'HTTP 429\n' + marker });

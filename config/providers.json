@@ -74,7 +74,7 @@
       },
       "worker": "cli-worker",
       "cli": {
-        "$comment": "Only SWE-2 Flash Medium is free; every other Devin model bills per token, so the free model is always named. Print mode cannot show the workspace trust prompt and fails without that switch. accept-edits lets it edit files without asking; shell commands are refused in print mode.",
+        "$comment": "Only SWE-2 Flash Medium is free; every other Devin model bills per token, so the free model is always named. Print mode cannot show the workspace trust prompt and fails without that switch. accept-edits lets it edit files without asking; shell commands are refused in print mode. settleMinutes stops it once its edits have stayed the same for 5 minutes, because it can keep running for half an hour after the work is written.",
         "command": "devin",
         "args": [
           "--respect-workspace-trust",
@@ -85,7 +85,8 @@
           "swe-2-flash-medium",
           "-p",
           "{prompt}"
-        ]
+        ],
+        "settleMinutes": 5
       },
       "tos": "official-cli",
       "trainsOnData": true
