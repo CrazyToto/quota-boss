@@ -125,11 +125,13 @@ function selection(options, config, project) {
   const cli = provider.cli || (claude ? CLAUDE_CLI : null);
   if (!cli) throw new Error('Provider has no CLI.');
   const registry = config.models.models;
-  const ids = Object.keys(registry).filter(key => registry[key]?.pool === id);
+  const ids = Object.keys(registry).filter(key => registry[key]?.pool === id && registry[key].enabled !== false);
   const model = options.model ?? (!claude && ids.length === 1 ? ids[0] : null);
   if (!model) throw new Error('Pass --model: provider does not have a single registry model.');
   const entry = Object.hasOwn(registry, model) ? registry[model] : null;
   if (!entry || entry.pool !== id) throw new Error('Unknown model for provider.');
+  // An off model (a paid-plan model before quota-boss use <model> on, or one switched off) never runs.
+  if (entry.enabled === false) throw new Error('Model ' + model + ' is off. Turn it on with quota-boss use ' + model + ' on.');
   const cliModel = claude ? entry.cliModel ?? model : entry.cliModel;
   if ((claude || entry.cliModel !== undefined) && !lib.validCliModel(cliModel)) throw new Error('Invalid model CLI name.');
   // Match providers show: absent --model uses the CLI default, not an inferred registry slug.

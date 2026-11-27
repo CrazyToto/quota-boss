@@ -182,9 +182,11 @@ five minutes on Windows for its saved login. The CLI's "Cannot find authorizatio
 
 ## Devin
 
-Devin runs Cognition's official [Devin CLI](https://docs.devin.ai/cli) in print mode (`devin -p`), always with
+Devin runs Cognition's official [Devin CLI](https://docs.devin.ai/cli) in print mode (`devin -p`), by default with
 `--model swe-2-flash-medium`: SWE-2 Flash Medium is the only model `devin models list` marks as free, every other one
-bills per token. `--permission-mode accept-edits` lets it edit files; it refuses shell commands in print mode, so it
+bills per token. The other Devin models ship off; turn one on with `quota-boss use <model-id> on` if your plan includes
+it, and `quota-boss providers models devin` shows which ones your account offers. Use beyond the plan's allowance may be
+billed. `--permission-mode accept-edits` lets it edit files; it refuses shell commands in print mode, so it
 cannot run tests itself and the boss's check matters more. `--respect-workspace-trust false` skips the trust prompt
 that print mode cannot show. It prints plain text with no usage, and there is no CLI quota command (only `/usage` in
 a session and the web dashboard), so the status line has no Devin numbers.
@@ -269,6 +271,12 @@ get an account suspended. This is a summary from November 2026, not legal advice
 - **Mistral by API key** requires billing activation and pay-as-you-go. Add it as a custom API with OpenCode. See [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits#plan-usage-and-limits).
 - **OpenCode Zen** needs no key. Quota Boss offers only DeepSeek V4.1 Flash, whose provider, [according to OpenCode](https://opencode.ai/docs/zen/),
   keeps no data and does not train on it. It is free for a limited time.
+- **OpenCode Go** is a paid OpenCode plan ($10 a month, [OpenCode Go](https://opencode.ai/docs/go/)). If you have it, add a model
+  as a custom API, for example `quota-boss add-api go-kimi opencode-go/kimi-k3 --trains yes` (say `no` only where OpenCode states that the model's
+  provider does not train on your data), then sign in with
+  `opencode auth login -p opencode-go` and the key from the OpenCode console. `opencode models` lists the `opencode-go/...` ids.
+  Go blocks requests at its 5-hour, weekly and monthly limits unless Extra Usage is on, which bills credits; check it in
+  the console, since some plans (Go Teams) start with it on.
 - **OpenRouter Free** models have a 50-call daily cap, with a higher daily cap after $10 of credits. One OpenCode run
   sends about 5 API requests, so the local counter budgets 10 runs a day (Cohere: 200 runs for 1,000 calls a month).
   When OpenRouter answers "free-models-per-day" anyway, the route pauses until 00:00 UTC.

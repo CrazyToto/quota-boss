@@ -6,11 +6,15 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Added
 
+- `quota-boss providers models <id>` asks Devin or Antigravity which models your account offers and shows which are routed, which you can turn on, and which the table names but your account lacks.
+- Paid-plan models that ship off: Devin SWE-2.1, SWE-2, Claude Opus 5.5, Claude Sonnet 5.5 and GPT-6.2-Sol through Devin, and Gemini 4 Hydrogen in Antigravity. Turn one on with `quota-boss use <model-id> on` if your plan includes it.
+- How to use an OpenCode Go plan, in docs/PROVIDERS.md.
 - A new status line look. The default `minimal` style shows a coloured bar per pool: `✻ Claude ━━━━━━━━━━ 34% ↻00:50  wk 43%    ⌬ Codex ━━━━━━━━━━ 10%  wk 2%    ● boss  ◔ 100k`. `set statusline-style rounded` puts the bars in soft pills with round ends (needs a Nerd Font), and `classic` keeps the old compact line. `set statusline-logos on|off` and `set statusline-names on|off` show or hide the symbols and names. The minimal and rounded styles leave out the extra provider counters, and a small pie shows how full the context is.
-- Devin (Cognition) as a free provider through its official Devin CLI, off by default. It always uses SWE-2 Flash Medium, the only free Devin model; every other Devin model bills per token. Setup asks about it, shows the official install command and starts `devin auth login`; `tools` checks the login with `devin auth status`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. The status line does not show Devin usage yet.
+- Devin (Cognition) as a free provider through its official Devin CLI, off by default. By default it uses SWE-2 Flash Medium, the only free Devin model; the other Devin models bill per token and ship off. Setup asks about it, shows the official install command and starts `devin auth login`; `tools` checks the login with `devin auth status`. It runs with `--permission-mode accept-edits`, so it edits files but cannot run shell commands. The status line does not show Devin usage yet.
 
 ### Fixed
 
+- `quota-boss use <model-id> on` now turns on a model that ships off; before, it had to be copied into your `config/models.json` by hand.
 - Devin: a missing login now counts as "not logged in" and a usage limit as a provider limit, even when the CLI exits 0; a monthly limit pauses Devin until the 1st of the next month. Devin is also stopped once it has changed files and the work tree then stays the same for 5 minutes, because it could keep running for half an hour after the work was written (`cli.settleMinutes`).
 - A setting for a provider that this version does not know, for example `use devin on` saved by a newer copy, no longer stops every command with "Invalid provider kind". It is skipped, and `status` shows a warning to update.
 - Setup now asks about Gemini media, so its `gemini-api` program is installed when you turn it on, and it counts as an offer that may train on your data. Before, setup never mentioned it.

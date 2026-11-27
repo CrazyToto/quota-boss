@@ -27,7 +27,7 @@ const USAGES = {
   'settings': 'settings',
   'route': 'route [--explain] [--size small|medium|large] [--needs text,image,pdf,video,audio,image-gen,web-search] [--context <tokens>] [category] [tier]',
   'use': 'use [<provider-id|model-id> on|off [--project] [--no-test]]',
-  'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]|report <id> [--model <registry-id>]]',
+  'providers': 'providers [guide|show <id> [--model <registry-model-id>]|test <id> [--model <registry-id>] [--effort <level>]|models <id>|report <id> [--model <registry-id>]]',
   'cap': 'cap <id> <fiveHour|daily|weekly|monthly> <1-100|off> [--project]',
   'usage': 'usage <id> <amount> <calls|tokens|usd|credits>',
   'timing': 'timing <model> <category|-> <tier|-> <seconds> ok|fail',
@@ -43,7 +43,7 @@ const USAGES = {
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
+const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers models <id>            models your account offers vs. the table\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
 const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', 'statusline-style': 'statusline-style', 'statusline-logos': 'statusline-logos', 'statusline-names': 'statusline-names', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
@@ -169,11 +169,22 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
   checkId(id);
   if (noTest && (project || !provider || action !== 'on')) throw new Error(usage(command));
   if (provider && action === 'on' && !project && raw.providers[id].kind === 'local') throw new Error('Local models have their own switch: quota-boss local on <model>');
+  const global0 = lib.readUse();
+  // Judged on the table itself, so a model that is only switched off never gets an on entry that would outlive a later table change.
+  const table = lib.loadConfig(active, { use: false }).models.models;
+  const shipsOff = !provider && table[id]?.enabled === false;
   const update = value => {
     const next = lib.normalizeUse(value);
     const key = provider ? 'providersOff' : 'modelsOff';
     next[key] = next[key].filter(value => value !== id);
     if (action === 'off') next[key].push(id);
+    if (!provider) {
+      // A model that ships off (a paid-plan model) needs an explicit on; off drops it again, and entries for models
+      // that no longer ship off are dropped, so they cannot turn on a model that later ships off.
+      const modelsOn = (next.modelsOn ?? []).filter(value => value !== id && table[value]?.enabled === false);
+      if (action === 'on' && shipsOff) modelsOn.push(id);
+      if (modelsOn.length) next.modelsOn = modelsOn; else delete next.modelsOn;
+    }
     // A stored only filter (removed in 0.2.0) keeps excluding; turning a provider on lets in that one provider only.
     if (provider && action === 'on' && next.only && !next.only.includes(id)) next.only.push(id);
     return next;
@@ -198,6 +209,7 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
     });
   } else saveGlobal();
   output = output || id + ' ' + action + (project ? ' (this project)' : '');
+  if (action === 'on' && shipsOff && ![...global0.modelsOff, ...active.use.modelsOff].includes(id)) output += '\nThis model ships off because only some plans include it; keep it on only if yours does. Use beyond your plan\'s allowance may be billed.';
   if (action === 'on') {
     const global = lib.readUse();
     const pool = provider ? id : config.models.models[id]?.pool;
@@ -264,6 +276,10 @@ function providerCommand(command, rest, options) {
     if (rest.length !== 2 && (rest.length !== 4 || rest[2] !== '--model')) throw new Error(usage(command));
     checkId(rest[1]);
     return require('./provider-report').providerReport(rest[1], { ...options, config, model: rest[3] });
+  }
+  if (command === 'providers' && rest[0] === 'models' && rest.length === 2) {
+    checkId(rest[1]);
+    return require('./discover-models').discover(rest[1], { config }).text;
   }
   if (command === 'providers' && rest[0] === 'guide' && rest.length === 1) {
     return providerHelp.guide(config);

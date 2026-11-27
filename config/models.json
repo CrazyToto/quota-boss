@@ -486,6 +486,86 @@
       "contextTokens": 262144,
       "capabilitySource": "context: devin models list (\"262K context, Free\"), 2026-11-25"
     },
+    "devin-swe-2-1": {
+      "$comment": "Devin's own model on paid plans, billed from the plan's quota at the listed token price. Scores from Cognition's numbers only (Terminal-Bench 4.1 50.0%, level with GPT-6 Sol), research and architecture set lower because no independent result exists.",
+      "pool": "devin",
+      "label": "Devin SWE-2.1",
+      "enabled": false,
+      "cost": 3.5,
+      "cliModel": "swe-2-1-medium",
+      "scores": {
+        "architecture": 6,
+        "debugging": 7,
+        "implementation": 7,
+        "review": 6,
+        "research": 5,
+        "mechanical": 8
+      }
+    },
+    "devin-swe-2": {
+      "$comment": "Included for free accounts only until 2026-11-30 (promo), then paid plans. Cognition: Terminal-Bench 4.1 24.2%, a little above SWE-2 Flash.",
+      "pool": "devin",
+      "label": "Devin SWE-2",
+      "enabled": false,
+      "cost": 1.5,
+      "cliModel": "swe-2-medium",
+      "scores": {
+        "architecture": 3,
+        "debugging": 5,
+        "implementation": 6,
+        "review": 4,
+        "research": 3,
+        "mechanical": 8
+      }
+    },
+    "devin-claude-opus-5-5": {
+      "pool": "devin",
+      "label": "Devin Claude Opus 5.5",
+      "enabled": false,
+      "cost": 10,
+      "cliModel": "claude-opus-5-5-medium",
+      "scores": {
+        "architecture": 10,
+        "debugging": 10,
+        "implementation": 9,
+        "review": 10,
+        "research": 8,
+        "mechanical": 9
+      },
+      "capabilitySource": "devin models list, 2026-11-27; scores of the same model on its own CLI"
+    },
+    "devin-claude-sonnet-5-5": {
+      "pool": "devin",
+      "label": "Devin Claude Sonnet 5.5",
+      "enabled": false,
+      "cost": 5,
+      "cliModel": "claude-sonnet-5-5-medium",
+      "scores": {
+        "architecture": 8,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 7,
+        "mechanical": 9
+      },
+      "capabilitySource": "devin models list, 2026-11-27; scores of the same model on its own CLI"
+    },
+    "devin-gpt-6.2-sol": {
+      "pool": "devin",
+      "label": "Devin GPT-6.2-Sol",
+      "enabled": false,
+      "cost": 5,
+      "cliModel": "gpt-6-2-sol-medium",
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 8,
+        "mechanical": 8
+      },
+      "capabilitySource": "devin models list, 2026-11-27; scores of the same model on its own CLI"
+    },
     "copilot-default": {
       "pool": "copilot",
       "label": "GitHub Copilot",
@@ -564,6 +644,32 @@
         "web-search"
       ],
       "capabilitySource": "agy -p search_web tool (antigravity.google/docs/hooks); context: antigravity.google/docs/models"
+    },
+    "gemini-4-hydrogen": {
+      "$comment": "Rolling out to Google AI Pro and Ultra (antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity, 2026-11-12). Google: Terminal-Bench 4.1 57%; one press report: 54% on 4.0. Level with Argon, debugging and implementation from the same range.",
+      "pool": "antigravity",
+      "label": "Gemini 4 Hydrogen",
+      "enabled": false,
+      "cost": 10,
+      "cliModel": "gemini-4-hydrogen",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "scores": {
+        "architecture": 8,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 8,
+        "research": 8,
+        "mechanical": 8
+      },
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "agy models, 2026-11-27; agy -p search_web tool (antigravity.google/docs/hooks)"
     },
     "gemini-3.8-flash": {
       "pool": "antigravity",

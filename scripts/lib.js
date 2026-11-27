@@ -326,8 +326,12 @@ function loadConfig(project = findProjectConfig(), options = {}) {
       delete models.models[id];
     }
   }
-  const globalUse = readUse(), localUse = normalizeUse(project?.use);
+  // `use: false` gives the table as shipped and edited, before the use switches, to tell a model that ships off.
+  const globalUse = options.use === false ? normalizeUse({}) : readUse(), localUse = options.use === false ? normalizeUse({}) : normalizeUse(project?.use);
   const off = new Set([...globalUse.modelsOff, ...localUse.modelsOff]);
+  for (const id of new Set([...globalUse.modelsOn ?? [], ...localUse.modelsOn ?? []])) {
+    if (!off.has(id) && Object.hasOwn(models.models, id) && models.models[id]?.enabled === false) models.models[id] = { ...models.models[id], enabled: true };
+  }
   // route treats the resolved boss as self, never as a delegate. Keep that identity available.
   const boss = off.size ? delegationBoss(models, project) : null;
   for (const id of off) if (id !== boss && Object.hasOwn(models.models, id) && models.models[id]) {
@@ -344,8 +348,10 @@ function normalizeUse(value) {
   const ids = (value, valid) => [...new Set((Array.isArray(value) ? value : []).filter(valid))];
   // `only` can no longer be set (removed in 0.2.0), but a stored filter keeps excluding until `use <id> on` clears it.
   const only = ids(use.only, validProviderId);
+  // modelsOn turns on models that ship off (paid-plan models); it is stored only once used.
+  const on = ids(use.modelsOn, validUseModelId);
   return { ...(only.length ? { only } : {}),
-    providersOff: ids(use.providersOff, validProviderId), modelsOff: ids(use.modelsOff, validUseModelId) };
+    providersOff: ids(use.providersOff, validProviderId), modelsOff: ids(use.modelsOff, validUseModelId), ...(on.length ? { modelsOn: on } : {}) };
 }
 /** A project's use filters. A stored worker switch that was off (removed in 0.2.0) keeps its provider off for this project;
  * workers.gpt alone is dropped. */

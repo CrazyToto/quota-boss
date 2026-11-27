@@ -132,14 +132,18 @@ Each gets several models and, where its CLI allows it, a reasoning level. A CLI 
 | Provider | Models | Effort | Run on this project's machine? |
 |---|---|---|---|
 | Grok | `grok-4.7` (cost 10, 37.6% on Terminal-Bench 4.0 at xhigh with Grok Build) and `grok-build-0.1` (cost 4.2, no benchmark found) | `--effort` | No, the CLI is not installed. Flags are from xAI's reference. |
-| Google Antigravity | Gemini 4 Argon (cost 10, 64 on the Coding Agent Index) and Gemini 3.8 Flash (cost 4.9, 19.1% on Terminal-Bench 4.0 from one site) | part of the slug, for example `gemini-4-argon-high`: only `medium` and `high` | No, the CLI is not installed. Slugs are from Google's headless docs. |
+| Google Antigravity | Gemini 4 Argon (cost 10, 64 on the Coding Agent Index), Gemini 4 Hydrogen (off by default until `quota-boss providers models antigravity` shows your account has it; Google reports 57% on Terminal-Bench 4.1) and Gemini 3.8 Flash (cost 4.9, 19.1% on Terminal-Bench 4.0 from one site) | part of the slug, for example `gemini-4-argon-high`: only `medium` and `high` | No, the CLI is not installed. Slugs are from Google's headless docs. |
+| Devin | SWE-2 Flash (free), plus SWE-2.1, SWE-2 and Claude Opus 5.5, Claude Sonnet 5.5 and GPT-6.2-Sol through Devin, off by default because only paid plans include them. SWE-2.1 and SWE-2 use Cognition's own numbers (Terminal-Bench 4.1 50.0% and 24.2%); the others reuse the scores of the same model | part of the slug, fixed at `medium` | Yes, the free plan |
 | GitHub Copilot | `auto`, plus `gpt-6.1-sol` and `gpt-6-luna`, which are off by default because they depend on the plan | `--reasoning-effort` on pinned models; `auto` refuses it | Yes, `auto` only |
 
 Costs for Gemini use the prices that apply from 2026-12-01 (Argon) and 2027-01-01 (Flash), when both double.
 
 A test account on a limited Copilot plan rejected every pinned model tried. With `auto`, `--auto-tier intelligence` selected GPT-5.6 Luna,
 and the `efficiency` tier no longer exists. So `copilot-default` is rated and priced like GPT-5.6 Luna, and logged outcomes raise it on better plans.
-To use the pinned models on a paid plan, copy their entries into your `config/models.json` and remove `"enabled": false`.
+Models that only some plans include ship off. To see what your account offers, run `quota-boss providers models <id>` (Devin and
+Antigravity can list it); it shows which listed models are routed, which you can turn on, and which the table names but your account
+lacks. Turn one on with `quota-boss use <model-id> on` only if your plan includes it, and off again with `off`. Copilot and JetBrains AI have no
+list command: turn their pinned models on the same way if your plan includes them.
 
 ## Sources
 

@@ -56,6 +56,32 @@ test.describe('use', () => {
     assert.deepEqual(lib.findProjectConfig().use.providersOff, []);
   });
 
+  test('a paid-plan model that ships off turns on with use and off again', () => {
+    assert.equal(model('copilot-gpt-6.1-sol').enabled, false);
+    assert.match(run('use', 'copilot-gpt-6.1-sol', 'on'), /ships off because only some plans include it/);
+    assert.equal(model('copilot-gpt-6.1-sol').enabled, true);
+    assert.deepEqual(lib.readUse().modelsOn, ['copilot-gpt-6.1-sol']);
+    run('use', 'copilot-gpt-6.1-sol', 'on');
+    assert.deepEqual(lib.readUse().modelsOn, ['copilot-gpt-6.1-sol']);
+    run('use', 'copilot-gpt-6.1-sol', 'off');
+    assert.equal(model('copilot-gpt-6.1-sol').enabled, false);
+    assert.equal(lib.readUse().modelsOn, undefined);
+    assert.deepEqual(lib.readUse().modelsOff, ['copilot-gpt-6.1-sol']);
+    // A model that ships on and was only switched off never gets an on entry; a stale entry is dropped on the next switch.
+    run('use', 'grok-build', 'off');
+    assert.doesNotMatch(run('use', 'grok-build', 'on'), /ships off/);
+    assert.equal(lib.readUse().modelsOn, undefined);
+    lib.writeJson(lib.useFile(), { modelsOff: [], modelsOn: ['grok-build', 'gone-model', 'devin-swe-2'] });
+    run('use', 'copilot-gpt-6.1-sol', 'on');
+    assert.deepEqual(lib.readUse().modelsOn, ['devin-swe-2', 'copilot-gpt-6.1-sol']);
+    // A project can turn it on for itself; a global off still wins.
+    run('use', 'copilot-gpt-6-luna', 'on', '--project');
+    assert.deepEqual(lib.findProjectConfig().use.modelsOn, ['copilot-gpt-6-luna']);
+    assert.equal(model('copilot-gpt-6-luna').enabled, true);
+    run('use', 'copilot-gpt-6-luna', 'off');
+    assert.equal(lib.loadConfig(lib.findProjectConfig()).models.models['copilot-gpt-6-luna'].enabled, false);
+  });
+
   test('a stored only filter from before 0.2.0 keeps excluding, also training providers, and cannot be set again', () => {
     lib.writeJson(userFile('providers'), { providers: { 'kilo-free': { enabled: true } } });
     lib.saveProject(project, { allowTrainingProviders: true });
