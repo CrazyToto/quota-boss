@@ -56,9 +56,26 @@ test.describe('use', () => {
     assert.deepEqual(lib.findProjectConfig().use.providersOff, []);
   });
 
+  test('the detected plan switches models, a manual switch wins and a manual on survives the plan changing', () => {
+    const plans = (on, off) => lib.writeJson(lib.planModelsFile(), { providers: { devin: { plan: 'paid', on, off } } });
+    plans(['devin-swe-2-1'], ['devin-swe-2-flash']);
+    assert.equal(model('devin-swe-2-1').enabled, true);
+    assert.equal(model('devin-swe-2-flash').enabled, false);
+    // The plan lacks it, so a manual on needs an entry, and it outlives the plan listing the model and dropping it again.
+    run('use', 'devin-swe-2-flash', 'on');
+    assert.deepEqual(lib.readUse().modelsOn, ['devin-swe-2-flash']);
+    plans(['devin-swe-2-1', 'devin-swe-2-flash'], []);
+    run('use', 'devin-swe-2-1', 'off');
+    assert.deepEqual(lib.readUse().modelsOn, ['devin-swe-2-flash']);
+    assert.equal(model('devin-swe-2-1').enabled, false, 'a manual off beats a detected on');
+    plans([], ['devin-swe-2-flash']);
+    assert.notEqual(model('devin-swe-2-flash').enabled, false);
+    assert.equal(lib.loadConfig(undefined, { use: false }).models.models['devin-swe-2-1'].enabled, false, 'the shipped table ignores the plan');
+  });
+
   test('a paid-plan model that ships off turns on with use and off again', () => {
     assert.equal(model('copilot-gpt-6.1-sol').enabled, false);
-    assert.match(run('use', 'copilot-gpt-6.1-sol', 'on'), /ships off because only some plans include it/);
+    assert.match(run('use', 'copilot-gpt-6.1-sol', 'on'), /is off because only some plans include it/);
     assert.equal(model('copilot-gpt-6.1-sol').enabled, true);
     assert.deepEqual(lib.readUse().modelsOn, ['copilot-gpt-6.1-sol']);
     run('use', 'copilot-gpt-6.1-sol', 'on');
@@ -69,7 +86,7 @@ test.describe('use', () => {
     assert.deepEqual(lib.readUse().modelsOff, ['copilot-gpt-6.1-sol']);
     // A model that ships on and was only switched off never gets an on entry; a stale entry is dropped on the next switch.
     run('use', 'grok-build', 'off');
-    assert.doesNotMatch(run('use', 'grok-build', 'on'), /ships off/);
+    assert.doesNotMatch(run('use', 'grok-build', 'on'), /only some plans/);
     assert.equal(lib.readUse().modelsOn, undefined);
     lib.writeJson(lib.useFile(), { modelsOff: [], modelsOn: ['grok-build', 'gone-model', 'devin-swe-2'] });
     run('use', 'copilot-gpt-6.1-sol', 'on');

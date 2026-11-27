@@ -31,6 +31,8 @@ test('Devin JSON: a price means per-token, none or Free means included, bad ids 
     'swe-2-1-medium:per-token', 'swe-2-1-high:per-token', 'kimi-k3-1-pro-high:included']);
   assert.deepEqual(parseDevin('{}'), []);
   assert.throws(() => parseDevin('not json'));
+  const priced = { families: [{ variants: [{ model_uid: 'a', cost_summary: { per_token: 1 } }, { model_uid: 'b', cost_summary: null }] }] };
+  assert.deepEqual(parseDevin(JSON.stringify(priced)).map(m => m.billing), ['per-token', 'included'], 'a price in another shape still counts');
 });
 
 test('Antigravity tab list skips the status line and duplicates', () => {
@@ -74,4 +76,99 @@ test('cli-run never runs an off model and picks the single on model without --mo
     models: { models: { flash: { pool: 'devin' }, paid: { pool: 'devin', cliModel: 'swe-2-1-medium', enabled: false } } } };
   assert.throws(() => selection({ provider: 'devin', model: 'paid' }, cfg, {}), /Model paid is off\. Turn it on with quota-boss use paid on/);
   assert.doesNotThrow(() => selection({ provider: 'devin' }, cfg, {}));
+});
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const lib = require('../scripts/lib');
+const { refresh, refreshIfStale, planState, parseDevinPlan, changeLines } = require('../scripts/discover-models');
+const tempFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qb-plans-')), 'plan-models.json');
+const status = plan => 'Logged in (via Devin).\n\nUser:\n  Email:             someone@example.com\n\nAccount:\n  Tier:              Devin ' + plan + '\n  Plan:              ' + plan + '\n';
+const devinRun = plan => (exe, args) => ({ status: 0, stdout: args[0] === 'auth' ? status(plan) : devinJson });
+
+test('the Devin plan comes only from the Plan line', () => {
+  assert.equal(parseDevinPlan(status('Free')), 'free');
+  assert.equal(parseDevinPlan(status('Pro')), 'paid');
+  assert.equal(parseDevinPlan(status('Teams')), 'paid');
+  for (const plan of ['Trial', 'Pro Trial', 'Expired', 'None', '-', 'Pro (cancelled)']) assert.equal(parseDevinPlan(status(plan)), null, plan);
+  assert.equal(parseDevinPlan('Email: plan@x.com\nTier: Free'), null);
+  assert.equal(parseDevinPlan(''), null);
+});
+
+test('every plan turns on only the listed models without a price', () => {
+  const cfg = config();
+  const listed = JSON.parse(JSON.stringify(require('../scripts/discover-models').parseDevin(devinJson)));
+  assert.deepEqual(planState('devin', listed, 'free', cfg), { plan: 'free', on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
+  assert.deepEqual(planState('devin', listed, null, cfg), { on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
+  assert.deepEqual(planState('devin', listed, 'paid', cfg), { plan: 'paid', on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
+  assert.equal(planState('devin', [{ id: 'other-model', billing: 'included' }], 'paid', cfg), null);
+});
+
+test('refresh stores each provider, reports what changed and keeps the old state when a CLI fails', () => {
+  const file = tempFile(), use = lib.normalizeUse({});
+  const agyRun = (exe, args) => ({ status: 0, stdout: 'gemini-4-hydrogen-high\tH\n' });
+  const run = (exe, args) => exe === 'agy' ? agyRun(exe, args) : devinRun('Pro')(exe, args);
+  const first = refresh({ config: config(), run, find: command => command === 'copilot' ? null : command, file, use, now: 1000 });
+  assert.deepEqual(first.changes.map(c => c.provider + ':' + c.plan + ':' + c.on.join(',') + ':' + c.off.join(',')),
+    ['devin:paid:flash:gone,goneOff,swe21', 'antigravity:null:hydrogen:argon']);
+  assert.deepEqual(changeLines(first.changes), ['devin (paid plan): on flash; off gone, goneOff, swe21', 'antigravity: on hydrogen; off argon']);
+  const saved = lib.readPlanModels(file);
+  assert.equal(saved.checkedAt, 1000);
+  assert.deepEqual(saved.providers.devin, { plan: 'paid', on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
+  const failing = refresh({ config: config(), run: (exe, args) => exe === 'agy' ? { status: 1, stdout: '' } : devinRun('Pro')(exe, args), find: c => c, file, use, now: 2000 });
+  assert.deepEqual(failing.changes, []);
+  assert.match(failing.errors.antigravity, /agy models failed/);
+  assert.deepEqual(lib.readPlanModels(file).providers.antigravity, { on: ['hydrogen'], off: ['argon'] });
+  const off = config(); off.providers.providers.devin.enabled = false;
+  const downgraded = refresh({ config: off, run: devinRun('Free'), find: c => c, file, use, now: 3000 });
+  assert.deepEqual(downgraded.changes, []);
+  assert.equal(lib.readPlanModels(file).providers.devin.plan, 'paid', 'an off provider is not asked');
+  const free = refresh({ config: config(), run: devinRun('Free'), find: c => c === 'agy' ? null : c, file, use, now: 4000 });
+  assert.deepEqual(changeLines(free.changes), ['devin (free plan): no model changed']);
+});
+
+test('detected plan models switch shipped values, and a manual on or off still wins', () => {
+  const registry = () => ({ a: { pool: 'devin', enabled: false }, b: { pool: 'devin' }, c: { pool: 'devin', enabled: false }, d: { pool: 'other', enabled: false }, e: { pool: 'devin' } });
+  const plans = { providers: { devin: { on: ['a', 'c', 'd'], off: ['b', 'e'] } } };
+  const one = registry();
+  lib.applyPlanModels(one, plans, new Set(['e']), new Set(['c']));
+  assert.deepEqual(Object.fromEntries(Object.entries(one).map(([id, m]) => [id, m.enabled !== false])), { a: true, b: false, c: false, d: false, e: true });
+  assert.deepEqual(lib.readPlanModels(tempFile()).providers, Object.create(null));
+  const file = tempFile();
+  fs.writeFileSync(file, JSON.stringify({ checkedAt: 'x', providers: { devin: { plan: 'gold', on: ['ok', '../bad', 5], off: 'x' }, 'bad id': { on: ['a'] } } }));
+  const read = lib.readPlanModels(file);
+  assert.equal(read.checkedAt, 0);
+  assert.deepEqual({ ...read.providers }, { devin: { on: ['ok'], off: [] } });
+});
+
+test('the background check runs once a day and after an update, never twice at once, and only for a listing provider', () => {
+  const file = tempFile(), use = lib.normalizeUse({});
+  let spawned = 0;
+  const spawn = () => { spawned++; return { on() {}, unref() {} }; };
+  const version = require('../package.json').version;
+  const day = 24 * 3600 * 1000;
+  assert.equal(refreshIfStale({ config: config(), now: day * 10, spawn, file, use }), true);
+  assert.equal(refreshIfStale({ config: config(), now: day * 10 + 1000, spawn, file, use }), false, 'claimed a moment ago');
+  fs.writeFileSync(file, JSON.stringify({ version, checkedAt: day * 10 }));
+  assert.equal(refreshIfStale({ config: config(), now: day * 10.5, spawn, file, use }), false, 'fresh');
+  fs.writeFileSync(file, JSON.stringify({ version: '0.0.1', checkedAt: day * 10 }));
+  assert.equal(refreshIfStale({ config: config(), now: day * 10.5, spawn, file, use }), true, 'updated since');
+  const none = config();
+  for (const provider of Object.values(none.providers.providers)) provider.enabled = false;
+  assert.equal(refreshIfStale({ config: none, now: day * 20, spawn, file, use }), false);
+  assert.equal(spawned, 2);
+});
+
+test('a slower refresh keeps what another run stored meanwhile', () => {
+  const file = tempFile(), use = lib.normalizeUse({});
+  let once = true;
+  const run = (exe, args) => {
+    if (once) { once = false; refresh({ config: config(), only: 'antigravity', run: () => ({ status: 0, stdout: 'gemini-4-hydrogen-high\tH\n' }), find: c => c, file, use }); }
+    return devinRun('Free')(exe, args);
+  };
+  refresh({ config: config(), run, find: c => c === 'agy' ? null : c, file, use, now: 5000 });
+  const saved = lib.readPlanModels(file);
+  assert.deepEqual(Object.keys(saved.providers).sort(), ['antigravity', 'devin']);
+  assert.equal(saved.checkedAt, 5000);
 });

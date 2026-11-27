@@ -32,6 +32,7 @@ const TEXT = Object.freeze({
     none: 'None of them.', 'one-by-one': 'Advanced: read about each offer and decide separately.',
     'no-key': 'Only the ones without a key or account: nothing to sign up for.' }),
   freeReady: names => 'Free offers ready to use: ' + names + '.',
+  planModels: lines => ['Models set for your plans (checked again every day):', ...lines.map(line => '  ' + line)],
   droppedNoKey: names => 'Left out because no key was entered: ' + names + '. Run this setup again to add them.',
   apiTitle: 'More APIs',
   apiIntro: ['Quota Boss can use any API that the OpenCode program supports.', 'Your key stays in OpenCode. Quota Boss never sees it.', 'Use an API key there, never a subscription login: Anthropic and Google do not allow those in other tools.', 'Catch: paid APIs can cost money per use.'],

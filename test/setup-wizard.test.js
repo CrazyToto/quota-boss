@@ -20,7 +20,7 @@ const project = () => ({ enabled: false, profile: 'balanced', host: 'claude-code
  * Plays one setup. Enter takes each default, so `answers` is the list of typed lines in order.
  * `programs` maps tool ids to their state before install; `afterInstall` to their state after it.
  */
-function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError, userProviders = {}, use, selfTestPassed = () => true } = {}) {
+function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(), programs = {}, afterInstall = {}, pending = [], stored = [], installOutput, runError, graphError, userProviders = {}, use, selfTestPassed = () => true, plans = [] } = {}) {
   const queue = [...answers], said = [], commands = [], installs = [], logged = [], keyed = [], opened = [], graphs = [], marked = [];
   let installed = false;
   const stateOf = id => (installed && afterInstall[id]) || programs[id] || 'ok';
@@ -38,7 +38,7 @@ function play(answers, { directory = EMPTY_DIR, host, providers = baseProviders(
   const activeProviders = { ...providers };
   for (const { id } of retired) delete activeProviders[id];
   const result = setup([], args => { commands.push(args); const error = runError?.(args); if (error) throw error; return ''; }, {
-    interactive: true, tools: fake, options: { wait: () => {} }, userProviders, selfTestPassed, markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers: activeProviders, retired } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
+    interactive: true, tools: fake, options: { wait: () => {} }, userProviders, selfTestPassed, refreshPlans: () => ({ changes: plans }), markKnown: ids => marked.push(...ids), setupGraph: directory => { graphs.push(directory); return graphError || 'Code graph built locally; no Claude usage.'; }, config: { providers: { providers: activeProviders, retired } }, project: { ...project(), ...(host ? { host } : {}), ...(directory ? { directory } : {}), ...(use ? { use } : {}) },
     ask: question => { said.push(question); return queue.length ? queue.shift() : ''; }, say: line => said.push(line), clear: () => {},
   });
   return { result, said: said.join('\n'), commands, installs, logged, keyed, opened, graphs, marked, left: queue };
@@ -534,4 +534,11 @@ test('setup counts for every project; a yes also clears a project switch that st
   assert.ok(plain.every(command => !command.includes('--project')));
   const { commands } = play([...START, ...FIRST_TWO, 'y', '', ...OTHER_NONE, ...FREE_NONE, ...NO_API, 'y'], { use: { providersOff: ['codex'] } });
   assert.ok(commands.some(command => command.join(' ') === 'use codex on --project'), JSON.stringify(commands));
+});
+
+test('the done screen names the models set for the plans it found', () => {
+  const plans = [{ provider: 'devin', plan: 'paid', on: ['devin-swe-2-1'], off: [] }];
+  const { said } = play(flow(OTHER_NONE, FREE_NONE, ['y']), { plans });
+  assert.match(said, /Models set for your plans \(checked again every day\):\n  devin \(paid plan\): on devin-swe-2-1/);
+  assert.doesNotMatch(play(flow(OTHER_NONE, FREE_NONE, ['y'])).said, /Models set for your plans/);
 });

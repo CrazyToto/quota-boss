@@ -170,18 +170,22 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
   if (noTest && (project || !provider || action !== 'on')) throw new Error(usage(command));
   if (provider && action === 'on' && !project && raw.providers[id].kind === 'local') throw new Error('Local models have their own switch: quota-boss local on <model>');
   const global0 = lib.readUse();
-  // Judged on the table itself, so a model that is only switched off never gets an on entry that would outlive a later table change.
-  const table = lib.loadConfig(active, { use: false }).models.models;
-  const shipsOff = !provider && table[id]?.enabled === false;
+  // Judged on the table and the detected plan, so a model that is only switched off never gets an on entry that would
+  // outlive a later table change, while one the plan lacks does get one.
+  const table = lib.loadConfig(active, { use: false, plans: true }).models.models;
+  // A model the plan check knows always gets an entry, so a later check can neither drop the user's on nor undo it.
+  const planned = new Set(Object.values(lib.readPlanModels().providers).flatMap(entry => [...entry.on, ...entry.off]));
+  const shipsOff = !provider && (table[id]?.enabled === false || planned.has(id));
   const update = value => {
     const next = lib.normalizeUse(value);
     const key = provider ? 'providersOff' : 'modelsOff';
     next[key] = next[key].filter(value => value !== id);
     if (action === 'off') next[key].push(id);
     if (!provider) {
-      // A model that ships off (a paid-plan model) needs an explicit on; off drops it again, and entries for models
-      // that no longer ship off are dropped, so they cannot turn on a model that later ships off.
-      const modelsOn = (next.modelsOn ?? []).filter(value => value !== id && table[value]?.enabled === false);
+      // A model that ships off or that the detected plan lacks needs an explicit on; off drops it again, and entries for
+      // models that are no longer off that way are dropped, so they cannot turn on a model that is off later. An entry for
+      // a model the plan check knows stays, so a plan that drops the model again keeps the manual on.
+      const modelsOn = (next.modelsOn ?? []).filter(value => value !== id && (table[value]?.enabled === false || planned.has(value)));
       if (action === 'on' && shipsOff) modelsOn.push(id);
       if (modelsOn.length) next.modelsOn = modelsOn; else delete next.modelsOn;
     }
@@ -209,7 +213,7 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
     });
   } else saveGlobal();
   output = output || id + ' ' + action + (project ? ' (this project)' : '');
-  if (action === 'on' && shipsOff && ![...global0.modelsOff, ...active.use.modelsOff].includes(id)) output += '\nThis model ships off because only some plans include it; keep it on only if yours does. Use beyond your plan\'s allowance may be billed.';
+  if (action === 'on' && shipsOff && ![...global0.modelsOff, ...active.use.modelsOff].includes(id)) output += '\nThis model is off because only some plans include it; keep it on only if yours does. Use beyond your plan\'s allowance may be billed.';
   if (action === 'on') {
     const global = lib.readUse();
     const pool = provider ? id : config.models.models[id]?.pool;
@@ -279,7 +283,7 @@ function providerCommand(command, rest, options) {
   }
   if (command === 'providers' && rest[0] === 'models' && rest.length === 2) {
     checkId(rest[1]);
-    return require('./discover-models').discover(rest[1], { config }).text;
+    return require('./discover-models').discover(rest[1], { config, store: true }).text;
   }
   if (command === 'providers' && rest[0] === 'guide' && rest.length === 1) {
     return providerHelp.guide(config);

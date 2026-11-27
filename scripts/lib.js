@@ -326,10 +326,13 @@ function loadConfig(project = findProjectConfig(), options = {}) {
       delete models.models[id];
     }
   }
-  // `use: false` gives the table as shipped and edited, before the use switches, to tell a model that ships off.
+  // `use: false` gives the table as shipped and edited, before the use switches, to tell a model that ships off;
+  // `plans: true` adds the detected plan models to that, so a model a plan lacks also counts as off.
   const globalUse = options.use === false ? normalizeUse({}) : readUse(), localUse = options.use === false ? normalizeUse({}) : normalizeUse(project?.use);
   const off = new Set([...globalUse.modelsOff, ...localUse.modelsOff]);
-  for (const id of new Set([...globalUse.modelsOn ?? [], ...localUse.modelsOn ?? []])) {
+  const manualOn = new Set([...globalUse.modelsOn ?? [], ...localUse.modelsOn ?? []]);
+  if (options.use !== false || options.plans === true) applyPlanModels(models.models, readPlanModels(), manualOn, off);
+  for (const id of manualOn) {
     if (!off.has(id) && Object.hasOwn(models.models, id) && models.models[id]?.enabled === false) models.models[id] = { ...models.models[id], enabled: true };
   }
   // route treats the resolved boss as self, never as a delegate. Keep that identity available.
@@ -361,6 +364,29 @@ function projectUse(config) {
   return use;
 }
 function readUse() { return normalizeUse(readJson(useFile(), {})); }
+
+/** What each provider's CLI last said about the account's models (written by discover-models refresh). */
+function planModelsFile() { return path.join(getPaths().quotaBossHome, 'plan-models.json'); }
+function readPlanModels(file = planModelsFile()) {
+  const raw = object(readJson(file, {}));
+  const ids = value => [...new Set((Array.isArray(value) ? value : []).filter(validUseModelId))];
+  const time = value => Number.isFinite(value) && value > 0 ? value : 0;
+  const providers = Object.create(null);
+  for (const [id, entry] of Object.entries(object(raw.providers))) {
+    if (!validProviderId(id)) continue;
+    const item = object(entry);
+    providers[id] = { ...(['free', 'paid'].includes(item.plan) ? { plan: item.plan } : {}), on: ids(item.on), off: ids(item.off) };
+  }
+  return { version: typeof raw.version === 'string' ? raw.version.slice(0, 40) : '', checkedAt: time(raw.checkedAt), claimedAt: time(raw.claimedAt), providers };
+}
+/** Detected plan models switch shipped values only: a manual on (modelsOn) beats a detected off, a manual off is applied after. */
+function applyPlanModels(registry, plans, manualOn, manualOff) {
+  for (const [pool, entry] of Object.entries(plans.providers)) {
+    const mine = id => Object.hasOwn(registry, id) && registry[id] && registry[id].pool === pool;
+    for (const id of entry.on) if (mine(id) && registry[id].enabled === false && !manualOff.has(id)) registry[id] = { ...registry[id], enabled: true };
+    for (const id of entry.off) if (mine(id) && registry[id].enabled !== false && !manualOn.has(id)) registry[id] = { ...registry[id], enabled: false };
+  }
+}
 function delegationBoss(models, project) {
   const host = normalizeProject(project).host;
   const pool = host === 'claude-code' ? 'claude' : host === 'codex' ? 'codex' : null;
@@ -1616,7 +1642,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, planModelsFile, readPlanModels, applyPlanModels, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, statuslineLook, saveStatusline, STATUSLINE_STYLES, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

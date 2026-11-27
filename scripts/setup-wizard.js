@@ -424,6 +424,9 @@ function finish(w) {
   const dropped = dropUnkeyed(w, usable);
   const open = logged.filter(line => !dropped.some(name => line.startsWith(name + ' (')));
   const tested = selfTests(w, commands, failedOn, open, usable, changed);
+  // After the logins, so a provider signed in just now already tells which models its plan includes.
+  let plans = [];
+  try { plans = w.refreshPlans().changes; } catch { plans = []; }
   w.io.clear();
   w.io.say(w.text.doneTitle + '\n' + '-'.repeat(WIDTH) + '\n');
   report();
@@ -433,6 +436,7 @@ function finish(w) {
   const ready = chosen(w, FREE).filter(id => usable(toolOf(id)) && !failedAddApi.has(id) && (w.state.training || !mayTrain(id))).map(id => nameOf(id))
     .filter(name => !dropped.includes(name) && !open.some(line => line.startsWith(name + ' (')));
   if (ready.length) say(w, ['', w.text.freeReady(ready.join(', '))]);
+  if (plans.length) say(w, ['', ...w.text.planModels(require('./discover-models').changeLines(plans))]);
   if (graphResult) say(w, ['', graphResult, ...(w.state.host === 'claude-code' ? [w.text.graphNext] : [])]);
   say(w, ['', w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.addLater]);
 }
@@ -464,7 +468,8 @@ function setup(args, run, deps = {}) {
   const active = deps.project || lib.findProjectConfig();
   const config = deps.config || lib.loadConfig(active);
   const project = lib.normalizeProject(active);
-  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: { ...deps.options, scripts: true }, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools, state: initialState(config, project, active, deps.userProviders || userProviders()), confirmed: false,
+  const w = { directory: active.directory || process.cwd(), text, run, config, project, options: { ...deps.options, scripts: true }, setupGraph: deps.setupGraph || graph.setupGraph, tools: deps.tools || tools,
+    refreshPlans: deps.refreshPlans || (() => require('./discover-models').refresh()), state: initialState(config, project, active, deps.userProviders || userProviders()), confirmed: false,
     selfTestPassed: deps.selfTestPassed || (id => require('./self-test').evidenceStatus(id, config.models, lib.readState().selfTests, config.providers.providers[id]?.cli?.command).startsWith('self-test passed')),
     io: { ask: deps.ask || lib.askLine, say: deps.say || console.log, clear: deps.clear || console.clear } };
 

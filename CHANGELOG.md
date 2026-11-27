@@ -6,6 +6,7 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Added
 
+- Provider models follow the account's plan by themselves, as Codex and Claude do. At setup, once a day in the background and after an update, Quota Boss asks Devin (`devin auth status` for the plan, `devin models list`) and Antigravity (`agy models`) what the account has. Models the account lists without a price go on and models it lacks go off. A Devin model shown with a price stays off on every plan, because Devin reports no usage that could stop it before billing beyond the allowance; `quota-boss use <model-id> on` turns it on. Setup lists what it set. A manual `quota-boss use <model-id> on|off` always wins.
 - `quota-boss providers models <id>` asks Devin or Antigravity which models your account offers and shows which are routed, which you can turn on, and which the table names but your account lacks.
 - Paid-plan models that ship off: Devin SWE-2.1, SWE-2, Claude Opus 5.5, Claude Sonnet 5.5 and GPT-6.2-Sol through Devin, and Gemini 4 Hydrogen in Antigravity. Turn one on with `quota-boss use <model-id> on` if your plan includes it.
 - How to use an OpenCode Go plan, in docs/PROVIDERS.md.

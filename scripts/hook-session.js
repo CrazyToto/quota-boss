@@ -6,6 +6,7 @@ const context = require('./context');
 const graph = require('./graph');
 const routing = require('./session-routing');
 const suggest = require('./suggest');
+const discoverModels = require('./discover-models');
 
 const FAILED = '[quota-boss] WARNING: Boss mode is ON, but the rules and the routing table could not be loaded. Run quota-boss doctor, and run quota-boss route before every delegation.';
 
@@ -18,6 +19,8 @@ function main() {
     const codexHost = process.argv.slice(2).join(' ') === '--host codex';
     if (!project.enabled || project.host !== (codexHost ? 'codex' : 'claude-code')) return;
     active = true;
+    // Paid plans route their normal models without a switch: the account's models are checked once a day and after an update.
+    discoverModels.refreshIfStale({ config: lib.loadConfig(project, { use: false, tolerant: true }) });
     const config = lib.loadConfig(project, { tolerant: true });
     const now = Date.now();
     const size = parts => Buffer.byteLength(parts.filter(Boolean).join('\n')) + 1;

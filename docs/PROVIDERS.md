@@ -183,10 +183,13 @@ five minutes on Windows for its saved login. The CLI's "Cannot find authorizatio
 ## Devin
 
 Devin runs Cognition's official [Devin CLI](https://docs.devin.ai/cli) in print mode (`devin -p`), by default with
-`--model swe-2-flash-medium`: SWE-2 Flash Medium is the only model `devin models list` marks as free, every other one
-bills per token. The other Devin models ship off; turn one on with `quota-boss use <model-id> on` if your plan includes
-it, and `quota-boss providers models devin` shows which ones your account offers. Use beyond the plan's allowance may be
-billed. `--permission-mode accept-edits` lets it edit files; it refuses shell commands in print mode, so it
+`--model swe-2-flash-medium`, which `devin models list` shows without a price. The other Devin models ship off and
+follow your plan by themselves: at setup, once a day and after an update, Quota Boss reads the Plan line of
+`devin auth status` (nothing else from it) and the models list. Every listed model shown without a price goes on, and a
+model your account does not list goes off. A model shown with a price stays off on every plan: Devin reports no usage,
+so Quota Boss cannot stop it before use beyond the plan's allowance gets billed. Turn one on yourself with
+`quota-boss use <model-id> on` if your plan covers it. `quota-boss providers models devin` checks right away and shows
+the result. A manual `quota-boss use <model-id> on|off` always wins. `--permission-mode accept-edits` lets it edit files; it refuses shell commands in print mode, so it
 cannot run tests itself and the boss's check matters more. `--respect-workspace-trust false` skips the trust prompt
 that print mode cannot show. It prints plain text with no usage, and there is no CLI quota command (only `/usage` in
 a session and the web dashboard), so the status line has no Devin numbers.
@@ -200,7 +203,8 @@ a session and the web dashboard), so the status line has no Devin numbers.
   such a job reports a timeout and the boss checks what was written.
 
 Antigravity stays off by default and shows an account warning, because Google's terms treat third-party access to the
-service as a breach and it is unclear whether starting Google's own program from another tool counts.
+service as a breach and it is unclear whether starting Google's own program from another tool counts. Once you turn it
+on, its models follow `agy models` the same way: a model in the list goes on and one your account lacks goes off.
 
 ## Security
 
