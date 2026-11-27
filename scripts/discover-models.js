@@ -43,7 +43,8 @@ function parseDevinPlan(text) {
 // Keyed by the CLI command, so a renamed or copied provider with the same CLI is covered too.
 const LISTERS = {
   devin: { args: ['models', 'list', '--format', 'json'], parse: parseDevin, source: 'devin models list', plan: { args: ['auth', 'status'], parse: parseDevinPlan } },
-  agy: { args: ['models'], parse: parseTabList, source: 'agy models' },
+  // `agy models` lists only what the account's plan includes, so a listed model counts as included.
+  agy: { args: ['models'], parse: parseTabList, source: 'agy models', listedIsIncluded: true },
 };
 
 /** The CLI model a table entry selects: its cliModel, else the fixed `--model` value in the provider's arguments. */
@@ -117,6 +118,9 @@ function list(providerId, config, run, find) {
   }
   let listed;
   try { listed = lister.parse(result.stdout ?? ''); } catch { throw new Error(lister.source + ' printed something Quota Boss cannot read.'); }
+  // Unknown billing is included only where the lister says its list holds just the plan's models; anywhere else it
+  // stays off, so a future provider can never bill beyond its plan without the user's own use <model> on.
+  if (lister.listedIsIncluded) listed = listed.map(row => row.billing === 'unknown' ? { ...row, billing: 'included' } : row);
   let plan = null;
   if (lister.plan) {
     try {
@@ -127,14 +131,14 @@ function list(providerId, config, run, find) {
   return { listed, plan, lister };
 }
 
-/** Which table models of a provider its account has. Every listed model without a price goes on; a priced one stays off
+/** Which table models of a provider its account has. Every listed model the plan includes goes on; a priced or unknown one stays off
  *  on every plan, because no usage is visible to stop it before billing beyond the allowance starts: only
  *  `use <model> on` turns it on. null when nothing in the list matches the table: that is a changed CLI, not a plan. */
 function planState(providerId, listed, plan, config) {
   const rows = compare(providerId, listed, config);
   const found = [...rows.routed, ...rows.off];
   if (!found.length) return null;
-  const included = row => row.billing !== 'per-token';
+  const included = row => row.billing === 'included';
   return { ...(plan ? { plan } : {}), on: found.filter(included).map(row => row.id).sort(),
     off: [...found.filter(row => !included(row)).map(row => row.id), ...rows.missing.map(row => row.id)].sort() };
 }
