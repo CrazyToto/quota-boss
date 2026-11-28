@@ -217,7 +217,10 @@ test('a rate-limited offer is paused, found by provider id and not counted as a 
   const command = saved(dir, 'providers').providers['zen-deepseek'].cli.command, bin = path.join(dir, 'fake-bin');
   fs.mkdirSync(bin);
   const windows = process.platform === 'win32';
-  fs.writeFileSync(path.join(bin, windows ? command + '.cmd' : command), windows ? '@exit /b 0\r\n' : '#!/bin/sh\n', { mode: 0o755 });
+  // On Windows an npm-style shim that starts a native exe, the only kind of .cmd cli-run launches besides Node entries.
+  if (windows) { fs.mkdirSync(path.join(bin, 'node_modules', 'cli'), { recursive: true }); fs.writeFileSync(path.join(bin, 'node_modules', 'cli', command + '.exe'), 'MZ'); }
+  fs.writeFileSync(path.join(bin, windows ? command + '.cmd' : command),
+    windows ? '"%dp0%\\node_modules\\cli\\' + command + '.exe" %*\r\n' : '#!/bin/sh\n', { mode: 0o755 });
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
   const explain = spawnSync(process.execPath, [script, 'route', '--explain', 'mechanical', 'trivial'], { cwd: dir, encoding: 'utf8',
     env: { ...env, QUOTA_BOSS_HOME: dir, PATH: bin + path.delimiter + (process.env.PATH || process.env.Path || '') } });

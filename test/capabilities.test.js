@@ -365,13 +365,69 @@ test('an npm update behind an unchanged Windows shim invalidates the self-test',
   fs.mkdirSync(path.dirname(manifest), { recursive: true });
   fs.writeFileSync(shim, '@echo off\r\n"%_prog%" "%dp0%\\node_modules\\@scope\\grok-cli\\dist\\index.js" %*\r\n');
   fs.writeFileSync(manifest, '{"version":"1.0.0"}');
+  const entry = path.join(path.dirname(manifest), 'dist', 'index.js');
+  // The JS entry is what cli-run starts: without it the shim counts as not installed.
+  assert.equal(lib.cliFingerprint('grok', () => shim), null);
+  fs.mkdirSync(path.dirname(entry)); fs.writeFileSync(entry, '');
   const before = lib.cliFingerprint('grok', () => shim);
   assert.ok(before.package);
   assert.equal(validSelfTest({ result: 'pass', cli: before }, lib.cliFingerprint('grok', () => shim)), true);
   fs.writeFileSync(manifest, '{"version":"1.0.10"}');
   assert.equal(validSelfTest({ result: 'pass', cli: before }, lib.cliFingerprint('grok', () => shim)), false);
+  // Without a manifest the shim still runs, but a stored self-test no longer matches.
   fs.rmSync(manifest);
+  const bare = lib.cliFingerprint('grok', () => shim);
+  assert.ok(bare && !bare.package);
+  assert.equal(validSelfTest({ result: 'pass', cli: before }, bare), false);
+  const ps1 = path.join(dir, 'grok.ps1');
+  fs.writeFileSync(ps1, '& node "$PSScriptRoot/node_modules/@scope/grok-cli/dist/index.js" $args');
+  assert.equal(lib.cliFingerprint('grok', () => ps1), null);
+  const plain = path.join(dir, 'other.cmd');
+  fs.writeFileSync(plain, '@echo off\r\npowershell -File other.ps1 %*\r\n');
+  assert.equal(lib.cliFingerprint('other', () => plain), null);
+  fs.rmSync(entry);
   assert.equal(lib.cliFingerprint('grok', () => shim), null);
+  // Shims that start a native exe (OpenCode) or an extensionless Node script (Kilo) are launched directly.
+  const { invocation } = require('../scripts/cli-run');
+  const pkg = path.join(dir, 'node_modules', 'tool', 'bin');
+  fs.mkdirSync(pkg, { recursive: true });
+  const exe = path.join(pkg, 'tool.exe'), script = path.join(pkg, 'kilo'), sh = path.join(pkg, 'run');
+  fs.writeFileSync(exe, 'MZ'); fs.writeFileSync(script, '#!/usr/bin/env node\nconsole.log(1)\n'); fs.writeFileSync(sh, '#!/bin/sh\necho 1\n');
+  const shimFor = (name, target) => { const file = path.join(dir, name + '.cmd'); fs.writeFileSync(file, '@echo off\r\n"%dp0%\\node_modules\\tool\\bin\\' + target + '" %*\r\n'); return file; };
+  assert.deepEqual(invocation(shimFor('opencode', 'tool.exe'), 'win32'), { file: exe, prefix: [] });
+  assert.deepEqual(invocation(shimFor('kilo', 'kilo'), 'win32'), { file: process.execPath, prefix: [script] });
+  assert.throws(() => invocation(shimFor('shell', 'run'), 'win32'), /cannot safely carry a prompt/);
+  assert.equal(lib.cliFingerprint('shell', () => path.join(dir, 'shell.cmd')), null);
+  assert.ok(lib.cliFingerprint('opencode', () => path.join(dir, 'opencode.cmd')));
+  const twice = path.join(dir, 'twice.cmd');
+  fs.writeFileSync(twice, '"%dp0%\\node_modules\\tool\\bin\\tool.exe" & "%dp0%\\node_modules\\tool\\bin\\kilo"\r\n');
+  assert.equal(lib.cliFingerprint('twice', () => twice), null);
+  // A new exe behind an unchanged shim and manifest invalidates a stored self-test.
+  const exeShim = path.join(dir, 'opencode.cmd'), first = lib.cliFingerprint('opencode', () => exeShim);
+  fs.writeFileSync(exe, 'MZ-new-build');
+  assert.equal(validSelfTest({ result: 'pass', cli: first }, lib.cliFingerprint('opencode', () => exeShim)), false);
+  // Flags on the shebang, a non-node interpreter, `..` and a linked folder on the way are refused.
+  fs.writeFileSync(script, '#!/usr/bin/env node --inspect\n');
+  assert.equal(lib.shimTarget(path.join(dir, 'kilo.cmd')), null);
+  fs.writeFileSync(script, '﻿#!/usr/bin/env node\r\n');
+  assert.equal(lib.shimTarget(path.join(dir, 'kilo.cmd')), null);
+  fs.writeFileSync(script, '#!/usr/bin/env node\r\n');
+  assert.ok(lib.shimTarget(path.join(dir, 'kilo.cmd')));
+  // Only the launched line counts: a quoted helper path elsewhere in the shim is not the entry.
+  const helper = path.join(dir, 'helper.cmd');
+  fs.writeFileSync(helper, 'IF EXIST "%dp0%\\node_modules\\cli\\opencode.exe" (\r\n  SET x=1\r\n)\r\n');
+  assert.equal(lib.shimTarget(helper), null);
+  const up = path.join(dir, 'up.cmd');
+  fs.writeFileSync(up, '"%dp0%\\node_modules\\..\\..\\evil.exe" %*\r\n');
+  assert.equal(lib.shimTarget(up), null);
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-out-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(outside, 'tool.exe'), 'MZ');
+  fs.symlinkSync(outside, path.join(dir, 'node_modules', 'linked'), 'junction');
+  const linked = path.join(dir, 'linked.cmd');
+  fs.writeFileSync(linked, '"%dp0%\\node_modules\\linked\\tool.exe" %*\r\n');
+  assert.equal(lib.shimTarget(linked), null);
+  assert.equal(lib.cliFingerprint('linked', () => linked), null);
 });
 
 test('a specialist only routes when the job needs an input it has, and tools follow model and worker', () => {

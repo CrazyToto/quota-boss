@@ -19,6 +19,8 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Fixed
 
+- Kilo and OpenCode run again on Windows. Their npm shims start an extensionless Node script and a native .exe, and Quota Boss now reads both from the shim as data: only the one launched path inside the shim's own node_modules counts, never a link, a `..` or a PowerShell shim. A CLI it cannot start counts as not installed, and an update of the launched file makes an old self-test stale.
+- The consensus second opinion is offered only when the codex binary is installed.
 - `quota-boss use <model-id> on` now turns on a model that ships off; before, it had to be copied into your `config/models.json` by hand.
 - Devin: a missing login now counts as "not logged in" and a usage limit as a provider limit, even when the CLI exits 0; a monthly limit pauses Devin until the 1st of the next month. Devin is also stopped once it has changed files and the work tree then stays the same for 5 minutes, because it could keep running for half an hour after the work was written (`cli.settleMinutes`).
 - A setting for a provider that this version does not know, for example `use devin on` saved by a newer copy, no longer stops every command with "Invalid provider kind". It is skipped, and `status` shows a warning to update.

@@ -11,7 +11,8 @@ const RESULT_FILE = 'quota-boss-self-test.txt';
 function validSelfTest(test, cli) {
   return Boolean(test?.result === 'pass' && cli && test.cli
     && test.cli.path === cli.path && test.cli.size === cli.size && test.cli.mtimeMs === cli.mtimeMs
-    && test.cli.package?.size === cli.package?.size && test.cli.package?.mtimeMs === cli.package?.mtimeMs);
+    && test.cli.package?.size === cli.package?.size && test.cli.package?.mtimeMs === cli.package?.mtimeMs
+    && test.cli.entry?.size === cli.entry?.size && test.cli.entry?.mtimeMs === cli.entry?.mtimeMs);
 }
 
 function evidenceStatus(id, models = {}, selfTests = {}, command = null, find = lib.findExecutable) {

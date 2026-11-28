@@ -553,9 +553,10 @@ function route({ models = {}, thresholds = {}, profile = 'balanced', limits = {}
           (stronger.length ? b.utility - a.utility : 0) || probabilityOrder(a, b, previousPool))[0];
         if (displaced) ladder.push(step(displaced));
         else if (next) ladder.push(step(next));
-        const advisors = tier === 'critical' && category === 'architecture'
+        // The consensus agent runs the codex binary even when Codex itself works as codex-worker.
+        const advisors = tier === 'critical' && category === 'architecture' && lib.cliFingerprint(providers.providers.codex.cli?.command || 'codex', findExecutable)
           ? evaluated.filter(c => c.pool === 'codex'
-            && !c.capabilityReason
+            && !c.capabilityReason && !['CLI not installed', 'no CLI configured'].includes(c.reason)
             && !context.usage.codex?.capped && modes.codexMode !== 'exhausted'
             && providers.providers.codex.tos !== 'avoid' && !unavailable.has(c.model) && !String(c.reason).startsWith('cooling down')
             && (providers.providers.codex.trainsOnData !== true || settings.allowTrainingProviders)

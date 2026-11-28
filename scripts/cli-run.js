@@ -151,21 +151,14 @@ function selection(options, config, project) {
   return { provider, cli, claude, model, args, stdin: claude || cli.promptVia === 'stdin', effort: options.effort || cli.defaultEffort || '-' };
 }
 
-/** npm shims are data, never shell code: accept only a literal JS entry below node_modules. */
+/** npm shims are data, never shell code: accept only what lib.shimTarget reads from them. */
 function invocation(executable, platform = process.platform) {
   if (platform !== 'win32' || /\.exe$/i.test(executable)) return { file: executable, prefix: [] };
   if (/\.(cmd|bat)$/i.test(executable)) {
-    let text = '';
-    try { text = lib.readBounded(executable, 64 * 1024); } catch { /* refuse below */ }
-    const entries = [...text.matchAll(/"%(?:dp0%|~dp0)[\\/]?(node_modules[\\/][A-Za-z0-9_@.\\/-]+\.(?:js|cjs|mjs))"/gi)];
-    const names = [...new Set(entries.map(match => match[1]))];
-    if (names.length === 1 && !names[0].split(/[\\/]/).includes('..')) {
-      const entry = path.resolve(path.dirname(executable), ...names[0].split(/[\\/]/));
-      // Use this Node executable, regardless of a shim's adjacent node.exe detection.
-      try { if (lib.regularStat(entry).isFile()) return { file: process.execPath, prefix: [entry] }; } catch { /* refuse below */ }
-    }
+    const target = lib.shimTarget(executable);
+    if (target) return { file: target.file, prefix: target.prefix };
   }
-  throw new Error('CLI shim cannot safely carry a prompt. Install a native executable or an npm shim with a literal node_modules JS entry.');
+  throw new Error('CLI shim cannot safely carry a prompt. Install a native executable or an npm shim with one literal node_modules entry.');
 }
 
 function spawnPlan(target, args, env, platform, cwd, input) {

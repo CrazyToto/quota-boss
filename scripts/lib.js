@@ -1541,19 +1541,54 @@ function findExecutable(name, env = process.env, platform = process.platform, cw
   }
   return null;
 }
+/**
+ * What an npm .cmd/.bat shim starts, read as data: one literal path below node_modules that is a native .exe, a JS file,
+ * or an extensionless Node script (`#!/usr/bin/env node`), followed by the forwarded arguments (`%*`) as npm writes it.
+ * A linked package (npm link) points outside node_modules and is refused. Returns { entry, file, prefix } or null.
+ */
+function shimTarget(executable) {
+  let text = '';
+  try { text = readBounded(executable, 64 * 1024); } catch { return null; }
+  const names = [...new Set([...text.matchAll(/"%(?:dp0%|~dp0)[\\/]?(node_modules[\\/][A-Za-z0-9_@.\\/-]+)"[ \t]*%\*/gi)].map(m => m[1]))];
+  if (names.length !== 1 || names[0].split(/[\\/]/).includes('..')) return null;
+  const entry = path.resolve(path.dirname(executable), ...names[0].split(/[\\/]/));
+  try {
+    // No link anywhere on the way, and the real file stays inside the shim's own node_modules.
+    checkParents(entry);
+    if (!regularStat(entry).isFile()) return null;
+    const inside = path.relative(fs.realpathSync(path.join(path.dirname(executable), 'node_modules')), fs.realpathSync(entry));
+    if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) return null;
+  } catch { return null; }
+  if (/\.exe$/i.test(entry)) return { entry, file: entry, prefix: [] };
+  // Use this Node executable, regardless of a shim's adjacent node.exe detection.
+  if (/\.(?:js|cjs|mjs)$/i.test(entry)) return { entry, file: process.execPath, prefix: [entry] };
+  if (path.basename(entry).includes('.')) return null;
+  let head = '';
+  try { const fd = openRegular(entry); try { const b = Buffer.alloc(64); head = b.subarray(0, fs.readSync(fd, b, 0, 64, 0)).toString('utf8'); } finally { fs.closeSync(fd); } } catch { return null; }
+  return /^#!\s*\/usr\/bin\/env\s+node[ \t]*\r?\n/.test(head) ? { entry, file: process.execPath, prefix: [entry] } : null;
+}
+/** Identity of an installed CLI, or null when it is missing or cli-run could not launch it. */
 function cliFingerprint(command, find = findExecutable) {
   try {
     const executable = find(command);
     if (!executable) return null;
     const stat = fs.statSync(executable);
     if (!stat.isFile()) return null;
+    // cli-run starts only native executables and npm .cmd shims it can read (shimTarget), never a PowerShell shim.
+    const windows = process.platform === 'win32';
+    if (windows && /\.ps1$/i.test(executable)) return null;
     const result = { path: path.resolve(executable), size: stat.size, mtimeMs: stat.mtimeMs };
-    // An npm update can leave the .cmd/.ps1 shim untouched, so also bind the package it launches.
-    const match = /\.(?:cmd|ps1)$/i.test(executable)
-      && /(node_modules[\\/](?:@[^\\/"]+[\\/])?[^\\/"]+)[\\/]/i.exec(fs.readFileSync(executable, 'utf8').slice(0, 65536));
-    if (match) {
-      const manifest = fs.statSync(path.join(path.dirname(executable), match[1], 'package.json'));
-      result.package = { size: manifest.size, mtimeMs: manifest.mtimeMs };
+    if (windows && /\.(?:cmd|bat)$/i.test(executable)) {
+      const entry = shimTarget(executable)?.entry;
+      if (!entry) return null;
+      // An update can replace the launched file and leave shim and manifest alone, so bind the entry too.
+      const launched = fs.statSync(entry);
+      result.entry = { size: launched.size, mtimeMs: launched.mtimeMs };
+      // An npm update can leave the shim untouched, so also bind the package it launches when it has a manifest.
+      const match = /^(node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/i.exec(path.relative(path.dirname(executable), entry));
+      let manifest = null;
+      try { manifest = match && regularStat(path.join(path.dirname(executable), match[1], 'package.json'), true); } catch { /* a linked manifest binds nothing */ }
+      if (manifest) result.package = { size: manifest.size, mtimeMs: manifest.mtimeMs };
     }
     return result;
   } catch { return null; }
@@ -1644,7 +1679,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, planModelsFile, readPlanModels, applyPlanModels, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, shimTarget, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, planModelsFile, readPlanModels, applyPlanModels, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, statuslineLook, saveStatusline, STATUSLINE_STYLES, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

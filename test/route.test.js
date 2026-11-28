@@ -209,6 +209,13 @@ test('an unrated successor inherits its predecessor scores until logged results 
   const archFails = failures.map(o => ({ ...o, category: 'architecture' }));
   const arch = select(route({ ...base, models: archModels, outcomes: archFails }), 'critical', 'architecture');
   assert.equal(arch.consensus?.model, 'gpt-6.1-sol');
+  // A Codex set up as a CLI worker whose binary is missing gives no second opinion.
+  const codex = { ...lib.BUILTIN_PROVIDERS.providers.codex, worker: 'cli-worker', cli: { command: 'codex', args: ['exec', '{prompt}'] } };
+  const noBinary = route({ ...base, models: archModels, outcomes: archFails, findExecutable: () => null,
+    providers: { providers: { ...lib.BUILTIN_PROVIDERS.providers, codex } } });
+  assert.equal(select(noBinary, 'critical', 'architecture').consensus, undefined);
+  // The default codex-worker setup without a codex binary gives none either.
+  assert.equal(select(route({ ...base, models: archModels, outcomes: archFails, findExecutable: () => null }), 'critical', 'architecture').consensus, undefined);
 });
 
 test('a Codex model missing from the Codex model cache while its family is listed is not routed', () => {
