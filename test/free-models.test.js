@@ -12,6 +12,7 @@ const zero = { cost: { input: 0, output: 0 } };
 const zenFree = { ...zero, tool_call: true };
 const paid = { cost: { input: 1, output: 2 } };
 const offer = (id, extra = {}) => ({ id, pricing: { prompt: '0', completion: '0' }, context_length: 64000, supported_parameters: ['tools'], ...extra });
+const recent = (release_date, extra = {}) => ({ ...paid, tool_call: true, release_date, limit: { context: 128000 }, ...extra });
 
 test('preset status, account tiers, extra models and first slash splitting', () => {
   const presets = { keyless: { model: 'opencode/a', keyless: true }, suffix: { model: 'openrouter/nvidia/a:free' },
@@ -47,6 +48,35 @@ test('candidate filters exclude paid, short, tool-less and covered models', () =
   const result = check({ a: { model: 'opencode/covered' }, b: { model: 'openrouter/covered:free' } }, dev, router);
   assert.deepEqual(result.zen.map(row => row.model), ['opencode/yes']);
   assert.deepEqual(result.openrouter.map(row => row.model), ['openrouter/yes:free']);
+});
+
+test('new routing models filter by table coverage, date, capabilities, name and vendor', () => {
+  const model = recent('2026-11-28');
+  const dev = {
+    openai: { models: { 'GPT-6-2-SOL': model, newest: model, old: recent('2026-07-30'),
+      edge: recent('2026-07-31'), future: recent('2026-11-29'), invalid: recent('2026-09-31'),
+      timestamp: recent('2026-11-28T00:00:00Z'), deprecated: { ...model, status: 'deprecated' },
+      noTools: { ...model, tool_call: false }, malformed: null,
+      ...Object.fromEntries('LATEST healthcare preview image video audio tts embedding realtime search'.split(' ').map(suffix => ['new-' + suffix, model])) } },
+    xai: { models: { 'grok-build-0-1': model } },
+    deepseek: { models: { 'swe.2.1': model, 'swe-2-1-medium': model, 'swe-2-flash': model, fresh: recent('2026-08-01') } },
+    other: { models: { ignored: model } }
+  };
+  const result = check({}, dev, undefined, Date.UTC(2026, 10, 28, 12));
+  assert.deepEqual(result.newModels.map(row => row.model), ['openai/newest', 'deepseek/fresh', 'openai/edge']);
+  assert.equal(result.attention, 0);
+  assert.match(format(result), /New models not in the routing table\n  openai\/newest  2026-11-28  1\/2 \$\/M  128k ctx/);
+});
+
+test('new routing model report sanitizes ids and shows at most 25 rows', () => {
+  const models = Object.fromEntries(Array.from({ length: 26 }, (_, i) => ['model-' + i, recent('2026-11-27')]));
+  models['bad\n`'] = recent('2026-11-28', { cost: { input: 'invalid', output: 0 } });
+  const result = check({}, { google: { models } }, undefined, Date.UTC(2026, 10, 28));
+  assert.equal(result.newModels.length, 27);
+  const output = format(result);
+  assert.match(output, /google\/bad\?\?  2026-11-28  \?\/0 \$\/M  128k ctx/);
+  assert.equal(output.match(/^  google\//gm).length, 25);
+  assert.match(output, /\(2 more\)/);
 });
 
 test('sort, cap and sanitize all printed fields', () => {
@@ -94,8 +124,10 @@ test('local file errors, size ceiling, command codes and CLI dispatch', t => {
       (dev[provider] ||= { models: {} }).models[id] = zero;
     }
   }
+  (dev.openai ||= { models: {} }).models['fixture-new-model'] = recent(new Date().toISOString().slice(0, 10));
   const full = write('full.json', JSON.stringify(dev));
   assert.equal(command([full, router]).code, 0);
+  assert.match(command([full, router]).text, /openai\/fixture-new-model/);
   assert.equal(command([empty]).code, 1);
   for (const [args, code] of [[[full, router], 0], [[empty], 1], [[], 2], [[bad], 2]]) {
     const result = spawnSync(process.execPath, [path.join(__dirname, '../tools/free-models.js'), ...args], { encoding: 'utf8' });

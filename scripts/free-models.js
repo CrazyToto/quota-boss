@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const { PRESETS } = require('./add-api');
+const { models: table } = require('../config/models.json');
 const USAGE = 'Usage: node tools/free-models.js <models-dev.json> [<openrouter.json>]';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const number = value => typeof value === 'number' && Number.isFinite(value);
@@ -10,7 +11,22 @@ const context = value => number(value) && value >= 0 ? value : 0;
 const price = value => typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
 const routerFree = model => object(model.pricing) && price(model.pricing.prompt) === 0 && price(model.pricing.completion) === 0;
 
-function check(presets, modelsDev, openRouter) {
+const normalize = id => id.toLowerCase().replace(/\./g, '-');
+const vendors = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'moonshotai', 'zai'];
+const day = 86400000;
+const tableIds = new Set();
+for (const [id, model] of Object.entries(table)) {
+  const normalized = normalize(id), prefix = normalize(model.pool) + '-';
+  tableIds.add(normalized);
+  if (normalized.startsWith(prefix)) tableIds.add(normalized.slice(prefix.length));
+  if (typeof model.cliModel === 'string') {
+    const cli = normalize(model.cliModel);
+    tableIds.add(cli);
+    tableIds.add(cli.replace(/-(?:none|minimal|low|medium|high|xhigh|max)$/, ''));
+  }
+}
+
+function check(presets, modelsDev, openRouter, now = Date.now()) {
   const dev = object(modelsDev) ? modelsDev : {};
   const router = new Map();
   for (const model of Array.isArray(openRouter?.data) ? openRouter.data : []) {
@@ -54,7 +70,23 @@ function check(presets, modelsDev, openRouter) {
     }
   }
   const sort = items => items.sort((a, b) => b.context - a.context || (a.model < b.model ? -1 : a.model > b.model ? 1 : 0));
-  return { presets: rows, zen: sort(zen), openrouter: sort(openrouter), attention: rows.filter(row => row.status !== 'ok').length };
+  const newModels = [], today = Math.floor(now / day) * day;
+  for (const vendor of vendors) {
+    const models = dev[vendor]?.models;
+    if (!object(models)) continue;
+    for (const [id, model] of Object.entries(models)) {
+      if (!object(model) || model.status === 'deprecated' || model.tool_call !== true
+        || /-latest$|-(?:healthcare|preview|image|video|audio|tts|embedding|realtime|search)/i.test(id) || tableIds.has(normalize(id))) continue;
+      const date = model.release_date;
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const released = Date.parse(date);
+      if (!Number.isFinite(released) || released < today - 120 * day || released > today
+        || new Date(released).toISOString().slice(0, 10) !== date) continue;
+      newModels.push({ model: vendor + '/' + id, date, input: model.cost?.input, output: model.cost?.output, context: context(model.limit?.context) });
+    }
+  }
+  newModels.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  return { presets: rows, zen: sort(zen), openrouter: sort(openrouter), attention: rows.filter(row => row.status !== 'ok').length, newModels };
 }
 
 function format(result) {
@@ -64,6 +96,12 @@ function format(result) {
     lines.push(...items.slice(0, 15).map(item => '  ' + safe(item.model) + '  ' + Math.round(item.context / 1000) + 'k ctx'));
     if (items.length > 15) lines.push('  (' + (items.length - 15) + ' more)');
   }
+  const newModels = result.newModels || [];
+  lines.push('New models not in the routing table');
+  lines.push(...newModels.slice(0, 25).map(item => '  ' + safe(item.model) + '  ' + safe(item.date) + '  '
+    + safe(number(item.input) ? item.input : '?') + '/' + safe(number(item.output) ? item.output : '?')
+    + ' $/M  ' + safe(Math.round(item.context / 1000)) + 'k ctx'));
+  if (newModels.length > 25) lines.push('  (' + (newModels.length - 25) + ' more)');
   lines.push(result.attention ? result.attention + ' presets need attention.' : 'All free presets are still listed.');
   return lines.join('\n');
 }

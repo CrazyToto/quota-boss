@@ -2,13 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { discover, parseDevin, parseTabList, selectedModel, matches } = require('../scripts/discover-models');
+const { discover, parseDevin, parseTabList, parseKilo, parseCodex, selectedModel, matches } = require('../scripts/discover-models');
 
 const config = () => ({
   providers: { providers: {
     devin: { cli: { command: 'devin', args: ['--model', 'swe-2-flash-medium', '-p', '{prompt}'] } },
     antigravity: { cli: { command: 'agy', args: ['-p', '{prompt}', '--model', '{model}-{effort}'] } },
     copilot: { cli: { command: 'copilot', args: ['-p', '{prompt}'] } },
+    'kilo-free': { cli: { command: 'kilo', args: ['-m', 'kilo/kilo-auto/free'] } },
+    codex: {},
   } },
   models: { models: {
     flash: { pool: 'devin' },
@@ -17,6 +19,9 @@ const config = () => ({
     goneOff: { pool: 'devin', cliModel: 'swe-8', enabled: false },
     argon: { pool: 'antigravity', cliModel: 'gemini-4-argon' },
     hydrogen: { pool: 'antigravity', cliModel: 'gemini-4-hydrogen', enabled: false },
+    'kilo-free': { pool: 'kilo-free' },
+    'gpt-6.2-sol': { pool: 'codex', enabled: false },
+    'gpt-6.2-astra': { pool: 'codex' },
   } },
 });
 const devinJson = JSON.stringify({ families: [
@@ -25,6 +30,65 @@ const devinJson = JSON.stringify({ families: [
   { variants: [{ model_uid: 'kimi-k3-1-pro-high', cost_summary: 'Free' }, { model_uid: '../bad id' }, null] },
 ] });
 const run = stdout => () => ({ status: 0, stdout });
+const kiloText = `kilo/amazon/nova-pro
+{
+  "id": "amazon/nova-pro",
+  "status": "active",
+  "cost": {
+    "input": 0.7999999999999999,
+    "output": 3.1999999999999997
+  }
+}
+kilo/kilo-auto/free
+{
+  "id": "kilo-auto/free",
+  "status": "active",
+  "cost": {
+    "input": 0,
+    "output": 0
+  }
+}
+kilo/old
+{
+  "status": "deprecated"
+}
+kilo/future
+{
+  "cost": { "input": 0 }
+}
+`.replace(/\n/g, '\r\n');
+const codexJson = '{"models":[{"slug":"gpt-6.2-sol","visibility":"list"},{"slug":"gpt-6.2-astra","visibility":"hide"},{"slug":"bad id","visibility":"list"}]}';
+
+test('Kilo parses verbose CRLF blocks and uses the full slug for table matching', () => {
+  assert.deepEqual(parseKilo(kiloText), [
+    { id: 'kilo/amazon/nova-pro', billing: 'per-token' },
+    { id: 'kilo/kilo-auto/free', billing: 'included' },
+    { id: 'kilo/future', billing: 'unknown' },
+  ]);
+  assert.deepEqual(parseKilo('x/free\n{\n}\npriced\n{\n  "cost": {"input":"0","output":0}\n}\nkilo/kilo-auto/frontier\n{\n  "cost": {"input":0,"output":0}\n}\n').map(m => m.billing),
+    ['included', 'per-token', 'unknown'], 'a zero-price router is not free');
+  const { rows, text } = discover('kilo-free', { config: config(), find: c => c, run: (exe, args) => {
+    assert.equal(exe, 'kilo');
+    assert.deepEqual(args, ['models', 'kilo', '--verbose']);
+    return { status: 0, stdout: kiloText };
+  } });
+  assert.deepEqual(rows.routed.map(r => r.id), ['kilo-free']);
+  assert.deepEqual(rows.unknown, ['kilo/amazon/nova-pro', 'kilo/future']);
+  assert.deepEqual(rows.unknownIncluded, []);
+  assert.match(text, /new, priced \(needs your OK and a table entry\): 1 models$/m);
+});
+
+test('Codex lists only visible slugs and matches table IDs without a CLI model', () => {
+  assert.deepEqual(parseCodex(codexJson), [{ id: 'gpt-6.2-sol', billing: 'included' }]);
+  const { rows } = discover('codex', { config: config(), find: c => c, run: (exe, args) => {
+    assert.equal(exe, 'codex');
+    assert.deepEqual(args, ['debug', 'models']);
+    return { status: 0, stdout: codexJson };
+  } });
+  assert.deepEqual(rows.off.map(r => r.id), ['gpt-6.2-sol']);
+  assert.deepEqual(rows.missing.map(r => r.id), ['gpt-6.2-astra']);
+  assert.deepEqual(rows.unknown, []);
+});
 
 test('Devin JSON: a price means per-token, none or Free means included, bad ids are dropped', () => {
   assert.deepEqual(parseDevin(devinJson).map(m => m.id + ':' + m.billing), ['swe-2-flash-medium:included', 'swe-2-flash-max-lightning:per-token',
@@ -57,7 +121,9 @@ test('the report sorts table models into routed, off and missing and names the r
   assert.match(text, /missing +goneOff \(swe-8\): not offered to this account$/m);
   assert.match(text, /off +swe21 \(swe-2-1-medium, priced per token\): quota-boss use swe21 on, if your plan includes it/);
   assert.match(text, /missing +gone .*quota-boss use gone off/);
-  assert.match(text, /not in the table, so not routed: swe-2-flash, swe-2-1, kimi-k3-1-pro$/m);
+  assert.deepEqual(rows.unknown, ['kimi-k3-1-pro-high']);
+  assert.deepEqual(rows.unknownIncluded, ['kimi-k3-1-pro-high']);
+  assert.match(text, /new, included in your plan: kimi-k3-1-pro$/m);
   const agy = discover('antigravity', { config: config(), run: run('gemini-4-hydrogen-high\tH\n'), find: () => 'agy' });
   assert.deepEqual([agy.rows.off.map(r => r.id), agy.rows.missing.map(r => r.id)], [['hydrogen'], ['argon']]);
 });
@@ -67,6 +133,9 @@ test('a provider without a list command, a failed run or unreadable output gives
   assert.throws(() => discover('devin', { config: config(), run: () => ({ status: 1, stdout: '' }), find: () => 'devin' }), /devin models list failed \(exit 1\)\. Is the CLI installed and signed in\?/);
   assert.throws(() => discover('devin', { config: config(), run: () => ({ status: null, error: new Error('ENOENT') }), find: () => null }), /failed: ENOENT/);
   assert.throws(() => discover('devin', { config: config(), run: run('<html>'), find: () => 'devin' }), /cannot read/);
+  for (const [id, bad] of [['kilo-free', 'kilo/bad\n{\n  invalid\n}\n'], ['codex', '{"models":']]) {
+    assert.throws(() => discover(id, { config: config(), run: run(bad), find: c => c }), /printed something Quota Boss cannot read/);
+  }
   assert.match(discover('devin', { config: config(), run: run('{}'), find: () => 'devin' }).text, /missing/);
 });
 
@@ -111,17 +180,17 @@ test('refresh stores each provider, reports what changed and keeps the old state
   const file = tempFile(), use = lib.normalizeUse({});
   const agyRun = (exe, args) => ({ status: 0, stdout: 'gemini-4-hydrogen-high\tH\n' });
   const run = (exe, args) => exe === 'agy' ? agyRun(exe, args) : devinRun('Pro')(exe, args);
-  const first = refresh({ config: config(), run, find: command => command === 'copilot' ? null : command, file, use, now: 1000 });
+  const first = refresh({ config: config(), run, find: command => ['devin', 'agy'].includes(command) ? command : null, file, use, now: 1000 });
   assert.deepEqual(first.changes.map(c => c.provider + ':' + c.plan + ':' + c.on.join(',') + ':' + c.off.join(',')),
     ['devin:paid:flash:gone,goneOff,swe21', 'antigravity:null:hydrogen:argon']);
-  assert.deepEqual(changeLines(first.changes), ['devin (paid plan): on flash; off gone, goneOff, swe21', 'antigravity: on hydrogen; off argon']);
+  assert.deepEqual(changeLines(first.changes), ['devin (paid plan): on flash; off gone, goneOff, swe21; new in your plan, not routed yet: kimi-k3-1-pro', 'antigravity: on hydrogen; off argon']);
   const saved = lib.readPlanModels(file);
   assert.equal(saved.checkedAt, 1000);
-  assert.deepEqual(saved.providers.devin, { plan: 'paid', on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
+  assert.deepEqual(saved.providers.devin, { plan: 'paid', on: ['flash'], off: ['gone', 'goneOff', 'swe21'], new: ['kimi-k3-1-pro'] });
   const failing = refresh({ config: config(), run: (exe, args) => exe === 'agy' ? { status: 1, stdout: '' } : devinRun('Pro')(exe, args), find: c => c, file, use, now: 2000 });
   assert.deepEqual(failing.changes, []);
   assert.match(failing.errors.antigravity, /agy models failed/);
-  assert.deepEqual(lib.readPlanModels(file).providers.antigravity, { on: ['hydrogen'], off: ['argon'] });
+  assert.deepEqual(lib.readPlanModels(file).providers.antigravity, { on: ['hydrogen'], off: ['argon'], new: [] });
   const off = config(); off.providers.providers.devin.enabled = false;
   const downgraded = refresh({ config: off, run: devinRun('Free'), find: c => c, file, use, now: 3000 });
   assert.deepEqual(downgraded.changes, []);
@@ -130,18 +199,48 @@ test('refresh stores each provider, reports what changed and keeps the old state
   assert.deepEqual(changeLines(free.changes), ['devin (free plan): no model changed']);
 });
 
+test('Codex refresh stores new families and reports only additions without model switches', () => {
+  const file = tempFile(), use = lib.normalizeUse({});
+  const find = cmd => cmd === 'codex' ? cmd : null;
+  const refreshCodex = (slugs, prefs = use) => refresh({ config: config(), find, file, use: prefs,
+    run: run(JSON.stringify({ models: ['gpt-6.2-sol', ...slugs].map(slug => ({ slug, visibility: 'list' })) })) });
+  assert.deepEqual(refreshCodex(['new-a'], lib.normalizeUse({ providersOff: ['codex'] })).listings, {});
+  const first = refreshCodex(['new-b-high', 'new-a', 'new-b-low']);
+  assert.deepEqual(first.changes, [{ provider: 'codex', plan: null, on: [], off: [], new: ['new-a', 'new-b'] }]);
+  assert.deepEqual(changeLines(first.changes), ['codex: new in your plan, not routed yet: new-a, new-b']);
+  assert.deepEqual(lib.readPlanModels(file).providers.codex, { on: [], off: [], new: ['new-a', 'new-b'] });
+  assert.deepEqual(refreshCodex(['new-a', 'new-b']).changes, []);
+  assert.deepEqual(refreshCodex(['new-b', 'new-c']).changes, [{ provider: 'codex', plan: null, on: [], off: [], new: ['new-c'] }]);
+  assert.deepEqual(lib.readPlanModels(file).providers.codex, { on: [], off: [], new: ['new-b', 'new-c'] });
+  const many = Array.from({ length: 51 }, (_, i) => 'extra-' + (100 + i));
+  assert.deepEqual(refreshCodex([...many].reverse()).changes[0].new, many.slice(0, 50));
+  assert.deepEqual(lib.readPlanModels(file).providers.codex.new, many.slice(0, 50));
+});
+
+test('refresh records a newly included family even when no table model matches', () => {
+  const file = tempFile(), use = lib.normalizeUse({});
+  const result = refresh({ config: config(), file, use, find: () => 'agy', only: 'antigravity',
+    run: run('unrouted-high\tUnrouted\n') });
+  assert.deepEqual(result.changes, [{ provider: 'antigravity', plan: null, on: [], off: [], new: ['unrouted'] }]);
+  assert.deepEqual(lib.readPlanModels(file).providers.antigravity, { on: [], off: [], new: ['unrouted'] });
+});
+
 test('detected plan models switch shipped values, and a manual on or off still wins', () => {
   const registry = () => ({ a: { pool: 'devin', enabled: false }, b: { pool: 'devin' }, c: { pool: 'devin', enabled: false }, d: { pool: 'other', enabled: false }, e: { pool: 'devin' } });
-  const plans = { providers: { devin: { on: ['a', 'c', 'd'], off: ['b', 'e'] } } };
+  const plans = { providers: { devin: { on: ['a', 'c', 'd'], off: ['b', 'e'], new: ['f'] } } };
   const one = registry();
+  one.f = { pool: 'devin', enabled: false };
   lib.applyPlanModels(one, plans, new Set(['e']), new Set(['c']));
-  assert.deepEqual(Object.fromEntries(Object.entries(one).map(([id, m]) => [id, m.enabled !== false])), { a: true, b: false, c: false, d: false, e: true });
+  assert.deepEqual(Object.fromEntries(Object.entries(one).map(([id, m]) => [id, m.enabled !== false])), { a: true, b: false, c: false, d: false, e: true, f: false });
   assert.deepEqual(lib.readPlanModels(tempFile()).providers, Object.create(null));
   const file = tempFile();
-  fs.writeFileSync(file, JSON.stringify({ checkedAt: 'x', providers: { devin: { plan: 'gold', on: ['ok', '../bad', 5], off: 'x' }, 'bad id': { on: ['a'] } } }));
+  fs.writeFileSync(file, JSON.stringify({ checkedAt: 'x', providers: {
+    devin: { plan: 'gold', on: ['ok', '../bad', 5], off: 'x', new: ['kilo/kilo-auto/free', '../bad', 5, 'bad id', 'a'.repeat(129)] },
+    'bad id': { on: ['a'] },
+  } }));
   const read = lib.readPlanModels(file);
   assert.equal(read.checkedAt, 0);
-  assert.deepEqual({ ...read.providers }, { devin: { on: ['ok'], off: [] } });
+  assert.deepEqual({ ...read.providers }, { devin: { on: ['ok'], off: [], new: ['kilo/kilo-auto/free'] } });
 });
 
 test('the background check runs once a day and after an update, never twice at once, and only for a listing provider', () => {
@@ -159,6 +258,8 @@ test('the background check runs once a day and after an update, never twice at o
   const none = config();
   for (const provider of Object.values(none.providers.providers)) provider.enabled = false;
   assert.equal(refreshIfStale({ config: none, now: day * 20, spawn, file, use }), false);
+  none.providers.providers.codex = { enabled: true };
+  assert.equal(refreshIfStale({ config: none, now: day * 20, spawn, file, use }), false, 'a report-only list alone starts nothing');
   assert.equal(spawned, 2);
 });
 
@@ -169,7 +270,7 @@ test('a slower refresh keeps what another run stored meanwhile', () => {
     if (once) { once = false; refresh({ config: config(), only: 'antigravity', run: () => ({ status: 0, stdout: 'gemini-4-hydrogen-high\tH\n' }), find: c => c, file, use }); }
     return devinRun('Free')(exe, args);
   };
-  refresh({ config: config(), run, find: c => c === 'agy' ? null : c, file, use, now: 5000 });
+  refresh({ config: config(), run, find: c => c === 'devin' ? c : null, file, use, now: 5000 });
   const saved = lib.readPlanModels(file);
   assert.deepEqual(Object.keys(saved.providers).sort(), ['antigravity', 'devin']);
   assert.equal(saved.checkedAt, 5000);

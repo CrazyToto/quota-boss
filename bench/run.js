@@ -1,13 +1,13 @@
 'use strict';
 // Boss on/off benchmark on a fresh fixture. One run appends one line to <out>/results.jsonl.
-// Usage: node bench/run.js --host claude|codex|junie|devin --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
+// Usage: node bench/run.js --host claude|codex|junie|devin|agy --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]
 // Uses the installed quota-boss (~/.claude/quota-boss) and the real CLIs, so every run spends real quota.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const USAGE = 'Usage: node bench/run.js --host claude|codex|junie|devin --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
+const USAGE = 'Usage: node bench/run.js --host claude|codex|junie|devin|agy --arm off|on|on:<profile> --task <task> [--model <id>] [--effort <level>] [--claude-mode normal|save|emergency] [--hint <sentence>] [--label <name>] [--n <k>] [--reps <k>] [--out <dir>]';
 const { prompts, setup } = require('./tasks');
 const { find: findTranscript, analyze: analyzeTranscript } = require('./transcript');
 function parseArm(value) {
@@ -35,9 +35,9 @@ if (reps > 1) {
 }
 const task = args.task;
 // Junie and Devin are worker CLIs, not boss hosts, so they run only the off arm (solo quality of one model).
-const solo = ['junie', 'devin'].includes(host);
-if (!['claude', 'codex', 'junie', 'devin'].includes(host) || !['on', 'off'].includes(mode) || (solo && mode !== 'off') || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
-const model = args.model || { claude: 'opus', codex: 'gpt-6.1-sol', junie: 'junie-lite', devin: 'swe-2-flash-medium' }[host];
+const solo = ['junie', 'devin', 'agy'].includes(host);
+if (!['claude', 'codex', 'junie', 'devin', 'agy'].includes(host) || !['on', 'off'].includes(mode) || (solo && mode !== 'off') || !Object.hasOwn(prompts, task)) { console.error(USAGE); process.exit(2); }
+const model = args.model || { claude: 'opus', codex: 'gpt-6.1-sol', junie: 'junie-lite', devin: 'swe-2-flash-medium', agy: 'gemini-4-hydrogen-medium' }[host];
 const effort = args.effort || (host === 'codex' ? 'medium' : '');
 const label = (args.label || `${host}-${model}-${arm}${claudeMode ? '-' + claudeMode : ''}`);
 const n = args.n || '1';
@@ -107,6 +107,11 @@ if (host === 'claude') {
   const bin = process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'devin', 'cli', 'bin') : null;
   const env = { ...process.env, ...(bin ? { PATH: bin + path.delimiter + (process.env.PATH || '') } : {}) };
   run = execute('devin', ['--respect-workspace-trust', 'false', '--permission-mode', 'accept-edits', '--model', model, '-p', prompt], { cwd: dir, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env });
+} else if (host === 'agy') {
+  // The same switches as the antigravity preset: headless prompt, edits without asking, the model slug carries the effort.
+  const bin = process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'agy', 'bin') : null;
+  const env = { ...process.env, ...(bin ? { PATH: bin + path.delimiter + (process.env.PATH || '') } : {}) };
+  run = execute('agy', ['-p', prompt, '--mode', 'auto', '--model', model], { cwd: dir, encoding: 'utf8', timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env });
 } else {
   run = execute('codex', ['exec', '--json', '--skip-git-repo-check', '-C', `"${dir}"`, '-s', 'workspace-write', '-m', model, '-c', `model_reasoning_effort=${effort}`, '-'],
     { input: prompt, encoding: 'utf8', shell: true, timeout: 1800000, maxBuffer: 128 * 1024 * 1024, env: { ...process.env, QUOTA_BOSS_BOSS_MODEL: model, QUOTA_BOSS_BENCH: runName, ...modeEnv } });

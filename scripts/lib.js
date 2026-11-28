@@ -376,6 +376,8 @@ function readPlanModels(file = planModelsFile()) {
     if (!validProviderId(id)) continue;
     const item = object(entry);
     providers[id] = { ...(['free', 'paid'].includes(item.plan) ? { plan: item.plan } : {}), on: ids(item.on), off: ids(item.off) };
+    if (Array.isArray(item.new)) providers[id].new = [...new Set(item.new.filter(name =>
+      typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(name)))].sort().slice(0, 50);
   }
   return { version: typeof raw.version === 'string' ? raw.version.slice(0, 40) : '', checkedAt: time(raw.checkedAt), claimedAt: time(raw.claimedAt), providers };
 }

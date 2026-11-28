@@ -32,6 +32,36 @@ function parseTabList(text) {
     .filter((id, index, all) => all.indexOf(id) === index && String(text).includes(id + '\t'))
     .map(id => ({ id, billing: 'unknown' }));
 }
+// A zero price alone is not enough: routers such as kilo-auto/frontier show 0 and bill the model they pick, so only an id
+// marked free counts as included.
+const KILO_FREE = /(?::free|[/-]free)$/i;
+function kiloBilling(model, id) {
+  if (!KILO_FREE.test(id)) return [model.cost?.input, model.cost?.output].some(price => price !== undefined && (typeof price !== 'number' || price > 0)) ? 'per-token' : 'unknown';
+  if (!Object.hasOwn(model, 'cost')) return 'included';
+  const { input, output } = model.cost ?? {};
+  if ([input, output].some(price => price !== undefined && (typeof price !== 'number' || price !== 0))) return 'per-token';
+  return input === 0 && output === 0 ? 'included' : 'unknown';
+}
+/** `kilo models kilo --verbose`: a full slug followed by a pretty-printed JSON object. */
+function parseKilo(text) {
+  const lines = text.split(/\r?\n/), listed = [];
+  for (let i = 0; i < lines.length;) {
+    const id = lines[i++];
+    if (!id.trim()) continue;
+    const start = i;
+    if (lines[i] !== '{') throw new Error('Expected a model object');
+    while (i < lines.length && lines[i] !== '}') i++;
+    const model = JSON.parse(lines.slice(start, ++i).join('\n'));
+    if (SLUG.test(id) && model.status !== 'deprecated') listed.push({ id, billing: kiloBilling(model, id) });
+  }
+  return listed;
+}
+function parseCodex(text) {
+  const data = JSON.parse(text);
+  return (Array.isArray(data?.models) ? data.models : [])
+    .filter(model => model?.visibility === 'list' && typeof model.slug === 'string' && SLUG.test(model.slug))
+    .map(model => ({ id: model.slug, billing: 'included' }));
+}
 /** `devin auth status`: only the Plan line is read, never the name or email next to it. Only a known paid plan counts as
  *  paid; a trial, an expired or an unknown plan is treated like the free one, so no priced model goes on by guess. */
 function parseDevinPlan(text) {
@@ -45,6 +75,10 @@ const LISTERS = {
   devin: { args: ['models', 'list', '--format', 'json'], parse: parseDevin, source: 'devin models list', plan: { args: ['auth', 'status'], parse: parseDevinPlan } },
   // `agy models` lists only what the account's plan includes, so a listed model counts as included.
   agy: { args: ['models'], parse: parseTabList, source: 'agy models', listedIsIncluded: true },
+  kilo: { args: ['models', 'kilo', '--verbose'], parse: parseKilo, source: 'kilo models kilo --verbose' },
+};
+const BUILTIN_LISTERS = {
+  codex: { command: 'codex', args: ['debug', 'models'], parse: parseCodex, source: 'codex debug models', reportOnly: true },
 };
 
 /** The CLI model a table entry selects: its cliModel, else the fixed `--model` value in the provider's arguments. */
@@ -67,22 +101,28 @@ function family(id) {
   while (VARIANT.test(base)) base = base.replace(VARIANT, '');
   return base || id;
 }
+function families(ids) { return [...new Set(ids.map(family))]; }
 
 function compare(providerId, listed, config) {
   const provider = config.providers.providers[providerId];
+  const { reportOnly } = listerOf(provider, providerId) ?? {};
   const rows = { routed: [], off: [], missing: [] };
-  const used = new Set();
+  const used = new Set(), knownFamilies = new Set();
   for (const [id, model] of Object.entries(config.models.models)) {
     if (model?.pool !== providerId) continue;
-    const cliModel = selectedModel(model, provider.cli);
+    const cliModel = reportOnly ? model.cliModel ?? id : selectedModel(model, provider.cli);
     if (!cliModel) continue;
-    const hits = listed.filter(item => matches(item.id, cliModel));
+    knownFamilies.add(family(cliModel));
+    const hits = listed.filter(item => reportOnly ? item.id === cliModel : matches(item.id, cliModel));
     for (const hit of hits) used.add(hit.id);
     if (!hits.length) { rows.missing.push({ id, cliModel, off: model.enabled === false }); continue; }
     const billing = hits.every(hit => hit.billing === 'per-token') ? 'per-token' : hits.some(hit => hit.billing === 'included') ? 'included' : 'unknown';
     rows[model.enabled === false ? 'off' : 'routed'].push({ id, cliModel, billing });
   }
-  rows.unknown = listed.filter(item => !used.has(item.id)).map(item => item.id);
+  const unknown = listed.filter(item => !used.has(item.id) && !knownFamilies.has(family(item.id)));
+  rows.unknown = unknown.map(item => item.id);
+  rows.unknownIncluded = unknown.filter(item => item.billing === 'included').map(item => item.id);
+  rows.unknownPriced = families(unknown.filter(item => item.billing === 'per-token').map(item => item.id)).length;
   return rows;
 }
 
@@ -93,25 +133,28 @@ function report(providerId, rows, source, providerOff = false) {
   for (const row of rows.routed) lines.push('  routed   ' + row.id + ' (' + row.cliModel + note(row.billing) + ')');
   for (const row of rows.off) lines.push('  off      ' + row.id + ' (' + row.cliModel + note(row.billing) + '): quota-boss use ' + row.id + ' on, if your plan includes it');
   for (const row of rows.missing) lines.push('  missing  ' + row.id + ' (' + row.cliModel + '): not offered to this account' + (row.off ? '' : '; quota-boss use ' + row.id + ' off'));
-  if (rows.unknown.length) {
-    const families = [...new Set(rows.unknown.map(family))];
-    lines.push('  not in the table, so not routed: ' + families.slice(0, 12).join(', ') + (families.length > 12 ? ' and ' + (families.length - 12) + ' more' : ''));
+  if (rows.unknownIncluded.length) {
+    const names = families(rows.unknownIncluded);
+    lines.push('  new, included in your plan: ' + names.slice(0, 12).join(', ') + (names.length > 12 ? ' and ' + (names.length - 12) + ' more' : ''));
   }
+  if (rows.unknownPriced) lines.push('  new, priced (needs your OK and a table entry): ' + rows.unknownPriced + ' models');
   if (!rows.routed.length && !rows.off.length && !rows.missing.length && !rows.unknown.length) lines.push('  The CLI listed no models.');
   return lines.join('\n');
 }
 
-function listerOf(provider) {
+function listerOf(provider, id) {
+  if (Object.hasOwn(BUILTIN_LISTERS, id)) return BUILTIN_LISTERS[id];
   const command = provider?.cli?.command;
-  return typeof command === 'string' ? LISTERS[path.basename(command).replace(/\.(cmd|exe|bat)$/i, '').toLowerCase()] ?? null : null;
+  const name = typeof command === 'string' ? path.basename(command).replace(/\.(cmd|exe|bat)$/i, '').toLowerCase() : '';
+  return Object.hasOwn(LISTERS, name) ? LISTERS[name] : null;
 }
 const RUN = { encoding: 'utf8', timeout: 60 * 1000, maxBuffer: MAX_BYTES, windowsHide: true };
 /** Runs the provider's list command (and its plan command, if any). Returns { listed, plan, lister } or throws a short reason. */
 function list(providerId, config, run, find) {
   const provider = config.providers.providers[providerId];
-  const lister = listerOf(provider);
+  const lister = listerOf(provider, providerId);
   if (!lister) throw new Error(providerId + ' has no command that lists the models of your account.');
-  const executable = find(provider.cli.command);
+  const executable = find(lister.command ?? provider.cli.command);
   const result = run(executable, lister.args, RUN);
   if (result.error || result.status !== 0) {
     throw new Error(lister.source + ' failed' + (result.error ? ': ' + lib.sanitizeLabel(result.error.message) : ' (exit ' + result.status + ')') + '. Is the CLI installed and signed in?');
@@ -134,8 +177,7 @@ function list(providerId, config, run, find) {
 /** Which table models of a provider its account has. Every listed model the plan includes goes on; a priced or unknown one stays off
  *  on every plan, because no usage is visible to stop it before billing beyond the allowance starts: only
  *  `use <model> on` turns it on. null when nothing in the list matches the table: that is a changed CLI, not a plan. */
-function planState(providerId, listed, plan, config) {
-  const rows = compare(providerId, listed, config);
+function planState(providerId, listed, plan, config, rows = compare(providerId, listed, config)) {
   const found = [...rows.routed, ...rows.off];
   if (!found.length) return null;
   const included = row => row.billing === 'included';
@@ -164,22 +206,28 @@ function save(file, { updates = {}, checkedAt, claimedAt, wait = 2000 } = {}) {
 
 /**
  * Asks every provider with a list command what the account has and stores it. A provider that is off, not installed or
- * fails keeps what was stored before. Returns { changes: [{ provider, plan, on, off }], listings, errors }.
+ * fails keeps what was stored before. Returns { changes: [{ provider, plan, on, off, new }], listings, errors }.
  */
 function refresh({ config = lib.loadConfig(undefined, { use: false, tolerant: true }), run = lib.runExecutable, find = lib.findExecutable,
   now = Date.now(), only = null, file = lib.planModelsFile(), use = lib.readUse() } = {}) {
   const old = lib.readPlanModels(file), next = Object.create(null), changes = [], listings = {}, errors = {};
   for (const [id, provider] of Object.entries(config.providers.providers)) {
     if (only ? id !== only : provider.enabled === false || use.providersOff.includes(id)) continue;
-    if (!listerOf(provider) || !only && !find(provider.cli.command)) continue;
+    const lister = listerOf(provider, id);
+    if (!lister || !only && !find(lister.command ?? provider.cli.command)) continue;
     try {
-      const { listed, plan, lister } = list(id, config, run, find);
+      const { listed, plan } = list(id, config, run, find);
       listings[id] = { listed, source: lister.source };
-      const state = planState(id, listed, plan, config);
-      if (!state) continue;
       const before = old.providers[id] ?? { on: [], off: [] };
+      const rows = compare(id, listed, config);
+      const detected = lister.reportOnly ? { on: [], off: [] } : planState(id, listed, plan, config, rows);
+      const names = families(rows.unknownIncluded).sort().slice(0, 50);
+      if (!detected && !names.length && !before.new?.length) continue;
+      const state = { ...(detected ?? before), new: names };
       const on = state.on.filter(model => !before.on.includes(model)), off = state.off.filter(model => !before.off.includes(model));
-      if (on.length || off.length || before.plan !== state.plan) changes.push({ provider: id, plan: state.plan ?? null, on, off });
+      const added = names.filter(name => !before.new?.includes(name));
+      if (on.length || off.length || added.length || !lister.reportOnly && before.plan !== state.plan)
+        changes.push({ provider: id, plan: state.plan ?? null, on, off, new: added });
       next[id] = state;
     } catch (error) { errors[id] = String(error?.message ?? error); }
   }
@@ -190,8 +238,9 @@ function refresh({ config = lib.loadConfig(undefined, { use: false, tolerant: tr
 /** Session start: refresh in the background once a day and after an update, never twice at once. */
 function refreshIfStale({ config, now = Date.now(), spawn = child.spawn, file = lib.planModelsFile(), use = lib.readUse() } = {}) {
   try {
-    // Nothing to ask when no provider that can list its models is on.
-    if (!Object.entries(config.providers.providers).some(([id, provider]) => provider.enabled !== false && !use.providersOff.includes(id) && listerOf(provider))) return false;
+    // Nothing to ask when no provider whose list can switch models is on: a report-only list (Codex) alone is not worth
+    // a background process at every start; it is checked along with the others and in `providers models codex`.
+    if (!Object.entries(config.providers.providers).some(([id, provider]) => provider.enabled !== false && !use.providersOff.includes(id) && listerOf(provider, id) && !listerOf(provider, id).reportOnly)) return false;
     const state = lib.readPlanModels(file);
     if (now - state.checkedAt < DAY_MS && state.version === version()) return false;
     if (now - state.claimedAt < CLAIM_MS) return false;
@@ -206,9 +255,13 @@ function refreshIfStale({ config, now = Date.now(), spawn = child.spawn, file = 
 
 /** One line per provider whose models changed, for setup and the models report. */
 function changeLines(changes) {
-  return changes.map(change => change.provider + (change.plan ? ' (' + change.plan + ' plan)' : '') + ':'
-    + (change.on.length ? ' on ' + change.on.join(', ') : '') + (change.on.length && change.off.length ? ';' : '')
-    + (change.off.length ? ' off ' + change.off.join(', ') : '') + (!change.on.length && !change.off.length ? ' no model changed' : ''));
+  return changes.map(change => {
+    const parts = [];
+    if (change.on.length) parts.push('on ' + change.on.join(', '));
+    if (change.off.length) parts.push('off ' + change.off.join(', '));
+    if (change.new?.length) parts.push('new in your plan, not routed yet: ' + change.new.join(', '));
+    return change.provider + (change.plan ? ' (' + change.plan + ' plan)' : '') + ': ' + (parts.join('; ') || 'no model changed');
+  });
 }
 
 /** quota-boss providers models <id>: with store, refreshes that provider first and reports with the result applied. */
@@ -230,4 +283,4 @@ if (require.main === module && process.argv[2] === '--refresh') {
   try { refresh(); } catch { /* the next session start tries again */ }
 }
 
-module.exports = { discover, refresh, refreshIfStale, planState, changeLines, compare, parseDevin, parseDevinPlan, parseTabList, selectedModel, matches, LISTERS };
+module.exports = { discover, refresh, refreshIfStale, planState, changeLines, compare, parseDevin, parseDevinPlan, parseTabList, parseKilo, parseCodex, selectedModel, matches, LISTERS };

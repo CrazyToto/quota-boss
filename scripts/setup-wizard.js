@@ -436,7 +436,7 @@ function finish(w) {
   const ready = chosen(w, FREE).filter(id => usable(toolOf(id)) && !failedAddApi.has(id) && (w.state.training || !mayTrain(id))).map(id => nameOf(id))
     .filter(name => !dropped.includes(name) && !open.some(line => line.startsWith(name + ' (')));
   if (ready.length) say(w, ['', w.text.freeReady(ready.join(', '))]);
-  if (plans.length) say(w, ['', ...w.text.planModels(require('./discover-models').changeLines(plans))]);
+  if (plans.length) say(w, ['', ...w.text.planModels(require('./discover-models').changeLines(plans), plans.some(plan => plan.new?.length))]);
   if (graphResult) say(w, ['', graphResult, ...(w.state.host === 'claude-code' ? [w.text.graphNext] : [])]);
   say(w, ['', w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.addLater]);
 }

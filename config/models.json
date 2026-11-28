@@ -671,6 +671,56 @@
       ],
       "capabilitySource": "agy models, 2026-11-27; agy -p search_web tool (antigravity.google/docs/hooks)"
     },
+    "gemini-4-neon": {
+      "$comment": "Rolling out to paid Google AI Pro and Ultra in Antigravity (antigravity.google/blog/gemini-4-neon-in-google-antigravity, 2026-11-18). Google: Terminal-Bench 4.1 65.2% (Opus 5.5 65.8%), first on the Artificial Analysis Coding Agent Index (58.6). Above Hydrogen, level with Argon. Turns on once agy models lists it for the account.",
+      "pool": "antigravity",
+      "label": "Gemini 4 Neon",
+      "enabled": false,
+      "cost": 10,
+      "cliModel": "gemini-4-neon",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 9,
+        "research": 8,
+        "mechanical": 8
+      },
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "Google announcement and models.dev, 2026-11-28; agy -p search_web tool (antigravity.google/docs/hooks)"
+    },
+    "gemini-4-carbon": {
+      "$comment": "Google AI Ultra and Enterprise only in Antigravity (2026-11-10). Terminal-Bench 4.0 65.2% (Artificial Analysis run in Google's table), 63.1% on Vals; FrontierSWE 2 61.2% (Opus 5.5 62.3%). Level with Argon. Turns on once agy models lists it for the account.",
+      "pool": "antigravity",
+      "label": "Gemini 4 Carbon",
+      "enabled": false,
+      "cost": 10,
+      "cliModel": "gemini-4-carbon",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "scores": {
+        "architecture": 9,
+        "debugging": 9,
+        "implementation": 9,
+        "review": 9,
+        "research": 8,
+        "mechanical": 8
+      },
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "Google announcement and models.dev, 2026-11-28; agy -p search_web tool (antigravity.google/docs/hooks)"
+    },
     "gemini-3.8-flash": {
       "pool": "antigravity",
       "label": "Gemini 3.8 Flash",
