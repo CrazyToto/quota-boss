@@ -4,7 +4,13 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-28
+
 ### Added
+
+- A rewritten setup: Look, Work, Providers and Finish pages in the keyboard list, with a live status line preview. `setup --update` asks only about what changed, the installer starts the setup by itself in a terminal, and `quota-boss config` shows every setting in one list to change in place.
+- Claude Sonnet 4.6 through Antigravity (`antigravity-claude-sonnet-4-6`). A model with `efforts: []` keeps its bare name in a `{model}-{effort}` slug, since Antigravity's Claude models take no level. Bench results for it and GPT-OSS 120B are in docs/BENCHMARKS.md.
+- `plans: ["paid"]` in config/models.json keeps a model off on a free or unknown plan. Devin SWE-2 now needs a paid plan: free accounts get "Upgrade to Pro", although `devin models list` shows it without a price.
 
 - Provider models follow the account's plan by themselves, as Codex and Claude do. At setup, once a day in the background and after an update, Quota Boss asks Devin (`devin auth status` for the plan, `devin models list`) and Antigravity (`agy models`) what the account has. Models the account lists without a price go on and models it lacks go off. A Devin model shown with a price stays off on every plan, because Devin reports no usage that could stop it before billing beyond the allowance; `quota-boss use <model-id> on` turns it on. Setup lists what it set. A manual `quota-boss use <model-id> on|off` always wins.
 - Kilo (`kilo models kilo --verbose`) and Codex (`codex debug models`) also report which models the account offers. For Kilo, only models marked free count as included; zero-price routers like `kilo-auto/frontier` bill the model they pick and stay off. Codex is report-only and never switches a model. The model report and setup now name new models the account offers that the table does not route yet, split into included and priced, and leave out other effort variants of models already in the table.
@@ -19,6 +25,9 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Fixed
 
+- Windows installs of provider CLIs get past Defender: vendor scripts are saved to a private temp folder and run with `-File` instead of `irm <url> | iex`, and Windows PowerShell no longer inherits PowerShell 7's module path.
+- The Junie and Antigravity login windows close by themselves once the login is saved.
+- The self-test checks for limits first, so Antigravity's "--mode auto is not available" warning no longer hides a 429 quota error.
 - Kilo and OpenCode run again on Windows. Their npm shims start an extensionless Node script and a native .exe, and Quota Boss now reads both from the shim as data: only the one launched path inside the shim's own node_modules counts, never a link, a `..` or a PowerShell shim. A CLI it cannot start counts as not installed, and an update of the launched file makes an old self-test stale.
 - The consensus second opinion is offered only when the codex binary is installed.
 - `quota-boss use <model-id> on` now turns on a model that ships off; before, it had to be copied into your `config/models.json` by hand.

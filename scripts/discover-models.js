@@ -180,7 +180,9 @@ function list(providerId, config, run, find) {
 function planState(providerId, listed, plan, config, rows = compare(providerId, listed, config)) {
   const found = [...rows.routed, ...rows.off];
   if (!found.length) return null;
-  const included = row => row.billing === 'included';
+  // `plans: ["paid"]` marks a model a free account cannot run although the list shows it without a price (Devin SWE-2).
+  const paidOnly = id => Array.isArray(config.models.models[id]?.plans) && !config.models.models[id].plans.includes('free');
+  const included = row => row.billing === 'included' && (plan === 'paid' || !paidOnly(row.id));
   return { ...(plan ? { plan } : {}), on: found.filter(included).map(row => row.id).sort(),
     off: [...found.filter(row => !included(row)).map(row => row.id), ...rows.missing.map(row => row.id)].sort() };
 }

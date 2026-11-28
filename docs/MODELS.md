@@ -9,6 +9,7 @@ Last checked: 2026-11-09. Everything here goes stale quickly, so check the sourc
 | `cost` | List price of one agent turn, with Opus 5.5 as 10. |
 | `scores` | Quality from 1 to 10 per task category, at the effort the router picks. |
 | `efforts` | The reasoning levels the router may pick. `minEffort` sets a floor. |
+| `plans` | Optional. `["paid"]` keeps a model off on a free or unknown plan, even when the provider lists it without a price. |
 
 ## Cost
 

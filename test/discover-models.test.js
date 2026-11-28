@@ -172,6 +172,12 @@ test('every plan turns on only the listed models without a price', () => {
   assert.deepEqual(planState('devin', listed, null, cfg), { on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
   assert.deepEqual(planState('devin', listed, 'paid', cfg), { plan: 'paid', on: ['flash'], off: ['gone', 'goneOff', 'swe21'] });
   assert.equal(planState('devin', [{ id: 'other-model', billing: 'included' }], 'paid', cfg), null);
+  // A model marked for paid plans stays off on a free or unknown plan, even when the list shows no price.
+  cfg.models.models.flash.plans = ['paid'];
+  assert.deepEqual(planState('devin', listed, 'free', cfg).on, []);
+  assert.deepEqual(planState('devin', listed, null, cfg).on, []);
+  assert.deepEqual(planState('devin', listed, 'paid', cfg).on, ['flash']);
+  delete cfg.models.models.flash.plans;
   // Unknown billing stays off for any lister that does not vouch that its list holds only the plan's models.
   assert.deepEqual(planState('devin', [{ id: 'swe-2-flash-medium', billing: 'unknown' }], 'paid', cfg).on, []);
 });

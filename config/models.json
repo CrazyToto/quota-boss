@@ -503,7 +503,8 @@
       }
     },
     "devin-swe-2": {
-      "$comment": "Included for free accounts only until 2026-11-30 (promo), then paid plans. Cognition: Terminal-Bench 4.1 24.2%, a little above SWE-2 Flash.",
+      "$comment": "Paid plans only: a free account gets 'Upgrade to Pro' (2026-11-28), although devin models list shows it without a price. Cognition: Terminal-Bench 4.1 24.2%, a little above SWE-2 Flash.",
+      "plans": ["paid"],
       "pool": "devin",
       "label": "Devin SWE-2",
       "enabled": false,
