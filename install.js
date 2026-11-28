@@ -537,10 +537,22 @@ if (require.main === module) {
       if (findExecutable('quota-boss', process.env, process.platform)) console.log('The quota-boss command itself stays; remove it with: npm uninstall -g quota-boss');
     }
     if (installing) {
-      // Before the CLI check, so a provider turned on here gets its program offered right away.
-      try { newProviders.recordInstall(before); newProviders.offer(); } catch (error) { console.error(`New provider check skipped (${error.message}); run quota-boss setup later.`); }
-      try { offerTools(); } catch (error) { console.error(`Provider CLI check skipped (${error.message}); run /boss-setup later.`); }
-      console.log(setupNext() || 'Next: type /boss-setup in Claude Code. It shows the one command that starts the step-by-step setup in your terminal.');
+      if (terminal) {
+        try { newProviders.recordInstall(before); } catch (error) { console.error('New provider check skipped (' + error.message + ').'); }
+        const script = path.join(paths(process.env).home, 'scripts', 'quota-boss.js');
+        const result = spawnSync(process.execPath, [script, 'setup', ...(before.fresh ? [] : ['--update'])], {
+          stdio: 'inherit', cwd: process.cwd(),
+        });
+        console.log('Change any setting later with: ' + (findExecutable('quota-boss', process.env, process.platform)
+          ? 'quota-boss config' : 'node "' + normalized(script) + '" config'));
+        if (result.error) throw result.error;
+        if (result.status !== 0) process.exitCode = result.status ?? 1;
+      } else {
+        // Before the CLI check, so a provider turned on here gets its program offered right away.
+        try { newProviders.recordInstall(before); newProviders.offer(); } catch (error) { console.error(`New provider check skipped (${error.message}); run quota-boss setup later.`); }
+        try { offerTools(); } catch (error) { console.error(`Provider CLI check skipped (${error.message}); run /boss-setup later.`); }
+        console.log(setupNext() || 'Next: type /boss-setup in Claude Code. It shows the one command that starts the step-by-step setup in your terminal.');
+      }
     }
   } catch (error) { console.error(`Quota Boss installer: ${error.message}`); process.exitCode = 1; }
 }

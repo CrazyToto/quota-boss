@@ -52,7 +52,7 @@ up your Claude Code settings, keeps your existing status line, and `npx quota-bo
 everything again. It asks whether to delete your settings too and asks about each program Quota Boss installed
 itself; programs you already had, such as Graphify, are never touched.
 
-Run the same command again to update. An update asks once about each new provider. A yes, in setup, after an update
+Run the same command again to update and set up only what is new. A yes, in setup, after an update
 or through `quota-boss use <id> on`, installs the CLI if needed, starts the login and runs the self-test (free
 providers skip it and start with small jobs).
 
@@ -103,6 +103,7 @@ In your terminal:
 | `quota-boss route --explain` | Show every candidate model with its numbers and why it won or lost |
 | `quota-boss use <provider\|model> on\|off` | Choose which subscriptions and models may get work |
 | `quota-boss settings` | Show all settings, what each does and the command that changes it |
+| `quota-boss config` | Change settings in an interactive list |
 
 The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `npx quota-boss <command>` or
 `node ~/.claude/quota-boss/scripts/quota-boss.js <command>`. All settings are explained in

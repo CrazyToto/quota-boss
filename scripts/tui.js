@@ -93,7 +93,7 @@ function render(page) {
     if (row === focused) cursorLine = body.length + (row.heading ? 1 : 0);
     body.push(...rowLines(row, row === focused, labelWidth));
   }
-  if (body[0] === '') body.shift();
+  if (body[0] === '') { body.shift(); cursorLine = Math.max(0, cursorLine - 1); }
   const preview = page.preview && page.preview.length ? ['', '  ' + ink.sub(page.previewTitle || 'Preview'), ...page.preview.map(line => '    ' + line)] : [];
   const help = focused && focused.help ? wrap(focused.help, cols, '  ').map(line => ink.text(line)) : [];
   const message = page.message ? ['  ' + ink.ok(page.message)] : [];
@@ -104,7 +104,12 @@ function render(page) {
   let list = body;
   if (body.length > room) {
     const start = Math.min(Math.max(0, cursorLine - Math.floor(room / 2)), body.length - room);
-    list = [start > 0 ? ink.sub('    ↑ more') : '', ...body.slice(start + 1, start + room - 1), start + room < body.length ? ink.sub('    ↓ more') : ''];
+    const moreAbove = start > 0, moreBelow = start + room < body.length;
+    list = [
+      ...(moreAbove ? [ink.sub('    ↑ more')] : []),
+      ...body.slice(start + Number(moreAbove), start + room - Number(moreBelow)),
+      ...(moreBelow ? [ink.sub('    ↓ more')] : []),
+    ];
   }
   return [...top, ...(intro.length ? [...intro, ''] : []), ...list, ...preview, ...bottom].join('\n');
 }
@@ -203,14 +208,18 @@ function open({ input = process.stdin, output = process.stdout } = {}) {
         if (name && typeof name === 'string' && name !== 'backspace') return name;
       }
     },
-    /** One line of text; Esc cancels with ''. */
-    async line(prompt) {
+    /** Esc cancels the line. Ctrl+C can also cancel the enclosing page. */
+    async line(prompt, onQuit) {
       output.write('\x1b[?25h' + prompt);
       let value = '';
       for (;;) {
         const { name, text } = await next();
         if (name === 'enter') { output.write('\n\x1b[?25l'); return value.trim(); }
-        if (name === 'back' || name === 'quit') { output.write('\n\x1b[?25l'); return ''; }
+        if (name === 'back' || name === 'quit') {
+          output.write('\n\x1b[?25l');
+          if (name === 'quit') onQuit?.();
+          return '';
+        }
         if (name === 'backspace') { if (value) { value = value.slice(0, -1); output.write('\b \b'); } continue; }
         const char = name && typeof name === 'object' ? name.char : name === 'space' ? ' ' : typeof text === 'string' && /^[\x20-\x7e]$/.test(text) ? text : '';
         if (char && value.length < 200) { value += char; output.write(char); }
@@ -232,7 +241,12 @@ function scripted(keys = [], { lines = [], columns = 80, rows = 40 } = {}) {
     draw: text => frames.push(strip(text)),
     write: text => written.push(strip(text)),
     key: async () => keyQueue.length ? keyQueue.shift() : 'quit',
-    line: async prompt => { written.push(strip(prompt)); return lineQueue.length ? lineQueue.shift() : ''; },
+    line: async (prompt, onQuit) => {
+      written.push(strip(prompt));
+      const value = lineQueue.length ? lineQueue.shift() : '';
+      if (value === '\x03' && onQuit) { onQuit(); return ''; }
+      return value;
+    },
     pause() {}, resume() {}, close() {},
     get screen() { return frames[frames.length - 1] || ''; },
   };

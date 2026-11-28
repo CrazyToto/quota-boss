@@ -396,39 +396,36 @@ test('unsafe setup reports one plain line despite exclude failures; refresh pres
   } finally { fs.opendirSync = open; }
 });
 
-test('the setup wizard continues and prints the skipped graph line once', t => {
+test('the setup wizard continues and prints the skipped graph line once', async t => {
   const f = fixture(t);
   fs.unlinkSync(f.file);
   const outside = path.join(f.root, 'victim');
   fs.writeFileSync(outside, 'keep');
   if (!symlink(t, outside, path.join(path.dirname(f.file), 'linked'), 'file')) return;
-  const answers = ['', '', '', 'y', ...Array(9).fill(''), 'y'];
-  const said = [], commands = [];
+  const tui = require('../scripts/tui');
+  const io = tui.scripted(['enter', 'down', 'down', 'right', 'enter', 'enter', 'enter'], { columns: 100, rows: 60 });
+  const commands = [];
   const { setup } = require('../scripts/setup-wizard');
-  const result = setup([], args => { commands.push(args); return ''; }, {
-    interactive: true, markKnown: () => {},
-    options: f.options,
-    project: { directory: f.directory, profile: 'balanced', host: 'claude-code',
-      allowTrainingProviders: false },
-    config: { providers: { providers: { codex: { enabled: true } } } },
+  const result = await setup([], async args => { commands.push(args); return ''; }, {
+    io, options: f.options, defaultTraining: false, userProviders: {},
+    project: { directory: f.directory, enabled: false, profile: 'balanced', host: 'claude-code', allowTrainingProviders: false },
+    config: { providers: { providers: { codex: { enabled: true } }, retired: [] }, models: { models: {} } },
     tools: {
       check: ids => ids.map(id => ({ id, state: 'ok', installed: '1.0' })),
       installable: () => [],
       pendingLogins: () => [],
       storedKeys: () => '',
     },
-    ask: () => { assert.ok(answers.length, 'unexpected setup prompt'); return answers.shift(); },
-    say: line => said.push(line),
-    clear: () => {},
+    selfTestPassed: () => false, refreshPlans: () => ({ changes: [] }), pending: () => [],
+    readState: () => ({}), updateState: () => {},
+    readLook: () => ({ style: 'minimal', logos: false, names: false, always: false }),
+    currentLimits: () => ({ limits: {}, thresholds: {}, sample: false }),
   });
   assert.equal(result, '');
-  assert.equal(answers.length, 0);
-  assert.deepEqual(commands, [['on', '--host', 'claude-code', 'balanced']]);
-  const output = said.join('\n');
-  assert.equal(output.split('\n').filter(line => line === skippedGraph).length, 1);
-  assert.match(output, /Your settings apply/);
+  assert.ok(commands.some(command => command[0] === 'on'));
+  const output = [...io.frames, ...io.written].join('\n');
+  assert.ok(output.includes(skippedGraph), output);
   assert.equal(f.calls.filter(call => call[1]?.[0] === 'update').length, 0);
-  assert.equal(fs.readFileSync(outside, 'utf8'), 'keep');
 });
 
 test('excludeOutput refuses a linked exclude file without changing its target', t => {

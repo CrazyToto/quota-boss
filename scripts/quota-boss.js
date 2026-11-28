@@ -19,7 +19,8 @@ const USAGES = {
   'worktree': 'worktree add <name> [--scope <p1,p2,...>] [--plan <file>] | merge <name> [<name>...] | list | remove <name> [--force] | clean [--force]',
   'graph': 'graph <explain|affected|path> <name> [<name>]',
   'verify': 'verify [--fresh] [--log <model> <category> <tier> [--effort <level>]] -- <command...>',
-  'setup': 'setup',
+  'setup': 'setup [--update]',
+  'config': 'config',
   'handoff': 'handoff save|list|show [<name>]',
   'on': 'on [--host claude-code|codex|generic] [quality|balanced|frugal] [--project]',
   'off': 'off [--project]',
@@ -43,7 +44,7 @@ const USAGES = {
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup                            guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers models <id>            models your account offers vs. the table\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
+const HELP = 'Quota Boss help\n\nStart:\n  setup [--update]                 guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  config                           change settings in an interactive list\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers models <id>            models your account offers vs. the table\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
 const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', 'statusline-style': 'statusline-style', 'statusline-logos': 'statusline-logos', 'statusline-names': 'statusline-names', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
@@ -425,6 +426,10 @@ function run(args = process.argv.slice(2), options) {
     return rest[0] === '--report' ? diagnostics.report() : diagnostics.doctor(rest.length === 1);
   }
   if (command === 'setup') return setupWizard.setup(rest, run);
+  if (command === 'config') {
+    if (rest.length) throw new Error(usage(command));
+    return require('./config-screen').config(rest, run);
+  }
   if (command === 'handoff') return context.handoffCommand(rest, lib.findProjectConfig());
   if (command === 'statusline') return statuslineCommand(rest);
   if (['statusline-style', 'statusline-logos', 'statusline-names'].includes(command)) return statuslineLookCommand(command, rest);
@@ -636,8 +641,19 @@ function main() {
     });
     return;
   }
-  try { process.stdout.write(run() + '\n'); }
-  catch (error) { process.stderr.write('quota-boss: ' + error.message + '\n'); process.exitCode = error.exitCode || 1; }
+  const reportError = error => {
+    process.stderr.write('quota-boss: ' + error.message + '\n');
+    process.exitCode = error.exitCode || 1;
+  };
+  try {
+    const output = run();
+    if (typeof output?.then === 'function') {
+      return Promise.resolve(output).then(text => {
+        if (text) process.stdout.write(text + '\n');
+      }).catch(reportError);
+    }
+    process.stdout.write(output + '\n');
+  } catch (error) { reportError(error); }
 }
 
 if (require.main === module) main();
