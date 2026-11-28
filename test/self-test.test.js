@@ -91,8 +91,8 @@ test.describe('provider self-tests', () => {
   for (const [reason, patterns] of [
     ['JetBrains license not accepted for this model', ['Exception with code 492: Untrusted license F90V1QLAJ5', 'code 492: license refused']],
     ['not signed in', ['authentication required', 'not logged in', 'unauthorized', '401', 'api key']],
-    ['model not available', ['model not found', 'unknown model', 'invalid model', 'not available']],
-    ['rate limited', ['rate limit', '429', 'too many requests', 'quota exceeded', 'exceeded your quota', 'out of quota', 'overloaded', '503']]
+    ['model not available', ['model not found', 'unknown model', 'invalid model', 'model gemini-x is not available']],
+    ['rate limited', ['rate limit', '429', 'too many requests', 'quota exceeded', 'Individual quota reached', 'RESOURCE_EXHAUSTED', 'exceeded your quota', 'out of quota', 'overloaded', '503']]
   ]) for (const pattern of patterns) test('classifies ' + pattern, () => {
     assert.ok(selfTest('trial', options({ status: 1, stdout: pattern.toUpperCase() }, false)).includes('FAIL tiny: ' + reason));
   });
@@ -101,7 +101,8 @@ test.describe('provider self-tests', () => {
       [{ status: null, error: { code: 'ENOENT' }, stdout: 'unauthorized quota' }, 'not installed'],
       [{ status: null, error: { code: 'ETIMEDOUT' }, stdout: 'unauthorized quota' }, 'timed out'],
       [{ status: 1, stdout: 'unauthorized model not found quota' }, 'not signed in'],
-      [{ status: 1, stdout: 'model not found quota' }, 'model not available']
+      [{ status: 1, stdout: 'model not found quota' }, 'model not available'],
+      [{ status: 3, stderr: 'warning: --mode auto is not available for this account; error: Individual quota reached. (code 429)' }, 'rate limited']
     ]) assert.ok(selfTest('trial', options(result, false)).includes('FAIL tiny: ' + reason));
   });
   test('nonzero diagnostics redact tokens, remove controls and bound output', () => {

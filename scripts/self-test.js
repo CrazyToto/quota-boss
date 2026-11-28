@@ -35,8 +35,9 @@ function failure(result, output, correct) {
   if (/authentication required|not logged in|cannot find authorization|unauthorized|\b401\b|api key/i.test(output)) return 'not signed in';
   // Junie: the account's JetBrains AI plan is not accepted for this model (code 492).
   if (/untrusted license|\b492\b[^\n]{0,40}licen[cs]e/i.test(output)) return 'JetBrains license not accepted for this model';
-  if (/model not found|unknown model|invalid model|not available/i.test(output)) return 'model not available';
-  if (/rate limit|\b429\b|too many requests|quota exceeded|exceeded (your )?quota|out of quota|overloaded|\b503\b/i.test(output)) return 'rate limited';
+  // Limits first: Antigravity prints "--mode auto is not available for this account" before its 429.
+  if (/rate limit|\b429\b|too many requests|quota exceeded|quota reached|resource_exhausted|exceeded (your )?quota|out of quota|overloaded|\b503\b/i.test(output)) return 'rate limited';
+  if (/model not found|unknown model|invalid model|model[^\n]{0,40}not available/i.test(output)) return 'model not available';
   if (result.status !== 0) {
     const detail = output.replace(/[\x00-\x1f\x7f-\x9f]/g, '').replace(/[A-Za-z0-9_-]{24,}/g, '<redacted>').slice(0, 200);
     return 'exit code ' + (result.status ?? 'unknown') + (detail ? ': ' + detail : '');

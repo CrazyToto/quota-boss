@@ -45,7 +45,9 @@ const REGISTRY = Object.freeze({
     login: { command: 'grok login', run: ['login'] } },
   antigravity: { label: 'Antigravity', binary: 'agy', source: 'https://antigravity.google/docs/install', install: {},
     note: 'Google only offers an install script; follow the official guide. It replaced Gemini CLI for free and Google One users.',
-    login: { command: 'agy', run: [] } },
+    // On Windows agy saves its login in Credential Manager under this target name.
+    login: { command: 'agy', run: [], hint: 'Log in with your Google account in the window. It closes by itself once the login is saved.',
+      credentialTarget: { platform: 'win32', target: 'gemini:antigravity' } } },
   'gemini-media': { label: 'Gemini API CLI', binary: 'gemini-api', source: 'https://aistudio.google.com/docs/cli', install: {},
     paste: { win32: 'iwr -useb https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.ps1 | iex',
       all: 'curl -fsSL https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.sh | bash' },
@@ -147,6 +149,20 @@ function credentialFileExists(credential, d) {
     return fs.readdirSync(store, { withFileTypes: true }).some(entry => entry.isFile() && fs.statSync(path.join(store, entry.name)).size > 0);
   } catch { return false; }
 }
+
+/** null: no saved-login check on this platform. A Credential Manager entry is looked up by name with cmdkey, never read. */
+function savedLogin(login, d) {
+  const file = credentialFileExists(login?.credentialFile, d);
+  if (file !== null) return file;
+  const credential = login?.credentialTarget;
+  if (!credential || credential.platform !== d.platform) return null;
+  const cmdkey = path.win32.join(path.win32.dirname(lib.systemCmd(d.env)), 'cmdkey.exe');
+  const result = d.call(cmdkey, ['/list:' + credential.target], QUERY_TIMEOUT);
+  // Only the entry line ends in the bare target; the localized header ends in "<target>:" and a miss prints "* NONE *".
+  const lines = String(result?.stdout || '').split(/\r?\n/).map(line => line.trim());
+  return succeeded(result) && lines.some(line => line.endsWith(': ' + credential.target));
+}
+const savedLoginPlatform = login => login?.credentialFile?.platform || login?.credentialTarget?.platform;
 
 const output = result => String(result?.stdout || '') + '\n' + String(result?.stderr || '');
 const succeeded = result => !!result && !result.error && result.status === 0;
@@ -359,7 +375,7 @@ function logins(ids, options) {
     const login = REGISTRY[id].login, binary = login && d.find(REGISTRY[id].binary);
     if (!binary) continue;
     if (login.statusFile && statusFileSaysLoggedIn(login.statusFile, d)) { lines.push('- ' + id + ': logged in'); continue; }
-    const saved = credentialFileExists(login.credentialFile, d);
+    const saved = savedLogin(login, d);
     if (saved !== null) { lines.push('- ' + id + ': ' + (saved ? 'logged in' : 'NOT logged in, run: ' + login.command)); continue; }
     if (!login.check) { lines.push('- ' + id + ': cannot be checked automatically; ' + (login.optional ? 'only if needed' : 'if not done yet') + ', run: ' + login.command); continue; }
     const result = d.call(binary, login.check, QUERY_TIMEOUT);
@@ -376,7 +392,7 @@ function pendingLogins(ids, options) {
   for (const id of ids) {
     const tool = REGISTRY[id], login = tool.login, binary = login?.run && d.find(tool.binary);
     if (!binary) continue;
-    const saved = credentialFileExists(login.credentialFile, d);
+    const saved = savedLogin(login, d);
     if (saved) continue;
     if (login.statusFile && statusFileSaysLoggedIn(login.statusFile, d)) continue;
     if (login.check) {
@@ -393,7 +409,7 @@ function pendingLogins(ids, options) {
 function runLogin(id, options) {
   const d = context(options);
   const tool = REGISTRY[id];
-  const poll = tool.login.credentialFile?.platform === d.platform && options?.poll;
+  const poll = savedLoginPlatform(tool.login) === d.platform && options?.poll;
   return d.attach(d.find(tool.binary), tool.login.run, poll);
 }
 
@@ -418,9 +434,9 @@ function finishLogin(login, { say = console.log, options, api = module.exports }
   }
   if (!login.checkable) return true;
   const pending = () => api.pendingLogins([login.id], options).some(item => item.id === login.id);
-  if (REGISTRY[login.id].login.credentialFile?.platform === (options?.platform || process.platform)) {
+  if (savedLoginPlatform(REGISTRY[login.id].login) === (options?.platform || process.platform)) {
     const wait = options?.wait || (ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
-    // Junie stays open after the login, so its window is closed for the user once the saved login shows up.
+    // Junie and agy stay open after the login, so the window is closed for the user once the saved login shows up.
     const done = () => {
       wait(2000);
       if (result.pid && api.closeLogin?.(result.pid, options)) say(REGISTRY[login.id].label + ' login saved; its window was closed.');

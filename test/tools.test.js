@@ -156,6 +156,37 @@ test('Windows activation polls for a Junie login for at most five minutes', t =>
   }
 });
 
+test('Windows closes the Antigravity login window once Credential Manager holds its login', () => {
+  const entry = 'Currently stored credentials for gemini:antigravity:\r\n\r\n    Target: gemini:antigravity\r\n    Type: Generic\r\n';
+  const none = 'Currently stored credentials for gemini:antigravity:\r\n\r\n* NONE *\r\n';
+  for (const finish of [false, true]) {
+    const messages = [], kills = [], lookups = [];
+    let waited = 0, saved = false;
+    const options = { platform: 'win32', home: 'C:\\Users\\u', env: { SystemRoot: 'C:\\Windows' },
+      find: name => name === 'agy' ? 'C:\\bin\\agy.exe' : null,
+      wait: ms => { waited += ms; if (finish && waited === 2000) saved = true; },
+      spawn: () => ({ pid: 4343, on: () => {}, unref: () => {} }),
+      spawnSync: (file, args) => {
+        if (args[0] === '--version') return { status: 0, stdout: '1.5.18' };
+        if (/cmdkey\.exe$/i.test(file)) { lookups.push(args); return { status: 0, stdout: saved ? entry : none }; }
+        assert.match(file, /taskkill\.exe$/i);
+        kills.push(args);
+        return { status: 0 };
+      } };
+    tools.activate('antigravity', { options, say: line => messages.push(line), test: () => {}, verified: () => false });
+    assert.ok(lookups.length > 1 && lookups.every(args => args.join(' ') === '/list:gemini:antigravity'));
+    assert.equal(waited, finish ? 4000 : 300000);
+    assert.deepEqual(kills, finish ? [['/PID', '4343', '/T', '/F']] : []);
+    assert.equal(messages.includes('Antigravity login saved; its window was closed.'), finish);
+  }
+  const check = stdout => tools.logins(['antigravity'], { platform: 'win32', env: { SystemRoot: 'C:\\Windows' },
+    find: name => name === 'agy' ? 'C:\\bin\\agy.exe' : null, spawnSync: () => ({ status: 0, stdout }) });
+  assert.equal(check(entry), '- antigravity: logged in');
+  assert.equal(check(none), '- antigravity: NOT logged in, run: agy');
+  assert.equal(tools.logins(['antigravity'], { platform: 'linux', find: () => '/bin/agy', spawnSync: () => assert.fail('no check on Linux') }),
+    '- antigravity: cannot be checked automatically; if not done yet, run: agy');
+});
+
 test('a missing package manager joins the same consent list and needs one more pass when PATH is stale', () => {
   const m = machine({ have: { winget: '1.0.0' } });
   m.options.platform = 'win32';
