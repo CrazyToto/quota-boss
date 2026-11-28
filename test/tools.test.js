@@ -70,7 +70,6 @@ test('tools without a usable package manager or package become manual steps', ()
 test('paste install uses the registry script as one argument after approval and display', () => {
   for (const [platform, shell, binary, argv] of [
     ['linux', 'bash', '/bin/bash', ['-c', 'set -o pipefail; curl -fsSL https://x.ai/cli/install.sh | bash']],
-    ['win32', 'powershell', 'C:\\bin\\powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://x.ai/cli/install.ps1 | iex']],
   ]) {
     const events = [];
     const options = { platform, find: name => name === shell ? binary : null,
@@ -82,6 +81,32 @@ test('paste install uses the registry script as one argument after approval and 
     tools.install(['grok'], { ...options, approved: true });
     assert.deepEqual(events, [shell + ' ' + argv.slice(0, -1).join(' ') + ' "' + argv.at(-1) + '"', [binary, argv, false]]);
   }
+});
+
+test('on Windows the official script is saved to a private temp folder and run as a file, never piped into iex', () => {
+  const events = [], said = [];
+  let saved = null;
+  const options = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, find: name => name === 'powershell' ? 'C:\\bin\\powershell.exe' : null,
+    spawnSync: (file, args) => {
+      events.push([file, args]);
+      if (args.includes('-Command')) { saved = args.at(-1).match(/-OutFile '([^']+)'/)[1]; fs.writeFileSync(saved, 'script'); }
+      else assert.ok(fs.existsSync(args.at(-1)), 'the script runs from the saved file');
+      return { status: 0 };
+    }, say: line => said.push(line) };
+  tools.install(['grok'], { ...options, approved: true });
+  assert.deepEqual(said, ['irm https://x.ai/cli/install.ps1 | iex']);
+  assert.equal(events.length, 2);
+  assert.match(events[0][1].at(-1), /Invoke-WebRequest -UseBasicParsing -Uri 'https:\/\/x\.ai\/cli\/install\.ps1' -OutFile '[^']+quota-boss-install-[^']+install\.ps1'$/);
+  assert.deepEqual(events[1][1], ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', saved]);
+  assert.ok(events.every(([, args]) => !args.some(arg => /\|\s*iex/.test(arg))));
+  assert.ok(!fs.existsSync(path.dirname(saved)), 'the temp folder is removed');
+  const blocked = tools.install(['grok'], { ...options, approved: true,
+    spawnSync: () => ({ status: null, error: Object.assign(new Error('spawnSync powershell.exe EPERM'), { code: 'EPERM' }) }) });
+  assert.match(blocked, /grok: FAILED \(Windows refused to start the installer, often the antivirus/);
+});
+
+test('Windows PowerShell never inherits the PSModulePath of PowerShell 7', () => {
+  assert.deepEqual(lib.childEnv('powershell', { PSModulePath: 'C:\\pwsh7', Path: 'C:\\x' }, null, 'win32'), { Path: 'C:\\x' });
 });
 
 test('activation runs a vendor install script only after a yes unless an earlier question already asked', () => {
@@ -106,19 +131,26 @@ test('Windows activation polls for a Junie login for at most five minutes', t =>
   for (const finish of [false, true]) {
     const messages = [];
     let waited = 0, launches = 0, tests = 0;
-    const options = { platform: 'win32', home,
+    const kills = [];
+    const options = { platform: 'win32', home, env: { SystemRoot: 'C:\\Windows' },
       find: name => name === 'junie' ? 'C:\\bin\\junie.exe' : null,
       wait: ms => { waited += ms; if (finish && waited === 2000) fs.writeFileSync(path.join(store, 'credential'), 'saved'); },
-      spawnSync: (_file, args) => {
-        if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
+      spawn: (_file, args) => {
         launches++;
-        assert.match(args.at(-1), /start "Quota Boss login" "C:/);
-        assert.doesNotMatch(args.at(-1), /\/wait/);
+        assert.match(args.at(-1), /start "Quota Boss login" \/wait "C:/);
+        return { pid: 4242, on: () => {}, unref: () => {} };
+      },
+      spawnSync: (file, args) => {
+        if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
+        assert.match(file, /taskkill\.exe$/i);
+        kills.push(args);
         return { status: 0 };
       } };
     tools.activate('junie', { options, say: line => messages.push(line), test: () => tests++, verified: () => false });
     assert.equal(launches, 1);
-    assert.equal(waited, finish ? 2000 : 300000);
+    assert.equal(waited, finish ? 4000 : 300000);
+    assert.deepEqual(kills, finish ? [['/PID', '4242', '/T', '/F']] : [], 'the window closes only after a saved login');
+    assert.equal(messages.includes('Junie CLI login saved; its window was closed.'), finish);
     assert.equal(tests, finish ? 1 : 0);
     assert.equal(messages.some(line => line.startsWith('Login timed out:')), !finish);
   }

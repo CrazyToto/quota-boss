@@ -766,13 +766,24 @@ test('an update yes installs and logs in free Junie Lite without a self-test cal
   let installed = false, loggedIn = false;
   const events = [], messages = [];
   const windows = process.platform === 'win32';
+  const login = () => {
+    assert.ok(installed);
+    events.push('login');
+    loggedIn = true;
+    if (windows) write(path.join(f.home, '.junie', 'dpapi_credentials', 'saved'), 'credential');
+  };
   const toolsOptions = { home: f.home, wait: () => {},
     find: name => name === (windows ? 'powershell' : 'bash') || (name === 'junie' && installed) ? process.execPath : null,
+    // On Windows the Junie login window is started without waiting and closed by its pid once the login is saved.
+    spawn: (_file, args) => { assert.match(args.at(-1), /start "Quota Boss login" \/wait /); login(); return { pid: 77, on: () => {}, unref: () => {} }; },
     spawnSync: (_file, args, options) => {
       if (args[0] === '--version') return { status: 0, stdout: '1.0.0' };
-      if (args[0] === '-NoProfile') {
-        assert.deepEqual(args, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://junie.jetbrains.com/install.ps1 | iex']);
-        assert.equal(messages.at(-1), 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://junie.jetbrains.com/install.ps1 | iex"');
+      if (args[0] === '/PID') { assert.deepEqual(args, ['/PID', '77', '/T', '/F']); events.push('close'); return { status: 0 }; }
+      if (args[0] === '-NoProfile' && args.includes('-Command')) {
+        assert.match(args.at(-1), /^\$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri 'https:\/\/junie\.jetbrains\.com\/install\.ps1' -OutFile '/);
+        assert.equal(messages.at(-1), 'irm https://junie.jetbrains.com/install.ps1 | iex');
+      } else if (args[0] === '-NoProfile') {
+        assert.deepEqual(args.slice(0, -1), ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File']);
         events.push('install');
         installed = true;
       } else if (args[0] === '-c') {
@@ -781,10 +792,7 @@ test('an update yes installs and logs in free Junie Lite without a self-test cal
         events.push('install');
         installed = true;
       } else if (!args.length || args[0] === '/d') {
-        assert.ok(installed);
-        events.push('login');
-        loggedIn = true;
-        if (windows) write(path.join(f.home, '.junie', 'dpapi_credentials', 'saved'), 'credential');
+        login();
       } else {
         assert.ok(loggedIn);
         events.push('test');
@@ -798,7 +806,7 @@ test('an update yes installs and logs in free Junie Lite without a self-test cal
     return events.at(-1) === 'yes' ? 'y' : 'n';
   } });
   // A free provider proves itself with real work: no self-test call after the login.
-  assert.deepEqual(events, ['yes', 'install', 'login', 'no'], messages.join('\n'));
+  assert.deepEqual(events, ['yes', 'install', 'login', ...(windows ? ['close'] : []), 'no'], messages.join('\n'));
   assert.doesNotMatch(messages.join('\n'), /self-test/i);
   assert.equal(lib.loadConfig({}).providers.providers['junie-lite'].enabled, true);
   assert.equal(lib.loadConfig({}).providers.providers.jetbrains.enabled, false);

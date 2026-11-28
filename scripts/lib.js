@@ -1490,7 +1490,9 @@ function mergeEnv(env, extra, platform = process.platform) {
 // Inherited variables a CLI must not see: a JUNIE_API_KEY token bills paid credits instead of the account login, and
 // JUNIE_PROJECT or a stale EJ_RUNNER_PWD (left by an earlier Junie launch) could point Junie at another folder than the
 // checked working folder. The native launcher sets its own EJ_RUNNER_PWD after this filter.
-const CHILD_ENV_DROP = Object.freeze({ junie: ['JUNIE_API_KEY', 'JUNIE_PROJECT', 'EJ_RUNNER_PWD'] });
+// Windows PowerShell started from PowerShell 7 inherits its PSModulePath and then cannot load built-in commands such as
+// Get-FileHash, which vendor install scripts use.
+const CHILD_ENV_DROP = Object.freeze({ junie: ['JUNIE_API_KEY', 'JUNIE_PROJECT', 'EJ_RUNNER_PWD'], powershell: ['PSModulePath'] });
 /** The environment a provider CLI starts with: unsafe inherited names dropped, then the native launcher's values merged in. */
 function childEnv(command, env, native, platform = process.platform) {
   const drop = Object.hasOwn(CHILD_ENV_DROP, command) ? CHILD_ENV_DROP[command] : [];
@@ -1650,17 +1652,25 @@ function substituteHome(text, home) {
   return text.split('{{QUOTA_BOSS_HOME}}').join(trustedHomeText(home)).split('{{HARNESS_HOME}}').join(trustedHomeText(home));
 }
 
-/** Windows only: runs a program in its own console window and waits until that window closes. */
+/**
+ * Windows only: runs a program in its own console window and waits until that window closes. With `spawn` it returns
+ * at once with the pid of the cmd that holds the window open; ending that process tree closes the window.
+ */
 function runInNewWindow(executable, args, options = {}) {
-  const { env = process.env, spawnSync = require('node:child_process').spawnSync } = options;
+  const { env = process.env, spawnSync = require('node:child_process').spawnSync, spawn } = options;
   try {
     const values = [executable, ...args];
     if (!absoluteExecutablePath(executable, 'win32') || values.some(a => typeof a !== 'string' || /[\x00-\x1f\x7f"%!^&|<>]/.test(a))) throw new Error('Unsafe window launch.');
     const quoted = values.map(a => '"' + a + '"').join(' ');
     // `start` would leave a batch file's window open at a prompt, so a .cmd shim runs through its own cmd /c.
     const program = /\.cmd$/i.test(executable) ? '"' + systemCmd(env) + '" /d /c "' + quoted + '"' : quoted;
-    return spawnSync(systemCmd(env), ['/d', '/s', '/c', '"start "Quota Boss login" /wait ' + program + '"'],
-      { ...childProcessOptions(env, 'win32'), shell: false, windowsVerbatimArguments: true, stdio: 'ignore' });
+    const argv = ['/d', '/s', '/c', '"start "Quota Boss login" /wait ' + program + '"'];
+    const spawnOptions = { ...childProcessOptions(env, 'win32'), shell: false, windowsVerbatimArguments: true, stdio: 'ignore' };
+    if (!spawn) return spawnSync(systemCmd(env), argv, spawnOptions);
+    const holder = spawn(systemCmd(env), argv, spawnOptions);
+    holder.on?.('error', () => {});
+    holder.unref?.();
+    return Number.isInteger(holder.pid) ? { status: 0, pid: holder.pid } : { status: null, error: new Error('Window did not start.') };
   } catch (error) { return { status: null, error }; }
 }
 

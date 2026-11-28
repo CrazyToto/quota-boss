@@ -5,6 +5,7 @@
 
 const child = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const lib = require('./lib');
 const { version, older } = require('./diagnostics');
@@ -48,7 +49,7 @@ const REGISTRY = Object.freeze({
   'gemini-media': { label: 'Gemini API CLI', binary: 'gemini-api', source: 'https://aistudio.google.com/docs/cli', install: {},
     paste: { win32: 'iwr -useb https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.ps1 | iex',
       all: 'curl -fsSL https://raw.githubusercontent.com/google-gemini/gemini-api-cli/main/scripts/install.sh | bash' },
-    login: { command: 'gemini-api configure --interactive', run: ['configure', '--interactive'], hint: 'Get a free key at https://aistudio.google.com/apikey from a project without billing, then paste it into the form.' } },
+    login: { command: 'gemini-api configure --interactive', run: ['configure', '--interactive'], hint: 'Get a free key at https://aistudio.google.com/apikey from a project without billing. In the form paste only the API key and leave every other field empty.' } },
   devin: { label: 'Devin CLI', binary: 'devin', source: 'https://docs.devin.ai/cli', install: {},
     paste: { win32: 'irm https://static.devin.ai/cli/setup.ps1 | iex', all: 'curl -fsSL https://cli.devin.ai/install.sh | bash' },
     login: { command: 'devin auth login', run: ['auth', 'login'], check: ['auth', 'status'], loggedIn: /^Logged in\b/m } },
@@ -56,7 +57,7 @@ const REGISTRY = Object.freeze({
   // On Windows the login is saved as encrypted files in one folder, so a non-empty file there is the check; elsewhere it sits in the OS keychain.
   junie: { label: 'Junie CLI', binary: 'junie', source: 'https://junie.jetbrains.com/docs/junie-headless.html', install: {},
     paste: { win32: 'irm https://junie.jetbrains.com/install.ps1 | iex', all: 'curl -fsSL https://junie.jetbrains.com/install.sh | bash' },
-    login: { command: 'junie', run: [], hint: 'In Junie choose "Continue with JetBrains account", log in in your browser, then type /exit.',
+    login: { command: 'junie', run: [], hint: 'In Junie choose "Continue with JetBrains account" and log in in your browser. The window closes by itself once the login is saved.',
       credentialFile: { platform: 'win32', dir: '.junie', store: 'dpapi_credentials' } } },
 });
 
@@ -113,10 +114,9 @@ function context(options = {}) {
   };
   return { platform, env, scripts: options.scripts, home: options.home || env.USERPROFILE || env.HOME || null, find: options.find || (name => locate(name, env, platform)),
     call: (file, args, timeout, workingDirectory) => lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024, workingDirectory }),
-    attach: (file, args, poll) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file),
-      spawnSync: poll ? (cmd, argv, opts) => spawnSync(cmd,
-        [...argv.slice(0, -1), argv.at(-1).replace(/^("start "Quota Boss login") \/wait /, '$1 ')],
-        { ...opts, timeout: QUERY_TIMEOUT }) : spawnSync })
+    // A polled login returns at once with the pid of its window, so the window can be closed once the login is saved.
+    attach: (file, args, poll) => platform === 'win32' ? lib.runInNewWindow(file, args, { env: envOf(file), spawnSync,
+      ...(poll ? { spawn: options.spawn || child.spawn } : {}) })
       : lib.runExecutable(file, args, { platform, env: envOf(file), spawnSync, stdio: 'inherit' }) };
 }
 
@@ -150,12 +150,34 @@ function credentialFileExists(credential, d) {
 
 const output = result => String(result?.stdout || '') + '\n' + String(result?.stderr || '');
 const succeeded = result => !!result && !result.error && result.status === 0;
-const display = route => route.manager + ' ' + route.args.map((arg, i) => route.script && i === route.args.length - 1 ? '"' + arg + '"' : arg).join(' ');
+// A Windows script route shows the official paste command; it runs the same script saved to a file (see runDownloaded).
+const display = route => route.url ? route.script
+  : route.manager + ' ' + route.args.map((arg, i) => route.script && i === route.args.length - 1 ? '"' + arg + '"' : arg).join(' ');
+const SCRIPT_URL = /https:\/\/[A-Za-z0-9.\/_-]+\.ps1\b/;
 function routeOf(tool, platform) {
   const script = tool.paste?.[platform] || tool.paste?.all;
+  const url = platform === 'win32' && script && script.match(SCRIPT_URL)?.[0];
   return tool.install[platform] || tool.install.all || (script && (platform === 'win32'
-    ? { manager: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], script }
+    ? url && { manager: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File'], script, url }
     : { manager: 'bash', args: ['-c', 'set -o pipefail; ' + script], script })) || null;
+}
+
+/**
+ * Microsoft Defender blocks `powershell -Command "irm <url> | iex"` as Trojan:Win32/Commando, so on Windows the official
+ * script is saved into a fresh private temp folder and run from there as a file.
+ */
+function runDownloaded(manager, route, d) {
+  let dir;
+  try {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-boss-install-'));
+    const file = path.join(dir, path.posix.basename(new URL(route.url).pathname));
+    if (/['\x00-\x1f]/.test(file)) return { status: null, error: new Error('Unsafe temp path.') };
+    const fetched = d.call(manager, ['-NoProfile', '-NonInteractive', '-Command',
+      "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '" + route.url + "' -OutFile '" + file + "'"], QUERY_TIMEOUT * 6);
+    if (!succeeded(fetched)) return fetched;
+    return d.call(manager, [...route.args, file], INSTALL_TIMEOUT);
+  } catch (error) { return { status: null, error }; }
+  finally { if (dir) try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
 }
 const prerequisiteOf = (route, platform) => (route && PREREQUISITES[route.manager]?.[platform]) || null;
 
@@ -229,6 +251,7 @@ function report(items) {
 }
 
 function failureText(result) {
+  if (result.error?.code === 'EPERM') return 'Windows refused to start the installer, often the antivirus. Check Windows Security, protection history';
   if (result.error) return 'could not start the installer';
   const last = output(result).split(/\r?\n/).map(line => line.trim()).filter(Boolean).at(-1) || 'exit ' + result.status;
   return last.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 160);
@@ -248,7 +271,7 @@ function installOne(id, d) {
   }
   const manager = d.find(route.manager);
   if (!manager) return '- ' + id + ': FAILED (installer unavailable)';
-  const result = d.call(manager, route.args, INSTALL_TIMEOUT);
+  const result = route.url ? runDownloaded(manager, route, d) : d.call(manager, route.args, INSTALL_TIMEOUT);
   if (!succeeded(result)) return '- ' + id + ': FAILED (' + failureText(result) + ')';
   const after = inspect(id, d);
   if (before.state === 'missing' && after.state === 'ok' && d.installedFile) rememberInstalled(id, d.installedFile);
@@ -374,6 +397,16 @@ function runLogin(id, options) {
   return d.attach(d.find(tool.binary), tool.login.run, poll);
 }
 
+/** Ends the process tree of a login window that runLogin opened; only a pid it returned is passed here. */
+function closeLogin(pid, options) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  const d = context(options);
+  if (d.platform !== 'win32') return false;
+  const taskkill = path.win32.join(path.win32.dirname(lib.systemCmd(d.env)), 'taskkill.exe');
+  return succeeded(lib.runExecutable(taskkill, ['/PID', String(pid), '/T', '/F'], { platform: 'win32', env: d.env,
+    spawnSync: options?.spawnSync || child.spawnSync, encoding: 'utf8', timeout: QUERY_TIMEOUT }));
+}
+
 /** Start a pending login and return whether activation can continue. */
 function finishLogin(login, { say = console.log, options, api = module.exports } = {}) {
   say('Logging in: ' + login.command + (login.newWindow ? ' (new window)' : ''));
@@ -387,11 +420,17 @@ function finishLogin(login, { say = console.log, options, api = module.exports }
   const pending = () => api.pendingLogins([login.id], options).some(item => item.id === login.id);
   if (REGISTRY[login.id].login.credentialFile?.platform === (options?.platform || process.platform)) {
     const wait = options?.wait || (ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+    // Junie stays open after the login, so its window is closed for the user once the saved login shows up.
+    const done = () => {
+      wait(2000);
+      if (result.pid && api.closeLogin?.(result.pid, options)) say(REGISTRY[login.id].label + ' login saved; its window was closed.');
+      return true;
+    };
     for (let elapsed = 0; elapsed < LOGIN_TIMEOUT; elapsed += 1000) {
-      if (!pending()) return true;
+      if (!pending()) return done();
       wait(1000);
     }
-    if (!pending()) return true;
+    if (!pending()) return done();
     say('Login timed out: ' + login.command);
     return false;
   }
@@ -477,4 +516,4 @@ function command(args, config, options) {
   throw new Error('Usage: quota-boss tools | tools install <id...> | tools logins');
 }
 
-module.exports = { REGISTRY, enabledIds, check, installable, report, install, offerRemoval, readInstalled, logins, pendingLogins, runLogin, finishLogin, activate, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };
+module.exports = { REGISTRY, enabledIds, check, installable, report, install, offerRemoval, readInstalled, logins, pendingLogins, runLogin, closeLogin, finishLogin, activate, storedKeys, runKeyLogin, openPage, command, isWingetTarget, isWingetPackageTarget, managerEnv };

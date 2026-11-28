@@ -345,7 +345,8 @@ function reportInstalls(w, resultLines, after, usable) {
   return w.plan.install.map(item => {
     const label = tools.REGISTRY[item.id].label;
     const line = (resultLines.find(text => text.startsWith('- ' + item.id + ':')) || '').replace(/^- /, '');
-    if (/FAILED/.test(line)) return line;
+    // The program's name and what it is for: Junie Lite needs the Junie CLI, which the user never picked by that name.
+    if (/FAILED/.test(line)) return label + ' (for ' + w.plan.users.get(item.id).join(', ') + ')' + line.slice(item.id.length);
     if (usable(item.id)) return w.text.installed(label, after.get(item.id).installed);
     if (/new terminal/.test(line)) return w.text.newTerminal(label);
     return line || label;
@@ -359,7 +360,7 @@ async function logins(w, usable, changed) {
   for (const [index, login] of pending.entries()) {
     const label = tools.REGISTRY[login.id].label;
     const key = await tui.pause(w.io, w.text.loginAsk(index + 1, pending.length, label), [
-      login.newWindow ? 'A window opens. Finish there.' : 'Follow the sign-in instructions.',
+      login.newWindow ? 'A window opens. Finish there; if it stays open after the login, close it and setup goes on.' : 'Follow the sign-in instructions.',
       ...(login.hint ? [login.hint] : []),
     ]);
     if (key === 'quit' || !await withTerminal(w, () => tools.finishLogin(login, {
