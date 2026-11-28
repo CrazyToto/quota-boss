@@ -363,6 +363,26 @@ Antigravity quota ran out at the end of these 24 runs ("Individual quota reached
 Flash runs that followed measured nothing. `bench/run.js` now marks such runs `limited` and `bench/report.js` leaves
 them out. Quota Boss reads the reset time from that error and sits the route out until then.
 
+### Antigravity GPT-OSS 120B and Claude Sonnet 4.6 (2026-11-28)
+
+Antigravity CLI 1.5.18, `bench/run.js --host agy --arm off`, 1 run per task, after the Gemini quota had run out:
+
+| Task | GPT-OSS 120B Medium | Claude Sonnet 4.6 |
+| --- | --- | --- |
+| small | 5/5, 64 s | 5/5, 22 s |
+| medium | 18/18, 78 s | 18/18, 62 s |
+| mixed | 22/22, 184 s | 22/22, 139 s |
+| bugfix | 9/9, 88 s | 9/9, 45 s |
+| refactor | 10/10, 39 s | 10/10, 43 s |
+| docs | 7/7, 16 s | 7/7, 31 s |
+| large | 1/32, 7 s | 32/32, 176 s |
+| xlarge | 2/44, 13 s | 43/44, 214 s (limit reached during the run) |
+
+GPT-OSS handled the small and medium tasks but on `large` and `xlarge` only replied that the work was done, without
+writing it. Sonnet passed everything it finished. Claude and GPT-OSS share one Antigravity "third-party" quota, separate
+from Gemini's; it ran out after these 16 runs ("Third-party quota reached", reset in 7 days), so Claude Opus 4.6
+Thinking measured nothing.
+
 ### Claude Code with Junie Lite on (2026-11-19)
 
 Claude host, Opus 5.5 boss, Junie Lite on and the routing table naming it for trivial implementation and mechanical work,
