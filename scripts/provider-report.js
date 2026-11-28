@@ -36,7 +36,7 @@ function codingTask(cli, model, executable, { platform, env, find, spawnSync, ti
     const prompt = 'Read TASK.md and make the requested change in the current folder.';
     const effort = cli.args.some(arg => arg.includes('{effort}'))
       ? ['low', 'medium', 'high', 'xhigh'].find(level => model.efforts?.includes(level)) : undefined;
-    const args = lib.dropInput(lib.cliArgsForModel(cli, model.cliModel, effort)).map(arg => arg.replaceAll('{prompt}', prompt));
+    const args = lib.dropInput(lib.cliArgsForModel(cli, model.cliModel, effort, model.efforts)).map(arg => arg.replaceAll('{prompt}', prompt));
     const stdin = cli.promptVia === 'stdin';
     const native = lib.nativeLauncher(cli.command, env, platform, directory);
     const started = process.hrtime.bigint();

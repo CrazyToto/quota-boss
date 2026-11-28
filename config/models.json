@@ -744,6 +744,26 @@
       ],
       "capabilitySource": "agy -p search_web tool (antigravity.google/docs/hooks)"
     },
+    "antigravity-claude-sonnet-4-6": {
+      "$comment": "Claude and GPT-OSS models in Antigravity share one third-party quota, separate from Gemini (\"Third-party quota reached\"). Own bench 2026-11-28: every hidden check on 7 tasks, 43/44 on xlarge when the quota ran out (docs/BENCHMARKS.md). GPT-OSS 120B stays out: it skipped the work on large tasks.",
+      "pool": "antigravity",
+      "label": "Claude Sonnet 4.6 (Antigravity)",
+      "cost": 8,
+      "cliModel": "claude-sonnet-4-6",
+      "efforts": [],
+      "scores": {
+        "architecture": 7,
+        "debugging": 8,
+        "implementation": 8,
+        "review": 7,
+        "research": 6,
+        "mechanical": 8
+      },
+      "tools": [
+        "web-search"
+      ],
+      "capabilitySource": "agy models, 2026-11-28; agy -p search_web tool (antigravity.google/docs/hooks)"
+    },
     "gemini-media-3.8-flash": {
       "pool": "gemini-media",
       "label": "Gemini 3.8 Flash media (free)",

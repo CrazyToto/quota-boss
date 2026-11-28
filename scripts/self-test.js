@@ -73,7 +73,7 @@ function selfTest(id, options = {}) {
     const prompt = 'Create ' + RESULT_FILE + ' in the current directory containing exactly ' + nonce + ' and do nothing else.';
     const effort = options.effort ?? (provider.cli.args.some(a => a.includes('{effort}')) ? EFFORTS.find(e => model.efforts?.includes(e)) : undefined);
     // The CLI's default level stays: without it a slug like {model}-{effort} would lose the model and test the wrong one.
-    const args = lib.dropInput(lib.cliArgsForModel(provider.cli, model.cliModel, effort)).map(a => a.replaceAll('{prompt}', prompt));
+    const args = lib.dropInput(lib.cliArgsForModel(provider.cli, model.cliModel, effort, model.efforts)).map(a => a.replaceAll('{prompt}', prompt));
     const started = now();
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-boss-self-test-'));
     let reason;

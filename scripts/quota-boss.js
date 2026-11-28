@@ -303,7 +303,7 @@ function providerCommand(command, rest, options) {
     if (model?.cliModel !== undefined && !lib.validCliModel(model.cliModel)) throw new Error('Invalid model CLI name.');
     // Without a model id, a provider with a default still prints runnable arguments.
     if (!provider.cli || !model && !provider.cli.defaultModel) return JSON.stringify(provider, null, 2);
-    return JSON.stringify({ ...provider, cli: { ...provider.cli, args: lib.cliArgsForModel(provider.cli, model?.cliModel, flags['--effort']) } }, null, 2);
+    return JSON.stringify({ ...provider, cli: { ...provider.cli, args: lib.cliArgsForModel(provider.cli, model?.cliModel, flags['--effort'], model?.efforts) } }, null, 2);
   }
   if (command === 'provider-switch') {
     if (rest.length !== 2 || !['enable', 'disable'].includes(rest[0])) throw new Error(usage(command));

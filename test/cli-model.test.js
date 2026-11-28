@@ -41,6 +41,11 @@ test('CLI effort fills its placeholder, and the flag goes away when there is no 
   const slug = { args: ['-p', '{prompt}', '--model', '{model}-{effort}'], defaultModel: 'gemini-3.8-flash', defaultEffort: 'medium' };
   assert.deepEqual(lib.cliArgsForModel(slug).slice(-1), ['gemini-3.8-flash-medium']);
   assert.deepEqual(lib.cliArgsForModel(slug, 'gemini-4-argon', 'high').slice(-1), ['gemini-4-argon-high']);
+  // A model with no levels (efforts: []) keeps its bare name and drops a separate level flag.
+  assert.deepEqual(lib.cliArgsForModel(slug, 'claude-sonnet-4-6', undefined, []).slice(-2), ['--model', 'claude-sonnet-4-6']);
+  assert.deepEqual(lib.cliArgsForModel(slug, 'claude-sonnet-4-6', 'high', []).slice(-1), ['claude-sonnet-4-6']);
+  assert.deepEqual(lib.cliArgsForModel(cli, 'x', 'high', []), ['-p', '{prompt}', '--model', 'x']);
+  assert.deepEqual(lib.cliArgsForModel(slug, 'gemini-4-argon', undefined, ['medium']).slice(-1), ['gemini-4-argon-medium']);
   for (const bad of ['ultra', 'max', '$(id)', 'low; rm']) assert.throws(() => lib.cliArgsForModel(cli, 'x', bad), /Invalid effort/);
   assert.throws(() => lib.mergeProviders(defaults, { providers: { antigravity: { cli: { ...defaults.providers.antigravity.cli, defaultEffort: 'ultra' } } } }), /Invalid CLI/);
 });

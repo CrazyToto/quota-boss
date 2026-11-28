@@ -135,7 +135,7 @@ function selection(options, config, project) {
   const cliModel = claude ? entry.cliModel ?? model : entry.cliModel;
   if ((claude || entry.cliModel !== undefined) && !lib.validCliModel(cliModel)) throw new Error('Invalid model CLI name.');
   // Match providers show: absent --model uses the CLI default, not an inferred registry slug.
-  const args = lib.cliArgsForModel(cli, claude || options.model ? cliModel : undefined, options.effort);
+  const args = lib.cliArgsForModel(cli, claude || options.model ? cliModel : undefined, options.effort, claude || options.model ? entry.efforts : undefined);
   if (args.some((arg, i) => {
     const [flag, inline] = arg.toLowerCase().split('=');
     const value = inline ?? args[i + 1]?.toLowerCase();
@@ -148,7 +148,8 @@ function selection(options, config, project) {
   })) {
     throw new Error('CLI template disables sandbox or permission checks.');
   }
-  return { provider, cli, claude, model, args, stdin: claude || cli.promptVia === 'stdin', effort: options.effort || cli.defaultEffort || '-' };
+  const levelless = Array.isArray(entry.efforts) && !entry.efforts.length;
+  return { provider, cli, claude, model, args, stdin: claude || cli.promptVia === 'stdin', effort: levelless ? '-' : options.effort || cli.defaultEffort || '-' };
 }
 
 /** npm shims are data, never shell code: accept only what lib.shimTarget reads from them. */

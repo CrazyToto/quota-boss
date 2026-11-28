@@ -269,12 +269,15 @@ function dropInput(args) {
   return args.filter((arg, index) => index < flag || index > at);
 }
 
-function cliArgsForModel(cli, cliModel, effort) {
+/** levels: the model's efforts list; an empty one means the model takes no level, like Antigravity's Claude models. */
+function cliArgsForModel(cli, cliModel, effort, levels) {
   if (effort !== undefined && effort !== null && !CLI_EFFORTS.includes(effort)) throw new Error('Invalid effort.');
-  const level = effort || cli.defaultEffort;
-  // Without a level the flag goes too, because some models refuse it (Copilot's auto does).
+  const level = Array.isArray(levels) && !levels.length ? null : effort || cli.defaultEffort;
+  // Without a level the flag goes too, because some models refuse it (Copilot's auto does); a {model}-{effort} slug
+  // keeps the bare model name.
+  const bare = cli.args.map(arg => arg.includes('{model}') ? arg.replace(/[-_.]?\{effort\}/g, '') : arg);
   const args = level ? cli.args.map(arg => arg.replaceAll('{effort}', level))
-    : cli.args.filter((arg, index) => !arg.includes('{effort}') && !(arg.startsWith('-') && !arg.includes('=') && !arg.includes('{') && cli.args[index + 1]?.includes('{effort}')));
+    : bare.filter((arg, index) => !arg.includes('{effort}') && !(arg.startsWith('-') && !arg.includes('=') && !arg.includes('{') && bare[index + 1]?.includes('{effort}')));
   if (args.some(arg => arg.includes('{model}'))) {
     const selected = cliModel || cli.defaultModel;
     if (!selected) throw new Error('This provider CLI has no model to select.');
