@@ -189,14 +189,16 @@ const hidden = String(check.stdout || '').trim().split('\n').pop();
 const hiddenFails = String(check.stderr || '').trim().split('\n').filter(Boolean);
 const own = execute(process.execPath, ['--test'], { cwd: dir, encoding: 'utf8', timeout: 120000 });
 const count = name => { const m = String(own.stdout || '').match(new RegExp(`(?:#|ℹ) ${name} (\\d+)`)); return m ? +m[1] : null; };
+// A run the provider stopped at its limit measures the quota, not the model: it is kept, marked, and left out of the report.
+const limited = run.status !== 0 && /rate limit|usage limit|quota (?:reached|exceeded)|RESOURCE_EXHAUSTED|too many requests|\b429\b/i.test(String(run.stdout || '') + String(run.stderr || '')) && !/^(\d+)\/\1$/.test(hidden);
 const codexUsd = +sessions.reduce((t, s) => t + s.usd, 0).toFixed(4);
 
 const line = {
-  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, hint, task, n: +n, exit: run.status, seconds, hidden, hiddenFails,
+  date: new Date().toISOString(), runName, arm, label, host, model, effort: effort || null, mode, claudeMode, hint, task, n: +n, exit: run.status, ...(limited ? { limited: true } : {}), seconds, hidden, hiddenFails,
   ownPass: count('pass'), ownFail: count('fail'), claude, junie, codexUsd, codexSessions: sessions, feedback, poolsBefore, poolsAfter: pools(),
 };
 fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(line) + '\n');
-console.log(`done ${runName} ${seconds}s hidden=${hidden} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);
+console.log(`done ${runName} ${seconds}s hidden=${hidden}${limited ? " (provider limit, not counted)" : ""} claudeUsd=${claude ? claude.usd : 0} codexUsd=${codexUsd}`);
 
 } finally { if (previousProfile) { const off = quota('off', '--project'); const restored = quota('set', 'profile', previousProfile, '--project'); if (off.status !== 0 || restored.status !== 0) throw new Error('Could not restore quota-boss profile'); } }
 }

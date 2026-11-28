@@ -31,7 +31,7 @@ function ratio(a, b) {
 }
 
 function report(out) {
-  const results = rows(path.join(out, 'results.jsonl'));
+  const results = rows(path.join(out, 'results.jsonl')).filter(r => !r.limited);
   const reviewFile = path.join(out, 'reviews.jsonl'), scores = new Map();
   if (fs.existsSync(reviewFile) && fs.readFileSync(reviewFile, 'utf8').trim()) {
     const map = JSON.parse(fs.readFileSync(path.join(out, 'review-map.json'), 'utf8')).packets;

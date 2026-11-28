@@ -343,6 +343,26 @@ or delegated):
 Boss on now costs about 5% (medium) and 7% (large) more than boss off on average, within the run-to-run spread: one
 large run was cheaper than both off runs. The first prompt is about 870 tokens longer than with boss off.
 
+### Antigravity Gemini 4 Hydrogen (2026-11-28)
+
+Antigravity CLI 1.5.18, Gemini 4 Hydrogen Medium, `bench/run.js --host agy --arm off`, 3 runs per task:
+
+| Task | Hidden checks | Time per run |
+| --- | --- | --- |
+| small | 15/15 | about 26 s |
+| medium | 54/54 | about 48 s |
+| mixed | 66/66 | about 63 s |
+| bugfix | 27/27 | about 24 s |
+| refactor | 30/30 | about 26 s |
+| docs | 21/21 | about 36 s |
+| large | 96/96 | about 96 s |
+| xlarge | 132/132 | about 101 s |
+
+Every check passed, and the two biggest tasks were much faster than Devin SWE-2 Flash. The account's weekly
+Antigravity quota ran out at the end of these 24 runs ("Individual quota reached", reset in 7 days), so the Gemini 3.8
+Flash runs that followed measured nothing. `bench/run.js` now marks such runs `limited` and `bench/report.js` leaves
+them out. Quota Boss reads the reset time from that error and sits the route out until then.
+
 ### Claude Code with Junie Lite on (2026-11-19)
 
 Claude host, Opus 5.5 boss, Junie Lite on and the routing table naming it for trivial implementation and mechanical work,

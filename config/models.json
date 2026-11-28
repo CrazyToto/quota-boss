@@ -646,7 +646,7 @@
       "capabilitySource": "agy -p search_web tool (antigravity.google/docs/hooks); context: antigravity.google/docs/models"
     },
     "gemini-4-hydrogen": {
-      "$comment": "Rolling out to Google AI Pro and Ultra (antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity, 2026-11-12). Google: Terminal-Bench 4.1 57%; one press report: 54% on 4.0. Level with Argon, debugging and implementation from the same range.",
+      "$comment": "Rolling out to Google AI Pro and Ultra (antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity, 2026-11-12). Google: Terminal-Bench 4.1 57%; one press report: 54% on 4.0. Level with Argon, debugging and implementation from the same range. Own bench 2026-11-28: every hidden check in 24 runs (docs/BENCHMARKS.md).",
       "pool": "antigravity",
       "label": "Gemini 4 Hydrogen",
       "enabled": false,

@@ -32,6 +32,11 @@ test('reset hints: OpenRouter daily counter, headers, Retry-After, durations and
   assert.equal(lib.resetHint('x-ratelimit-reset: ' + Math.round((T0 + 120000) / 1000), T0), T0 + 120000);
   assert.equal(lib.resetHint("You've reached your monthly usage limit. Wait for the limit to reset next month.", T0), Date.UTC(2026, 11, 1));
   assert.equal(lib.resetHint('monthly usage limit', T0), null);
+  // Antigravity's weekly quota: classified as a limit through the JSON error code, the reset read from "Resets in".
+  const agy = 'error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 167h35m59s.\n'
+    + 'AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached.","status":"RESOURCE_EXHAUSTED","error_code":429}';
+  assert.equal(runner.classify({ status: 3, stdout: '', stderr: agy }, false, null, null, {}).kind, 'limited');
+  assert.equal(lib.resetHint(agy, T0), T0 + ((167 * 60 + 35) * 60 + 59) * 1000);
   assert.equal(lib.resetHint('Retry-After: 90', T0), T0 + 90000);
   assert.equal(lib.resetHint('please retry after 30 seconds', T0), T0 + 30000);
   assert.equal(lib.resetHint('Retry after 2 minutes', T0), T0 + 2 * MIN);
