@@ -532,9 +532,30 @@ if (require.main === module) {
     if (removing && terminal && !args.includes('--force') && ['config', 'defaults.json'].some(name => fs.existsSync(path.join(paths(process.env).home, name)))
       && /^y(es)?$/i.test(lib.askLine('Also delete your Quota Boss settings? [y/N] '))) args.push('--force');
     install({ args });
+    const link = require('./scripts/command-link');
+    const dry = args.includes('--dry-run');
+    const quotaBossHome = paths(process.env).home;
+    // The one quota-boss command. An old global npm copy is found first, so its npm launcher may be
+    // replaced, and removed at the very end, because this installer may itself run from that copy.
+    let npmCopy = null;
+    try { npmCopy = link.npmGlobal(); } catch (error) { console.error(`Old global copy check skipped (${error.message}).`); }
+    const addCommand = () => {
+      try {
+        if (link.ensure({ quotaBossHome, dry, npmCopy: !!npmCopy, say: console.log })) return;
+      } catch (error) { console.error(`Could not add the quota-boss command (${error.message}).`); }
+      console.log('Run Quota Boss with: ' + lib.selfCommand('<command>'));
+    };
+    const dropNpmCopy = () => {
+      if (!npmCopy) return;
+      try { console.log(link.removeNpmGlobal(npmCopy, { dry })); } catch (error) { console.error(`Old global copy check skipped (${error.message}).`); }
+      // npm may delete launchers in its bin folder, so the command is written again.
+      if (!args.includes('--uninstall')) addCommand();
+    };
+    if (args.includes('--uninstall')) {
+      try { link.remove({ dry, say: console.log }); } catch (error) { console.error(`Could not remove the quota-boss command (${error.message}).`); }
+    } else addCommand();
     if (removing) {
       try { require('./scripts/tools').offerRemoval({ interactive: terminal }); } catch (error) { console.error(`Program check skipped (${error.message}).`); }
-      if (findExecutable('quota-boss', process.env, process.platform)) console.log('The quota-boss command itself stays; remove it with: npm uninstall -g quota-boss');
     }
     if (installing) {
       if (terminal) {
@@ -543,8 +564,6 @@ if (require.main === module) {
         const result = spawnSync(process.execPath, [script, 'setup', ...(before.fresh ? [] : ['--update'])], {
           stdio: 'inherit', cwd: process.cwd(),
         });
-        console.log('Change any setting later with: ' + (findExecutable('quota-boss', process.env, process.platform)
-          ? 'quota-boss config' : 'node "' + normalized(script) + '" config'));
         if (result.error) throw result.error;
         if (result.status !== 0) process.exitCode = result.status ?? 1;
       } else {
@@ -554,6 +573,7 @@ if (require.main === module) {
         console.log(setupNext() || 'Next: type /boss-setup in Claude Code. It shows the one command that starts the step-by-step setup in your terminal.');
       }
     }
+    dropNpmCopy();
   } catch (error) { console.error(`Quota Boss installer: ${error.message}`); process.exitCode = 1; }
 }
 

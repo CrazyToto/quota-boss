@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { isInstallerArgs } = require('../bin/quota-boss.js');
+const { isolateCommand } = require('./fixtures/isolated-command');
 
 const root = path.join(__dirname, '..');
 const binFile = path.join(root, 'bin', 'quota-boss.js');
@@ -14,8 +15,8 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 function isolated(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-bin-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const env = { ...process.env, HOME: dir, USERPROFILE: dir, CLAUDE_CONFIG_DIR: path.join(dir, 'claude'),
-    CODEX_HOME: path.join(dir, 'codex'), QUOTA_BOSS_HOME: path.join(dir, 'qb') };
+  const env = isolateCommand({ ...process.env, HOME: dir, USERPROFILE: dir, CLAUDE_CONFIG_DIR: path.join(dir, 'claude'),
+    CODEX_HOME: path.join(dir, 'codex'), QUOTA_BOSS_HOME: path.join(dir, 'qb') }, dir);
   return { dir, env };
 }
 const run = (args, env, cwd = root) => spawnSync(process.execPath, [binFile, ...args], { env, cwd, encoding: 'utf8', input: '' });
@@ -89,6 +90,24 @@ test('install then uninstall through the bin entry works from another working di
   assert.match(uninstall.stdout, /uninstalled/);
 });
 
+test('install adds the one quota-boss command in a home folder on PATH and uninstall removes it', t => {
+  const { dir, env } = isolated(t);
+  const bin = process.platform === 'win32' ? path.join(env.APPDATA, 'npm') : path.join(dir, '.local', 'bin');
+  const key = Object.keys(env).find(k => k.toLowerCase() === 'path');
+  const withBin = { ...env, [key]: bin + path.delimiter + env[key] };
+  const launcher = path.join(bin, process.platform === 'win32' ? 'quota-boss.cmd' : 'quota-boss');
+  const without = run(['--no-mcp'], env, dir);
+  assert.equal(without.status, 0, without.stderr);
+  assert.match(without.stdout, /Run Quota Boss with: node "[^"]+\/scripts\/quota-boss\.js" <command>/);
+  const install = run(['--no-mcp'], withBin, dir);
+  assert.equal(install.status, 0, install.stderr);
+  assert.match(install.stdout, /Add the quota-boss command in /);
+  assert.ok(fs.readFileSync(launcher, 'utf8').includes(path.join(dir, 'qb', 'scripts', 'quota-boss.js')));
+  const uninstall = run(['--uninstall'], withBin, dir);
+  assert.equal(uninstall.status, 0, uninstall.stderr);
+  assert.equal(fs.existsSync(launcher), false);
+});
+
 test('a command argument dispatches to the CLI and keeps its exit code', t => {
   const { env } = isolated(t);
   const ok = run(['status'], env);
@@ -116,4 +135,14 @@ test('--uninstall --scan <path> with spaces in the path is accepted as installer
   fs.mkdirSync(scan);
   const result = run(['--uninstall', '--dry-run', '--scan', scan], env);
   assert.equal(result.status, 0, result.stderr);
+});
+
+test('commands run the installed copy when there is one, so only one version ever runs', t => {
+  const { dir, env } = isolated(t);
+  const scripts = path.join(dir, 'qb', 'scripts');
+  fs.mkdirSync(scripts, { recursive: true });
+  fs.writeFileSync(path.join(scripts, 'quota-boss.js'), 'console.log("INSTALLED " + process.argv.slice(2).join(" "))\n');
+  const result = run(['status'], env, dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'INSTALLED status');
 });

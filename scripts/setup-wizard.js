@@ -473,7 +473,7 @@ async function finish(w) {
     ...(ready.length ? [w.text.freeReady(ready.join(', '))] : []),
     ...(plans.length ? w.text.planModels(require('./discover-models').changeLines(plans), plans.some(plan => plan.new?.length)) : []),
     ...(graphResult ? [graphResult, ...(w.state.host === 'claude-code' ? [w.text.graphNext] : [])] : []),
-    w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.config,
+    w.state.host === 'claude-code' ? w.text.done : w.text.doneOther, w.text.config(lib.selfCommand('config')),
   ]);
 }
 
@@ -530,7 +530,7 @@ async function setup(args, run, deps = {}) {
     w.shown.delete(hostPool(w));
     for (const id of [DEVIN, MEDIA]) if (!config.providers.providers[id]) w.shown.delete(id);
   }
-  if (update && !look && !w.shown.size && !w.planOnly.size) return w.text.upToDate;
+  if (update && !look && !w.shown.size && !w.planOnly.size) return w.text.upToDate(lib.selfCommand('config'));
 
   state.plans = Object.fromEntries(PLAN_IDS.map(id => [id, Object.hasOwn(PLAN_NAMES[id], saved.plans?.[id]) ? saved.plans[id] : 'free']));
   for (const [id] of keptApis(w)) state.choices[apiChoice(id)] = enabledNow(config, id);

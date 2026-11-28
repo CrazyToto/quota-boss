@@ -304,7 +304,7 @@ test.describe('capability CLI and enabling self-tests', () => {
   test('non-terminal provider on only switches and says how to finish', t => {
     const calls = fakeCli(t);
     const text = cli.run(['use', 'grok', 'on'], { interactive: false });
-    assert.match(text, /\nTo finish, run quota-boss use grok on in a terminal\.$/);
+    assert.match(text, /\nTo finish, run (quota-boss|node "[^"]+") use grok on in a terminal\.$/);
     assert.equal(lib.loadConfig().providers.providers.grok.enabled, true);
     assert.deepEqual(calls, []);
     assert.deepEqual(lib.readUsage().entries, []);
@@ -312,7 +312,7 @@ test.describe('capability CLI and enabling self-tests', () => {
   test('--no-test leaves the provider enabled and gated without any calls', t => {
     const calls = fakeCli(t);
     const text = cli.run(['use', 'grok', 'on', '--no-test']);
-    assert.match(text, /Self-test skipped: run quota-boss providers test grok before it gets work\./);
+    assert.match(text, /Self-test skipped: run (quota-boss|node "[^"]+") providers test grok before it gets work\./);
     assert.equal(calls.length, 0);
     const result = route({ ...lib.loadConfig(), findExecutable: lib.findExecutable });
     assert.ok(result.candidates.filter(c => c.pool === 'grok').every(c => c.reason.startsWith('self-test needed:')));

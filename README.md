@@ -52,14 +52,14 @@ up your Claude Code settings, keeps your existing status line, and `npx quota-bo
 everything again. It asks whether to delete your settings too and asks about each program Quota Boss installed
 itself; programs you already had, such as Graphify, are never touched.
 
-Run the same command again to update and set up only what is new. A yes, in setup, after an update
+The installer also adds the `quota-boss` command, so `quota-boss update` updates and sets up only what is new,
+and `quota-boss uninstall` removes everything again. The command runs your installed copy, never a second one. A yes, in setup, after an update
 or through `quota-boss use <id> on`, installs the CLI if needed, starts the login and runs the self-test (free
 providers skip it and start with small jobs).
 
 <details>
 <summary>Other ways to install</summary>
 
-- **Keep the short `quota-boss` command:** `npm install -g quota-boss`, then `quota-boss`.
 - **From source:** `git clone https://github.com/CrazyToto/quota-boss && cd quota-boss && node install.js`. The same
   flags work: `node install.js --dry-run` and `node install.js --uninstall`.
 
@@ -104,9 +104,12 @@ In your terminal:
 | `quota-boss use <provider\|model> on\|off` | Choose which subscriptions and models may get work |
 | `quota-boss settings` | Show all settings, what each does and the command that changes it |
 | `quota-boss config` | Change settings in an interactive list |
+| `quota-boss update` | Install the newest version and set up only what is new |
+| `quota-boss uninstall` | Remove Quota Boss again |
 
-The short `quota-boss` form needs `npm install -g quota-boss`. Without it, use `npx quota-boss <command>` or
-`node ~/.claude/quota-boss/scripts/quota-boss.js <command>`. All settings are explained in
+The installer puts `quota-boss` in a folder of your home that is already on PATH (`%APPDATA%\npm` on Windows,
+`~/.local/bin` or `~/bin` elsewhere). If there is none, it prints the `node "…/quota-boss.js"` form to use instead.
+An older `npm install -g quota-boss` copy is removed on update, so only one version exists. All settings are explained in
 [docs/SETTINGS.md](docs/SETTINGS.md).
 
 ## How it works

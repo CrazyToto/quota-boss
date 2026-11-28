@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 test('install, doctor, route, upgrade and uninstall preserve user files', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-lifecycle-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const env = { ...process.env, QUOTA_BOSS_SKIP_MCP: '1' };
+  const env = require('./fixtures/isolated-command').isolateCommand({ ...process.env, QUOTA_BOSS_SKIP_MCP: '1' }, root);
   for (const [key, dir] of Object.entries({ HOME: 'home', USERPROFILE: 'home', CLAUDE_CONFIG_DIR: 'claude', CODEX_HOME: 'codex', QUOTA_BOSS_HOME: 'boss', npm_config_cache: 'npm' })) {
     env[key] = path.join(root, dir); fs.mkdirSync(env[key], { recursive: true });
   }

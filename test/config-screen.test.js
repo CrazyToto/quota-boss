@@ -109,7 +109,7 @@ test('full setup borrows the terminal and settings reload before Close', async (
 test('non-interactive config returns the settings table with a terminal hint', async () => {
   const f = fixture(['enter']);
   assert.equal(await config([], f.run, { ...f.deps, interactive: false, table: () => 'Settings table' }),
-    'Settings table\n\nOn a terminal, quota-boss config opens the interactive list.');
+    'Settings table\n\nOn a terminal, ' + require('../scripts/lib').selfCommand('config') + ' opens the interactive list.');
   assert.deepEqual(f.calls, []);
   assert.deepEqual(f.io.frames, []);
 });

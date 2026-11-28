@@ -20,6 +20,8 @@ const USAGES = {
   'graph': 'graph <explain|affected|path> <name> [<name>]',
   'verify': 'verify [--fresh] [--log <model> <category> <tier> [--effort <level>]] -- <command...>',
   'setup': 'setup [--update]',
+  'update': 'update [--dry-run]',
+  'uninstall': 'uninstall [--dry-run] [--force]',
   'config': 'config',
   'handoff': 'handoff save|list|show [<name>]',
   'on': 'on [--host claude-code|codex|generic] [quality|balanced|frugal] [--project]',
@@ -44,7 +46,7 @@ const USAGES = {
   'help': 'help',
 };
 const usage = command => 'Usage: quota-boss ' + USAGES[command];
-const HELP = 'Quota Boss help\n\nStart:\n  setup [--update]                 guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n\nSettings:\n  config                           change settings in an interactive list\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers models <id>            models your account offers vs. the table\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
+const HELP = 'Quota Boss help\n\nStart:\n  setup [--update]                 guided setup, step by step\n  on [quality|balanced|frugal]     turn boss mode on (--project: only here)\n  off                              turn it off\n  status                           remaining quota and current mode\n  doctor [--report]                check installation or print a redacted issue report\n  update                           install the newest version and set up what is new\n  uninstall                        remove Quota Boss again\n\nSettings:\n  config                           change settings in an interactive list\n  settings                         every setting, what it does and its values\n  set <name> <value>               change one setting, e.g. set profile frugal\n\nProviders:\n  use                              list subscriptions, free offers and models\n  use <id> on|off [--project]      switch one provider or model\n  cap <id> <window> <percent|off>  keep part of a quota for yourself\n  add-api, remove-api              add or remove an API or free offer\n  local on <model>|off             use a local model through Ollama\n  providers                        list providers\n  providers test <id>              run a provider self-test\n  providers models <id>            models your account offers vs. the table\n  providers report <id>            run provider checks and prepare an issue\n\nRouting:\n  route [--explain] [--size small|medium|large]  which model gets which kind of job\n\nWork:\n  worktree add|list|merge|remove|clean           parallel worktrees\n  graph <explain|affected|path> <name>            code graph queries\n  verify [--fresh] [--log <model> <cat> <tier>]  run a command and check it\n  feedback <model> <cat> <tier> <pass|fail>       log a verified outcome\n\nReports:\n  savings [--details]              what delegation saved';
 const SET_NAMES = { profile: 'profile', training: 'allow-training', statusline: 'statusline', 'statusline-style': 'statusline-style', 'statusline-logos': 'statusline-logos', 'statusline-names': 'statusline-names', context: 'context' };
 // Settings removed in 0.2.0 and what replaces them. Stored values are ignored.
 const REMOVED_SETTINGS = {
@@ -234,9 +236,9 @@ function useCommand(command, rest, { interactive = !!(process.stdin.isTTY && pro
     // A free provider proves itself with real trivial work, so turning it on spends no calls on a self-test.
     const free = ['free', 'local'].includes(definition.kind);
     const gated = definition.evidence === 'docs' && !free;
-    if (noTest) return output + (gated ? '\nSelf-test skipped: run quota-boss providers test ' + id + ' before it gets work.' : '');
+    if (noTest) return output + (gated ? '\nSelf-test skipped: run ' + lib.selfCommand('providers test ' + id) + ' before it gets work.' : '');
     const tool = tools.enabledIds({ providers: { providers: { [id]: { ...definition, enabled: true } } } })[0];
-    if (!interactive) return output + '\nTo finish, run quota-boss use ' + id + ' on in a terminal.';
+    if (!interactive) return output + '\nTo finish, run ' + lib.selfCommand('use ' + id + ' on') + ' in a terminal.';
     const { selfTest, validSelfTest } = require('./self-test');
     const enabled = lib.loadConfig({});
     const models = Object.entries(enabled.models.models).filter(([, model]) => model.pool === id && model.enabled !== false);
@@ -426,6 +428,17 @@ function run(args = process.argv.slice(2), options) {
     return rest[0] === '--report' ? diagnostics.report() : diagnostics.doctor(rest.length === 1);
   }
   if (command === 'setup') return setupWizard.setup(rest, run);
+  if (command === 'update' || command === 'uninstall') {
+    const allowed = command === 'update' ? ['--dry-run'] : ['--dry-run', '--force'];
+    if (rest.some(arg => !allowed.includes(arg)) || new Set(rest).size !== rest.length) throw new Error(usage(command));
+    // The newest published installer does the work, the same one a first install uses.
+    const npx = lib.npmCommand('npx');
+    if (!npx) throw new Error('npx was not found. Install Node.js from nodejs.org, then run this again.');
+    const result = lib.runExecutable(npx.file, [...npx.args, '--yes', 'quota-boss@latest', ...(command === 'uninstall' ? ['--uninstall'] : []), ...rest], { stdio: 'inherit' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) process.exitCode = result.status ?? 1;
+    return '';
+  }
   if (command === 'config') {
     if (rest.length) throw new Error(usage(command));
     return require('./config-screen').config(rest, run);

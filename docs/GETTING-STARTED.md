@@ -8,7 +8,8 @@ You need Node 18 or newer and Claude Code or Codex. Everything else is offered d
 npx quota-boss@latest
 ```
 
-From a clone of the repository, `node install.js` does the same.
+From a clone of the repository, `node install.js` does the same. Afterwards `quota-boss update` updates and
+`quota-boss uninstall` removes it.
 
 If a provider CLI is missing or outdated, the installer shows one list and asks once.
 

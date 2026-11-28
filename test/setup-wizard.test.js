@@ -253,7 +253,7 @@ test('the host pool is hidden and can only be restored when usable', async () =>
 
 test('an update with nothing new draws no frames and writes no state', async () => {
   const { result, io, writes, commands } = await play([], { args: ['--update'], state: { knownSetup: known } });
-  assert.equal(result, TEXT.upToDate);
+  assert.match(result, /^Quota Boss is up to date\. Nothing new to set up\. All settings: (quota-boss|node "[^"]+") config$/);
   assert.deepEqual(io.frames, []);
   assert.equal(writes, 0);
   assert.deepEqual(commands, []);

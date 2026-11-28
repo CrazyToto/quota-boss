@@ -74,8 +74,8 @@ function suggestion(ids) {
   const text = pending.map(id => {
     const name = id === 'junie-lite' ? 'Junie Lite' : nameOf(id);
     const detail = id === 'junie-lite' ? ' Free, no limit published.' : '';
-    return 'Ask the user: "Turn on ' + name + '?' + detail + '" If yes, run quota-boss use ' + id +
-      ' on in a terminal. If no, run quota-boss use ' + id + ' off.';
+    return 'Ask the user: "Turn on ' + name + '?' + detail + '" If yes, run ' + lib.selfCommand('use ' + id + ' on') +
+      ' in a terminal. If no, run ' + lib.selfCommand('use ' + id + ' off') + '.';
   }).join(' ');
   return { id: 'new-providers', text };
 }

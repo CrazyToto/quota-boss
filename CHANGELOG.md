@@ -4,6 +4,17 @@ This format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-28
+
+### Added
+
+- One `quota-boss` command for everything. The installer puts a small launcher into a folder of your home that is already on PATH, and it always runs the installed copy. `quota-boss update` installs the newest version, `quota-boss uninstall` removes everything, the launcher included.
+
+### Fixed
+
+- Without the global command, setup and other hints told you to run `quota-boss config`, which then failed with "not recognized". Hints now name the command that works on your machine.
+- An old `npm install -g quota-boss` copy no longer runs an older version than the installed one: updates remove it, and `npx quota-boss <command>` runs the installed copy.
+
 ## [0.5.0] - 2026-11-28
 
 ### Added

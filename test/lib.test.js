@@ -676,3 +676,15 @@ test('a child process gets PWD equal to its working directory, so a CLI that rea
   assert.equal(plan.options.cwd, dir);
   assert.equal(plan.options.env.PWD, dir);
 });
+
+test('selfCommand names the short command only when it is on PATH', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-self-'));
+  try {
+    const empty = { PATH: path.join(root, 'none') };
+    assert.match(lib.selfCommand('config', empty, 'linux'), /^node "[^"\\]+\/scripts\/quota-boss\.js" config$/);
+    const bin = path.join(root, 'bin'); fs.mkdirSync(bin);
+    const file = path.join(bin, process.platform === 'win32' ? 'quota-boss.cmd' : 'quota-boss');
+    fs.writeFileSync(file, ''); fs.chmodSync(file, 0o755);
+    assert.equal(lib.selfCommand('config', { PATH: bin, PATHEXT: '.CMD' }, process.platform), 'quota-boss config');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

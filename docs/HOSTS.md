@@ -109,6 +109,5 @@ for six hours (up to 50 entries); `--fresh` forces a run. `--log <model> <catego
 records the run's pass or fail as feedback. A cached pass can be logged once if it was saved without feedback.
 
 Set `QUOTA_BOSS_HOME` to override `~/.claude/quota-boss`. Deprecated `HARNESS_HOME` remains a user environment fallback. Project files in the checkout are ignored.
-The Claude Code slash command is `/boss on`. After installing, invoke the CLI directly with
-`node ~/.claude/quota-boss/scripts/quota-boss.js <command>` or run `npm install -g quota-boss`
-to put `quota-boss` on PATH.
+The Claude Code slash command is `/boss on`. The installer adds the `quota-boss` command to a folder of your home that is on PATH. Without such a folder, use
+`node ~/.claude/quota-boss/scripts/quota-boss.js <command>`.

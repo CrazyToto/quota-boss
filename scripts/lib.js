@@ -1525,7 +1525,26 @@ function nativeLauncher(name, env = process.env, platform = process.platform, cw
     return { file: real, env: Object.fromEntries(Object.entries(spec.env).map(([key, value]) => [key, values[value]])) };
   } catch { return null; }
 }
+/** The Quota Boss command that works here: the short global one when npm installed it, else node with the full path. */
+function selfCommand(args, env = process.env, platform = process.platform) {
+  if (findExecutable('quota-boss', env, platform)) return 'quota-boss ' + args;
+  return 'node "' + path.join(getPaths().quotaBossHome, 'scripts', 'quota-boss.js').replace(/\\/g, '/') + '" ' + args;
+}
 /** Resolve only absolute PATH directories, excluding cwd and aliases of cwd. */
+/**
+ * npm or npx as { file, args }. On macOS and Linux both are symlinks, which findExecutable refuses,
+ * so npm's own script next to this Node runs instead.
+ */
+function npmCommand(name, env = process.env, platform = process.platform) {
+  const found = findExecutable(name, env, platform);
+  if (found) return { file: found, args: [] };
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const bin = p.dirname(process.execPath);
+  for (const file of [p.join(bin, 'node_modules', 'npm', 'bin', name + '-cli.js'), p.join(p.dirname(bin), 'lib', 'node_modules', 'npm', 'bin', name + '-cli.js')]) {
+    try { regularStat(file); return { file: process.execPath, args: [file] }; } catch {}
+  }
+  return null;
+}
 function findExecutable(name, env = process.env, platform = process.platform, cwd = process.cwd()) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) return null;
   // A tool with an unsafe launcher: its native exe, else only a real .exe on the trusted PATH, never a script shim.
@@ -1692,7 +1711,7 @@ function clipMiddle(text, limit = OUTPUT_CAP) {
   return text.slice(0, head) + '\n[... ' + (text.length - limit) + ' characters cut]\n' + text.slice(-tail);
 }
 
-module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, shimTarget, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, planModelsFile, readPlanModels, applyPlanModels, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
+module.exports = { DEFAULT_FIELDS, readDefaults, saveDefaults, defaultsFile, dropInput, savePrompt, takePrompt, promptsDir, OUTPUT_CAP, clipMiddle, NATIVE_LAUNCHERS, nativeLauncher, childEnv, envValue, mergeEnv, cliFingerprint, shimTarget, systemLink, normalizeUse, projectUse, readUse, useFile, validUseModelId, planModelsFile, readPlanModels, applyPlanModels, delegationBoss, revisionFingerprint, verifyCommand, shellCommand, projectHash, recordBossModel, EFFORT_ORDER, CONTEXT_SUGGEST_MIN, CONTEXT_SUGGEST_MAX, askLine, runInNewWindow, childProcessOptions, findExecutable, npmCommand, selfCommand, executableInvocation, runExecutable, systemCmd, trustedHomeText, substituteHome, checkParents, regularStat, openRegular, appendRegular, withLock, projectKey, readProjects, updateProjects, saveProject, ignoredProjectFiles, MAX_PROJECT_BYTES, tightenCaps, detectCodeIntel, HOSTS, newestLogs, updateState, BUILTIN_PROVIDERS, PROVIDER_ID, QUOTA_WINDOWS, USAGE_UNITS, validProviderId, validCliModel, cliArgsForModel, validateCaps, validateProviders, mergeProviders, mergeCaps, readProviderConfig, loadProviders, retiredProviders, counterWindow, validUsage, readUsage, appendUsage, readProviderLimits, providerWindows, providerContext, providerWarnings, formatProvidersCompact, TIERS, RESULTS, FAILURE_KINDS, qualityFailure, failedHere, historySettings, recordUsageHistory, validOutcome, recentOutcomes, readOutcomes, appendOutcome, unavailableModels, rateLimitedModels, transientOutcome, resetHint, cooldowns, activeProbe, claimProbe, releaseProbe, PROBE_LEASE_MS, CATEGORIES, PROFILES, MAX_LOG_BYTES, getPaths, readJson, readBounded,
   atomicWrite, writeJson, loadConfig, statuslineFile, showsWithoutBoss, statuslineLook, saveStatusline, STATUSLINE_STYLES, normalizeProject, findProjectConfig, readState, writeState, logTail,
   sanitizeLabel, updateClaudeLimits, readCodexLimits, readCodexModels, readCodexBossModel, currentBossModel, currentBossEffort, cleanModelId, bossScore, pickBoss, newerFirst, familyKey, limitValues,
   computeModes, formatMode, formatReset, formatLimits, readStdin, readInput };

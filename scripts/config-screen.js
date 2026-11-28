@@ -51,7 +51,7 @@ function rowsFor(values, config) {
 async function config(args, run, deps = {}) {
   if (args.length) throw new Error('Usage: quota-boss config');
   const interactive = deps.interactive ?? (deps.io || (process.stdin.isTTY && process.stdout.isTTY));
-  if (!interactive) return (deps.table || settings.table)() + '\n\nOn a terminal, quota-boss config opens the interactive list.';
+  if (!interactive) return (deps.table || settings.table)() + '\n\nOn a terminal, ' + lib.selfCommand('config') + ' opens the interactive list.';
   const io = deps.io || tui.open();
   const readProject = deps.readProject || lib.findProjectConfig;
   const loadConfig = deps.loadConfig || lib.loadConfig;

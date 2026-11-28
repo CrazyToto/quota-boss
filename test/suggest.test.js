@@ -179,7 +179,7 @@ test('providers new since an update are suggested until they are answered, expli
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const lib = require('../scripts/lib'), added = require('../scripts/new-providers');
   const [line] = lines(suggestions(snap({ newProviders: ['junie-lite', 'jetbrains'] }), NOW));
-  assert.match(line, /Ask the user: "Turn on Junie Lite\? Free, no limit published\." If yes, run quota-boss use junie-lite on in a terminal\. If no, run quota-boss use junie-lite off\./);
+  assert.match(line, /Ask the user: "Turn on Junie Lite\? Free, no limit published\." If yes, run (quota-boss|node "[^"]+") use junie-lite on in a terminal\. If no, run (quota-boss|node "[^"]+") use junie-lite off\./);
   assert.match(line, /Turn on JetBrains AI \(Junie\)\?/);
   assert.deepEqual(suggestions(snap({ newProviders: ['bad id', 'no-help', 5] }), NOW), []);
   assert.deepEqual(ids(suggestions(snap({ cWeek: 90, newProviders: ['junie-lite'], missing: ['grok'] }), NOW)), ['profile-frugal', 'new-providers']);
